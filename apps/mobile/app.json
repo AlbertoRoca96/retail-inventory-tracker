@@ -1,14 +1,12 @@
 {
   "expo": {
-    "name": "RetailTracker",
-    "slug": "retail-tracker",
-    "scheme": "retailtracker",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "updates": { "fallbackToCacheTimeout": 0 },
-    "assetBundlePatterns": ["**/*"],
-    "ios": { "supportsTablet": true },
-    "android": {},
-    "web": { "bundler": "metro" }
+    "name": "Retail Inventory Tracker",
+    "slug": "retail-inventory-tracker",
+    "owner": "al96",
+    "android": { "package": "com.al96.retailinventory" },
+    "ios": { "bundleIdentifier": "com.al96.retailinventory" },
+    "extra": {
+      "eas": { "projectId": "YOUR-EAS-PROJECT-UUID" }
+    }
   }
 }
