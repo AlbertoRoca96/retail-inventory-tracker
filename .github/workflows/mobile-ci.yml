@@ -16,20 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No caching here; avoids "Some specified paths were not resolved" when no lockfile.
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/mobile/package-lock.json
 
       - name: Install deps
         working-directory: apps/mobile
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm i
-          fi
+        run: npm i
 
       - name: Setup Expo + EAS
         uses: expo/expo-github-action@v8
