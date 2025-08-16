@@ -1,19 +1,10 @@
 {
-  "cli": {
-    "appVersionSource": "remote"
-  },
+  "cli": { "appVersionSource": "remote" },
   "build": {
     "preview": {
-      "node": "20.19.4",
       "distribution": "internal",
-      "android": {
-        "buildType": "apk",
-        "image": "latest"
-      },
-      "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
-      }
+      "credentialsSource": "remote",
+      "android": { "buildType": "apk" }
     }
   }
 }
