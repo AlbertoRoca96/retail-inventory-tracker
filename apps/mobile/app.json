@@ -6,7 +6,7 @@
     "android": { "package": "com.al96.retailinventory" },
     "ios": { "bundleIdentifier": "com.al96.retailinventory" },
     "extra": {
-      "eas": { "projectId": "YOUR-EAS-PROJECT-UUID" }
+      "eas": { "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb" }
     }
   }
 }
