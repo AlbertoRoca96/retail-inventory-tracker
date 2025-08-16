@@ -6,7 +6,6 @@ on:
         description: 'ios | android'
         required: true
         default: 'android'
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,13 +14,13 @@ jobs:
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'   # local runner; remote EAS uses eas.json "node"
+        with: { node-version: '20' }
 
-      - name: Install deps (root)
-        run: npm i
+      # ✅ install the app's dependencies inside apps/mobile
+      - name: Install deps (mobile)
+        working-directory: apps/mobile
+        run: npm ci || npm i
 
       - name: Setup Expo + EAS
         uses: expo/expo-github-action@v8
