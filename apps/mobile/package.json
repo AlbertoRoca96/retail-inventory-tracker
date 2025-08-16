@@ -15,17 +15,16 @@
   },
   "dependencies": {
     "expo": "^51.0.38",
-    "expo-image-picker": "~15.0.7",
+    "expo-image-picker": "~16.1.4",
     "expo-secure-store": "~13.0.1",
+    "@supabase/supabase-js": "^2.44.4",
     "react": "18.2.0",
     "react-native": "0.74.5",
-    "@supabase/supabase-js": "^2.44.4",
     "react-hook-form": "^7.52.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
-    "@types/react": "^18.2.66",
-    "@types/react-native": "^0.74.0"
+    "@types/react": "^18.2.66"
   }
 }
