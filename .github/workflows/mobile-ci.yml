@@ -1,7 +1,11 @@
-name: mobile-ci
+name: eas-build
 on:
-  pull_request:
-    paths: ['apps/mobile/**']
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'ios | android'
+        required: true
+        default: 'android'
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -11,11 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install
+        with: { node-version: '20' }
+      - name: Install deps
         run: cd apps/mobile && npm ci || npm i
-      - name: Lint (optional)
-        run: cd apps/mobile && npm run lint --if-present
-      - name: Bundle sanity check
-        run: cd apps/mobile && npx expo export --platform web
+      - name: Setup Expo + EAS
+        uses: expo/expo-github-action@v8
+        with:
+          token: ${{ secrets.EXPO_TOKEN }}
+          eas-version: latest
+      - name: EAS build
+        working-directory: apps/mobile
+        run: npx eas build --non-interactive --platform ${{ github.event.inputs.platform }} --profile preview
