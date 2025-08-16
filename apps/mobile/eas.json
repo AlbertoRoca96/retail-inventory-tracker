@@ -5,8 +5,6 @@
       "distribution": "internal",
       "credentialsSource": "remote",
       "android": { "buildType": "apk" }
-    },
-    "production": {}
-  },
-  "submit": { "production": {} }
+    }
+  }
 }
