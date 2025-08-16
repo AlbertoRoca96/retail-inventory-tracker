@@ -3,10 +3,38 @@
     "name": "Retail Inventory Tracker",
     "slug": "retail-inventory-tracker",
     "owner": "al96",
-    "android": { "package": "com.al96.retailinventory" },
-    "ios": { "bundleIdentifier": "com.al96.retailinventory" },
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "retailinventory",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.al96.retailinventory"
+    },
+    "android": {
+      "package": "com.al96.retailinventory",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to attach store shelf images."
+        }
+      ]
+    ],
     "extra": {
-      "eas": { "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb" }
+      "eas": {
+        "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb"
+      }
     }
   }
 }
