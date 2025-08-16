@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "RetailTracker",
+    "slug": "retail-tracker",
+    "scheme": "retailtracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "updates": { "fallbackToCacheTimeout": 0 },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": {},
+    "web": { "bundler": "metro" }
+  }
+}
