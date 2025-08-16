@@ -15,22 +15,17 @@ jobs:
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
-
-      # No caching here; avoids "Some specified paths were not resolved" when no lockfile.
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install deps
         working-directory: apps/mobile
         run: npm i
-
       - name: Setup Expo + EAS
         uses: expo/expo-github-action@v8
         with:
           token: ${{ secrets.EXPO_TOKEN }}
           eas-version: latest
-
       - name: EAS build
         working-directory: apps/mobile
         run: eas build --non-interactive --platform ${{ github.event.inputs.platform }} --profile preview
