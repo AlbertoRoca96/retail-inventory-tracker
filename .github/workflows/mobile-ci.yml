@@ -1,0 +1,21 @@
+name: mobile-ci
+on:
+  pull_request:
+    paths: ['apps/mobile/**']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: cd apps/mobile && npm ci || npm i
+      - name: Lint (optional)
+        run: cd apps/mobile && npm run lint --if-present
+      - name: Bundle sanity check
+        run: cd apps/mobile && npx expo export --platform web
