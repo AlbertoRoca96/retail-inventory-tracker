@@ -1,31 +1,19 @@
 {
   "cli": {
-    "version": ">= 9.0.0",
     "appVersionSource": "remote"
   },
   "build": {
     "preview": {
+      "node": "20.19.4",
       "distribution": "internal",
-      "credentialsSource": "remote",
-      "env": {
-        "APP_VARIANT": "preview"
-      },
       "android": {
-        "buildType": "apk"
-      }
-    },
-    "production": {
-      "distribution": "store",
-      "credentialsSource": "remote",
-      "env": {
-        "APP_VARIANT": "production"
+        "buildType": "apk",
+        "image": "latest"
       },
-      "android": {
-        "buildType": "app-bundle"
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
       }
     }
-  },
-  "submit": {
-    "production": {}
   }
 }
