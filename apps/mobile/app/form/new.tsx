@@ -23,12 +23,35 @@ type Photo = {
   height?: number | null;
 };
 
+type FormValues = {
+  date: string;
+  storeLocation: string;
+  conditions: string;
+  pricePerUnit: string;
+  shelfSpace: string;
+  onShelf: string;
+  tags: string;
+  notes: string;
+};
+
 const isWeb = Platform.OS === 'web';
 const hasWindow = typeof window !== 'undefined';
-const DRAFT_KEY = 'rit:new-form-draft:v6';
-const todayISO = () => new Date().toISOString().slice(0, 10);
 
-// ---------- localStorage (no React setState here) ----------
+/** Bump this key when the local-draft format changes to avoid loading stale drafts */
+const DRAFT_KEY = 'rit:new-form-draft:v7';
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const getDefaultValues = (): FormValues => ({
+  date: todayISO(),
+  storeLocation: '',
+  conditions: '',
+  pricePerUnit: '',
+  shelfSpace: '',
+  onShelf: '',
+  tags: '',
+  notes: '',
+});
+
+// ---------- localStorage helpers (no React setState inside) ----------
 function saveDraftLocal(draft: unknown) {
   try {
     if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -49,105 +72,80 @@ function clearDraftLocal() {
   } catch {}
 }
 
-type FormValues = {
-  date: string;
-  storeLocation: string;
-  conditions: string;
-  pricePerUnit: string;
-  shelfSpace: string;
-  onShelf: string;
-  tags: string;
-  notes: string;
-};
-
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
 
-  // Avoid hydration quirks on static web
+  // Avoid hydration quirks for static web
   const [hydrated, setHydrated] = useState(!isWeb);
-  useEffect(() => { if (isWeb) setHydrated(true); }, []);
+  useEffect(() => {
+    if (isWeb) setHydrated(true);
+  }, []);
 
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
+
+  // ---------------- Values store ----------------
+  // Web: keep values in a ref (no per-keystroke React state) and render HTML inputs
+  // Native: standard controlled TextInputs
+  const formRef = useRef<FormValues>(getDefaultValues());
   const [photos, setPhotos] = useState<Photo[]>([]);
 
-  // ----- Values: refs for WEB (no per-key stroke setState), state for NATIVE -----
-  const formRef = useRef<FormValues>({
-    date: todayISO(),
-    storeLocation: '',
-    conditions: '',
-    pricePerUnit: '',
-    shelfSpace: '',
-    onShelf: '',
-    tags: '',
-    notes: '',
-  });
+  // Native mirrored state (so phones behave naturally)
+  const [nVals, setNVals] = useState<FormValues>(getDefaultValues());
 
-  // Native (iOS/Android) controlled state
-  const [nDate, setNDate] = useState<string>(todayISO());
-  const [nStoreLocation, setNStoreLocation] = useState('');
-  const [nConditions, setNConditions] = useState('');
-  const [nPricePerUnit, setNPricePerUnit] = useState('');
-  const [nShelfSpace, setNShelfSpace] = useState('');
-  const [nOnShelf, setNOnShelf] = useState('');
-  const [nTags, setNTags] = useState('');
-  const [nNotes, setNNotes] = useState('');
+  // When we need web inputs to re-mount with new defaultValue (after Clear/Load), bump this key.
+  const [formKey, setFormKey] = useState(0);
 
-  // Load draft ONCE after hydration
+  // Load draft once after hydration
   const loaded = useRef(false);
   useEffect(() => {
     if (!hydrated || loaded.current) return;
     loaded.current = true;
-
     const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>();
     if (draft) {
-      // put into ref (web)
-      formRef.current = {
-        date: draft.date ?? todayISO(),
-        storeLocation: draft.storeLocation ?? '',
-        conditions: draft.conditions ?? '',
-        pricePerUnit: draft.pricePerUnit ?? '',
-        shelfSpace: draft.shelfSpace ?? '',
-        onShelf: draft.onShelf ?? '',
-        tags: draft.tags ?? '',
-        notes: draft.notes ?? '',
-      };
-      // also reflect in native state so mobile stays in sync
-      setNDate(formRef.current.date);
-      setNStoreLocation(formRef.current.storeLocation);
-      setNConditions(formRef.current.conditions);
-      setNPricePerUnit(formRef.current.pricePerUnit);
-      setNShelfSpace(formRef.current.shelfSpace);
-      setNOnShelf(formRef.current.onShelf);
-      setNTags(formRef.current.tags);
-      setNNotes(formRef.current.notes);
-
+      const merged: FormValues = { ...getDefaultValues(), ...draft };
+      formRef.current = merged;
+      setNVals(merged); // keep native in sync
       setPhotos(draft.photos ?? []);
+      // re-mount web inputs with loaded defaults
+      setFormKey((k) => k + 1);
       setBanner({ kind: 'success', text: 'Draft loaded.' });
     }
   }, [hydrated]);
 
-  // Unified getters (web reads from ref, native reads from state)
+  // Unified getter (returns the latest values regardless of platform)
   const getValues = useCallback((): FormValues => {
-    if (isWeb) return { ...formRef.current };
-    return {
-      date: nDate, storeLocation: nStoreLocation, conditions: nConditions, pricePerUnit: nPricePerUnit,
-      shelfSpace: nShelfSpace, onShelf: nOnShelf, tags: nTags, notes: nNotes,
-    };
-  }, [nDate, nStoreLocation, nConditions, nPricePerUnit, nShelfSpace, nOnShelf, nTags, nNotes]);
+    return isWeb ? { ...formRef.current } : { ...nVals };
+  }, [nVals]);
 
-  // Debounced autosave (reads through getValues → ref on web, state on native)
+  // Debounced autosave (reads latest state/refs and writes to localStorage only)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutosave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const v = getValues();
       saveDraftLocal({ ...v, photos });
-    }, 400);
+    }, 350);
   }, [getValues, photos]);
 
-  // Photos
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  // ---------------- Photos ----------------
+  const removePhotoAt = (idx: number) => {
+    setPhotos((prev) => {
+      const next = prev.slice();
+      next.splice(idx, 1);
+      return next;
+    });
+    // persist removal
+    setTimeout(scheduleAutosave, 0);
+  };
+
   const addFromLibrary = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -155,10 +153,14 @@ export default function NewFormScreen() {
     });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
-      scheduleAutosave();
+      setPhotos((p) => [
+        ...p,
+        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
+      ]);
+      setTimeout(scheduleAutosave, 0);
     }
   };
+
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -168,18 +170,40 @@ export default function NewFormScreen() {
     const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
-      scheduleAutosave();
+      setPhotos((p) => [
+        ...p,
+        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
+      ]);
+      setTimeout(scheduleAutosave, 0);
     }
   };
 
+  // ---------------- Actions ----------------
   const onSave = () => {
     const v = getValues();
     saveDraftLocal({ ...v, photos });
     setBanner({ kind: 'success', text: 'Draft saved locally.' });
   };
 
-  // Submit: upload → try DB insert → ALWAYS export → clear draft on success
+  /** Reset everything to a clean form (optionally clear local draft). */
+  const resetForm = (clearDraft: boolean) => {
+    const fresh = getDefaultValues();
+    formRef.current = fresh;
+    setNVals(fresh);
+    setPhotos([]);
+    // cause web inputs to re-mount with empty/default values
+    setFormKey((k) => k + 1);
+    if (clearDraft) clearDraftLocal();
+  };
+
+  const onClearAll = () => {
+    resetForm(true);
+    // persist that the draft is now empty (helps if the tab stays open)
+    saveDraftLocal({ ...getDefaultValues(), photos: [] });
+    setBanner({ kind: 'success', text: 'Cleared all saved fields and photos.' });
+  };
+
+  // Submit: upload → try DB insert → ALWAYS export → clear draft & reset on success
   const onSubmit = async () => {
     try {
       if (busy) return;
@@ -210,7 +234,7 @@ export default function NewFormScreen() {
         insertError = { message: 'Not authenticated – saved to Excel only.' };
       }
 
-      // Always export an Excel with embedded photos (side-by-side)
+      // Always export a spreadsheet (side-by-side photos handled in exportExcel.ts)
       await downloadSubmissionExcel({
         date: v.date || '',
         store_location: v.storeLocation || '',
@@ -228,7 +252,8 @@ export default function NewFormScreen() {
         return;
       }
 
-      clearDraftLocal();
+      // New, clean form after successful submit
+      resetForm(true); // clears local draft too
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message ?? 'Submit failed' });
@@ -237,10 +262,14 @@ export default function NewFormScreen() {
     }
   };
 
-  // ---------- Fields ----------
-  // WebField: pure DOM, uncontrolled; writes to formRef; never calls setState per keypress
+  // ---------------- Field components ----------------
+  // WebField: pure DOM, uncontrolled; writes into formRef and debounced-saves
   const WebField = ({
-    name, label, placeholder, multiline, inputMode,
+    name,
+    label,
+    placeholder,
+    multiline,
+    inputMode,
   }: {
     name: keyof FormValues;
     label: string;
@@ -252,104 +281,144 @@ export default function NewFormScreen() {
       <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
       {multiline ? (
         <textarea
+          key={`${name}-${formKey}`}
           defaultValue={formRef.current[name] ?? ''}
-          onInput={(e) => { formRef.current[name] = (e.currentTarget.value as any) ?? ''; }}
+          onInput={(e) => {
+            formRef.current[name] = (e.currentTarget.value as any) ?? '';
+            scheduleAutosave();
+          }}
           onBlur={scheduleAutosave}
           placeholder={placeholder}
           style={{
-            width: '100%', backgroundColor: 'white',
-            borderWidth: 1, borderColor: '#111', borderStyle: 'solid',
-            borderRadius: 8, padding: 10, minHeight: 80,
+            width: '100%',
+            backgroundColor: 'white',
+            borderWidth: 1,
+            borderColor: '#111',
+            borderStyle: 'solid',
+            borderRadius: 8,
+            padding: 10,
+            minHeight: 80,
           } as any}
         />
       ) : (
         <input
+          key={`${name}-${formKey}`}
           defaultValue={formRef.current[name] ?? ''}
-          onInput={(e) => { formRef.current[name] = (e.currentTarget.value as any) ?? ''; }}
+          onInput={(e) => {
+            formRef.current[name] = (e.currentTarget.value as any) ?? '';
+            scheduleAutosave();
+          }}
           onBlur={scheduleAutosave}
           placeholder={placeholder}
           inputMode={inputMode}
           style={{
-            width: '100%', backgroundColor: 'white',
-            borderWidth: 1, borderColor: '#111', borderStyle: 'solid',
-            borderRadius: 8, padding: 8, height: 40,
+            width: '100%',
+            backgroundColor: 'white',
+            borderWidth: 1,
+            borderColor: '#111',
+            borderStyle: 'solid',
+            borderRadius: 8,
+            padding: 8,
+            height: 40,
           } as any}
         />
       )}
     </View>
   );
 
-  // NativeField: controlled TextInput for phones
+  // NativeField: standard controlled TextInput for iOS/Android
   const NativeField = ({
-    label, value, onChange, placeholder, multiline, keyboardType,
+    prop,
+    label,
+    placeholder,
+    multiline,
+    keyboardType,
   }: {
-    label: string; value: string; onChange: (s: string) => void;
-    placeholder?: string; multiline?: boolean; keyboardType?: 'default' | 'numeric' | 'email-address';
-  }) => (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={(s) => { onChange(s); scheduleAutosave(); }}
-        placeholder={placeholder}
-        multiline={!!multiline}
-        autoCorrect={false}
-        autoCapitalize="none"
-        keyboardType={keyboardType}
-        style={{
-          backgroundColor: 'white', borderWidth: 1, borderColor: '#111',
-          borderRadius: 8, paddingHorizontal: 12, paddingVertical: multiline ? 10 : 8,
-          minHeight: multiline ? 80 : 40, textAlignVertical: multiline ? 'top' : 'center',
-        }}
-      />
-    </View>
-  );
-
-  const Field = (p: {
-    name?: keyof FormValues; // for web
+    prop: keyof FormValues;
     label: string;
     placeholder?: string;
     multiline?: boolean;
     keyboardType?: 'default' | 'numeric' | 'email-address';
   }) => {
-    if (isWeb) {
-      return (
-        <WebField
-          name={p.name!}
-          label={p.label}
-          placeholder={p.placeholder}
-          multiline={p.multiline}
-          inputMode={p.keyboardType === 'numeric' ? 'decimal' : 'text'}
+    const value = nVals[prop];
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+        <TextInput
+          value={value}
+          onChangeText={(s) => {
+            setNVals((prev) => ({ ...prev, [prop]: s ?? '' }));
+            scheduleAutosave();
+          }}
+          placeholder={placeholder}
+          multiline={!!multiline}
+          autoCorrect={false}
+          autoCapitalize="none"
+          keyboardType={keyboardType}
+          style={{
+            backgroundColor: 'white',
+            borderWidth: 1,
+            borderColor: '#111',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: multiline ? 10 : 8,
+            minHeight: multiline ? 80 : 40,
+            textAlignVertical: multiline ? 'top' : 'center',
+          }}
         />
-      );
-    }
-    // Native
-    switch (p.name) {
-      case 'date':          return <NativeField label={p.label} value={nDate} onChange={setNDate} placeholder={p.placeholder} />;
-      case 'storeLocation': return <NativeField label={p.label} value={nStoreLocation} onChange={setNStoreLocation} placeholder={p.placeholder} />;
-      case 'conditions':    return <NativeField label={p.label} value={nConditions} onChange={setNConditions} placeholder={p.placeholder} />;
-      case 'pricePerUnit':  return <NativeField label={p.label} value={nPricePerUnit} onChange={setNPricePerUnit} placeholder={p.placeholder} keyboardType="numeric" />;
-      case 'shelfSpace':    return <NativeField label={p.label} value={nShelfSpace} onChange={setNShelfSpace} placeholder={p.placeholder} />;
-      case 'onShelf':       return <NativeField label={p.label} value={nOnShelf} onChange={setNOnShelf} placeholder={p.placeholder} />;
-      case 'tags':          return <NativeField label={p.label} value={nTags} onChange={setNTags} placeholder={p.placeholder} />;
-      case 'notes':         return <NativeField label={p.label} value={nNotes} onChange={setNNotes} placeholder={p.placeholder} multiline />;
-      default:              return null;
-    }
+      </View>
+    );
   };
 
+  const Field = (p: {
+    name: keyof FormValues;
+    label: string;
+    placeholder?: string;
+    multiline?: boolean;
+    keyboardType?: 'default' | 'numeric' | 'email-address';
+  }) =>
+    isWeb ? (
+      <WebField
+        name={p.name}
+        label={p.label}
+        placeholder={p.placeholder}
+        multiline={p.multiline}
+        inputMode={p.keyboardType === 'numeric' ? 'decimal' : 'text'}
+      />
+    ) : (
+      <NativeField
+        prop={p.name}
+        label={p.label}
+        placeholder={p.placeholder}
+        multiline={p.multiline}
+        keyboardType={p.keyboardType}
+      />
+    );
+
   if (!hydrated) {
-    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text>Loading…</Text></View>;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text>Loading…</Text>
+      </View>
+    );
   }
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>Create New Form</Text>
+      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
+        Create New Form
+      </Text>
 
       {banner ? (
-        <View style={{
-          backgroundColor: banner.kind === 'success' ? '#16a34a' : banner.kind === 'error' ? '#ef4444' : '#0ea5e9',
-          padding: 10, borderRadius: 8, marginBottom: 12,
-        }}>
+        <View
+          style={{
+            backgroundColor:
+              banner.kind === 'success' ? '#16a34a' : banner.kind === 'error' ? '#ef4444' : '#0ea5e9',
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 12,
+          }}
+        >
           <Text style={{ color: 'white', textAlign: 'center' }}>{banner.text}</Text>
         </View>
       ) : null}
@@ -366,30 +435,83 @@ export default function NewFormScreen() {
       <Text style={{ fontWeight: '700', marginBottom: 8 }}>PHOTOS</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         {photos.map((p, i) => (
-          <Image key={`${p.uri}-${i}`} source={{ uri: p.uri }} style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }} />
+          <View key={`${p.uri}-${i}`} style={{ position: 'relative' }}>
+            <Image
+              source={{ uri: p.uri }}
+              style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
+            />
+            <Pressable
+              onPress={() => removePhotoAt(i)}
+              accessibilityRole="button"
+              style={{
+                position: 'absolute',
+                top: -6,
+                right: -6,
+                backgroundColor: '#ef4444',
+                borderRadius: 12,
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderWidth: 1,
+                borderColor: 'white',
+              }}
+            >
+              <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>×</Text>
+            </Pressable>
+          </View>
         ))}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-        <Pressable onPress={takePhoto} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={takePhoto}
+          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ color: 'white', fontWeight: '700' }}>Take Photo</Text>
         </Pressable>
-        <Pressable onPress={addFromLibrary} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={addFromLibrary}
+          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ color: 'white', fontWeight: '700' }}>Add from Library</Text>
         </Pressable>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <Pressable onPress={onSave} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={onSave}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ fontWeight: '700' }}>Save</Text>
         </Pressable>
 
-        <Pressable onPress={onSubmit} disabled={busy} style={{ flex: 1, backgroundColor: busy ? '#94a3b8' : '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={onSubmit}
+          disabled={busy}
+          style={{
+            flex: 1,
+            backgroundColor: busy ? '#94a3b8' : '#2563eb',
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
+        >
           <Text style={{ color: 'white', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </Pressable>
 
-        <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={() => router.back()}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ fontWeight: '700' }}>Exit</Text>
+        </Pressable>
+      </View>
+
+      <View style={{ marginTop: 12, flexDirection: 'row', gap: 12 }}>
+        <Pressable
+          onPress={onClearAll}
+          style={{ flex: 1, backgroundColor: '#f3f4f6', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' }}
+        >
+          <Text style={{ fontWeight: '700' }}>Clear (wipe saved fields & photos)</Text>
         </Pressable>
       </View>
     </ScrollView>
