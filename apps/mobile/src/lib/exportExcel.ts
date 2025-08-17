@@ -93,9 +93,14 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`D${rr}`).border = border;
   }
 
-  // Place two images side‑by‑side (B column and D column), scaled smaller
+  // Place two images side-by-side (B column and D column), scaled smaller
   const urls = (row.photo_urls || []).slice(0, 2);
-  const base64s = await Promise.all(urls.map(fetchAsBase64).catch(() => null)).then(arr => arr.filter(Boolean) as { base64: string; ext: 'png' | 'jpeg' }[]);
+
+  // FIX: avoid `.catch` on an array; use allSettled so one bad URL doesn't kill export
+  const settled = await Promise.allSettled(urls.map((u) => fetchAsBase64(u)));
+  const base64s = settled
+    .filter((s): s is PromiseFulfilledResult<{ base64: string; ext: 'png' | 'jpeg' }> => s.status === 'fulfilled')
+    .map((s) => s.value);
 
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0].base64, extension: base64s[0].ext });
@@ -113,13 +118,13 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     });
   }
 
-  // Slightly increase the rows covering the image area so the table looks neat
+  // Keep rows tidy under images
   for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
-    ws.getRow(rr).height = 18; // consistent lines
+    ws.getRow(rr).height = 18;
   }
 
-  // Download in the browser
-  const buffer = await wb.xlsx.writeBuffer(); // ExcelJS browser API
+  // Browser download
+  const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
 
