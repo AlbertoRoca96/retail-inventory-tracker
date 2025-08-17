@@ -27,13 +27,13 @@ jobs:
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
-      - name: Ensure web deps match SDK
+      - name: Ensure web deps
         working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
-      - name: Export static web build
+      - name: Export static web
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -41,34 +41,33 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: npx expo export --platform web --output-dir dist
 
-      # Rewrite index.html so it always loads the hashed entry from _expo/*
-      - name: Make robust index.html + 404 and disable Jekyll
+      - name: Fix index and 404 for Pages
         working-directory: apps/mobile/dist
         run: |
-          node -e "
-            const fs = require('fs');
-            let html = fs.readFileSync('index.html','utf8');
-            // Grab first script or link that points to the entry in _expo/static/js/web
-            const m = html.match(/(?:src|href)=\"(\/?_expo\/static\/js\/web\/[^\"]+\.js)\"/);
-            if(!m){ throw new Error('Could not locate entry bundle path in index.html'); }
-            let entry = m[1];
-            if(!entry.startsWith('.')) entry = entry.replace(/^\//,'./');
-            const out = `<!doctype html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\"/>
-  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>
-  <title>Retail Inventory Tracker</title>
-</head>
-<body>
-  <div id=\"root\">Loading…</div>
-  <script type=\"module\" src=\"${entry}\" defer></script>
-</body>
-</html>`;
-            fs.writeFileSync('index.html', out);
-            fs.copyFileSync('index.html','404.html');
-            fs.writeFileSync('.nojekyll','');
-          "
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html','utf8');
+          const m = html.match(/(?:src|href)=\"(\/?_expo\/static\/js\/web\/[^\"]+\.js)\"/);
+          if(!m){ console.error('entry bundle not found'); process.exit(1); }
+          let entry = m[1];
+          if(!entry.startsWith('.')) entry = entry.replace(/^\//,'./');
+          const out = `<!doctype html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8"/>
+          <meta name="viewport" content="width=device-width,initial-scale=1"/>
+          <title>Retail Inventory Tracker</title>
+          <meta name="theme-color" content="#ffffff"/>
+          </head>
+          <body>
+          <div id="root">Loading…</div>
+          <script defer src="${entry}"></script>
+          </body>
+          </html>`;
+          fs.writeFileSync('index.html', out);
+          fs.writeFileSync('404.html', out);
+          NODE
+          touch .nojekyll
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
