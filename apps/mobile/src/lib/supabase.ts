@@ -2,30 +2,29 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
 
-const isWeb = Platform.OS === 'web';
-const hasWindow = typeof window !== 'undefined';
-const hasLocalStorage = isWeb && hasWindow && 'localStorage' in window;
+const memory = new Map<string, string>();
 
-const memory = new Map<string, string | null>();
-const memoryStorage = {
-  getItem: (k: string) => Promise.resolve(memory.get(k) ?? null),
-  setItem: (k: string, v: string) => { memory.set(k, v); return Promise.resolve(); },
-  removeItem: (k: string) => { memory.delete(k); return Promise.resolve(); },
+const webGet = (k: string) =>
+  typeof window === 'undefined' ? memory.get(k) ?? null : window.localStorage.getItem(k);
+
+const webSet = (k: string, v: string) => {
+  if (typeof window === 'undefined') { memory.set(k, v); return; }
+  window.localStorage.setItem(k, v);
 };
 
-const webStorage = {
-  getItem: (k: string) => Promise.resolve(localStorage.getItem(k)),
-  setItem: (k: string, v: string) => { localStorage.setItem(k, v); return Promise.resolve(); },
-  removeItem: (k: string) => { localStorage.removeItem(k); return Promise.resolve(); },
+const webRemove = (k: string) => {
+  if (typeof window === 'undefined') { memory.delete(k); return; }
+  window.localStorage.removeItem(k);
 };
 
-const nativeStorage = {
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-  removeItem: SecureStore.deleteItemAsync,
+const storage = {
+  getItem: (k: string) =>
+    Platform.OS === 'web' ? Promise.resolve(webGet(k)) : SecureStore.getItemAsync(k),
+  setItem: (k: string, v: string) =>
+    Platform.OS === 'web' ? (webSet(k, v), Promise.resolve()) : SecureStore.setItemAsync(k, v),
+  removeItem: (k: string) =>
+    Platform.OS === 'web' ? (webRemove(k), Promise.resolve()) : SecureStore.deleteItemAsync(k),
 };
-
-const storage = isWeb ? (hasLocalStorage ? webStorage : memoryStorage) : nativeStorage;
 
 export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
