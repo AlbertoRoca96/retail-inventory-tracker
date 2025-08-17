@@ -1,37 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, Platform } from 'react-native';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
+import { webBasePath } from '../src/lib/webBasePath';
 
-const BYPASS = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
+const BYPASS =
+  String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
+
+function goHome() {
+  const base = Platform.OS === 'web' ? webBasePath() : '';
+  router.replace(`${base}/home`);
+}
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const passwordRef = useRef<TextInput>(null);
 
-  // Compute a safe web href (/retail-inventory-tracker/home on Pages; /home elsewhere)
-  const webBase =
-    Platform.OS === 'web' && typeof window !== 'undefined'
-      ? window.location.pathname.replace(/\/[^/]*$/, '') // strip trailing segment
-      : '';
-  const homeHref = Platform.OS === 'web' ? `${webBase}/home` : '/home';
-
-  const go = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      // Hard navigation that always works on Pages
-      window.location.assign(homeHref);
-    } else {
-      router.replace('/home');
-    }
-  };
-
-  // If bypass flag is on, auto-continue straight to “home”
+  // If bypass is on, skip straight to "home"
   useEffect(() => {
-    if (BYPASS) go();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (BYPASS) goHome();
   }, []);
 
-  const canSubmit = useMemo(() => true, []); // allow empty fields for now
+  const canSubmit = useMemo(() => true, []); // allow empty submit (your request)
+
+  const go = () => {
+    // (In dev, just navigate; later we can swap in real Supabase sign-in)
+    goHome();
+  };
 
   return (
     <View style={{ flex: 1, alignItems: 'center', padding: 16, justifyContent: 'center' }}>
@@ -64,7 +58,10 @@ export default function LoginScreen() {
           autoCapitalize="none"
           keyboardType="email-address"
           returnKeyType="next"
-          onSubmitEditing={() => passwordRef.current?.focus()}
+          onSubmitEditing={() => {
+            const el = (document?.getElementById?.('password-input') as HTMLInputElement | undefined);
+            el?.focus?.();
+          }}
           style={{
             backgroundColor: 'white',
             padding: 10,
@@ -75,13 +72,13 @@ export default function LoginScreen() {
         />
 
         <TextInput
-          ref={passwordRef}
+          id="password-input"
           placeholder="Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           returnKeyType="go"
-          onSubmitEditing={go}   // Enter key submits
+          onSubmitEditing={go} // Enter submits here
           blurOnSubmit
           style={{
             backgroundColor: 'white',
@@ -92,23 +89,20 @@ export default function LoginScreen() {
           }}
         />
 
-        {/* Link ensures proper web navigation, Pressable handles native press. */}
-        <Link href={homeHref} asChild>
-          <Pressable
-            onPress={go}
-            disabled={!canSubmit}
-            accessibilityRole="button"
-            style={{
-              marginTop: 8,
-              backgroundColor: canSubmit ? '#2563eb' : '#94a3b8',
-              paddingVertical: 10,
-              borderRadius: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Enter</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={go}
+          disabled={!canSubmit}
+          accessibilityRole="button"
+          style={{
+            marginTop: 8,
+            backgroundColor: canSubmit ? '#2563eb' : '#94a3b8',
+            paddingVertical: 10,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Enter</Text>
+        </Pressable>
 
         {BYPASS ? (
           <Text style={{ textAlign: 'center', marginTop: 6, color: '#6b7280' }}>
