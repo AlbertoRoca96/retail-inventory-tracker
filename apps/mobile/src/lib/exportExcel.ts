@@ -5,7 +5,7 @@ export type SubmissionExcel = {
   date: string;
   store_location: string;
   conditions: string;
-  price_per_unit: string;
+  price_per_unit: string; // keep as string for display
   shelf_space: string;
   on_shelf: string;
   tags: string;
@@ -20,7 +20,7 @@ export type SubmissionExcel = {
 async function toCanvasBase64(url: string): Promise<string> {
   let srcForImg = url;
 
-  // For http(s) fetch → blob → objectURL to avoid CORS-tainted canvas
+  // For http(s): fetch → blob → objectURL so the canvas isn't CORS-tainted.
   if (/^https?:/i.test(url)) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
@@ -28,6 +28,7 @@ async function toCanvasBase64(url: string): Promise<string> {
     srcForImg = URL.createObjectURL(blob);
   }
 
+  // Load image (browsers already apply EXIF orientation when displaying)
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
     el.onload = () => resolve(el);
@@ -35,6 +36,7 @@ async function toCanvasBase64(url: string): Promise<string> {
     el.src = srcForImg;
   });
 
+  // Rasterize exactly as displayed (this strips EXIF so Excel won't rotate)
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth || (img.width as number);
   canvas.height = img.naturalHeight || (img.height as number);
@@ -45,6 +47,7 @@ async function toCanvasBase64(url: string): Promise<string> {
     URL.revokeObjectURL(srcForImg);
   }
 
+  // Return raw base64 (no prefix)
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   return dataUrl.split(',')[1] || '';
 }
@@ -58,11 +61,18 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
       fitToPage: true,
       fitToWidth: 1,
       orientation: 'portrait',
-      margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+      margins: {
+        left: 0.25,
+        right: 0.25,
+        top: 0.5,
+        bottom: 0.5,
+        header: 0.3,
+        footer: 0.3,
+      },
     },
   });
 
-  // Keep the original layout
+  // Keep your original 4-column layout (gap at C)
   ws.columns = [
     { key: 'label', width: 22 }, // A
     { key: 'value', width: 44 }, // B
@@ -85,6 +95,8 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     Object.assign(ws.getCell(`A${r}`), labelStyle);
     ws.getCell(`B${r}`).value = value || '';
     Object.assign(ws.getCell(`B${r}`), valueStyle);
+
+    // carry borders across C and D so the table looks continuous
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
     r++;
@@ -99,7 +111,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header row across A:D
+  // PHOTOS header across A:D
   ws.mergeCells(`A${r}:D${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
@@ -108,9 +120,9 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   hdr.border = border;
   r++;
 
-  // Bordered area under PHOTOS
+  // Bordered area below PHOTOS (so it prints like the PDF)
   const imageTopRow = r;
-  const rowsForImages = 18; // same height as before
+  const rowsForImages = 18; // height of the photo box
   const imageBottomRow = imageTopRow + rowsForImages - 1;
 
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
@@ -118,26 +130,41 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`B${rr}`).border = border;
     ws.getCell(`C${rr}`).border = border;
     ws.getCell(`D${rr}`).border = border;
-    ws.getRow(rr).height = 18; // consistent lines (portrait layout)
+    ws.getRow(rr).height = 18; // neat, consistent lines
   }
 
-  // Load up to 2 photos (don’t fail the whole export if one image errors)
+  // Load up to 2 photos; don’t bail if one fails
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
   const base64s = settled
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  // Anchor each image to a CELL RANGE so Excel stretches it to the box.
-  // Left photo fills column B rows [imageTopRow .. imageBottomRow]
+  // === Key change: use a TWO-CELL anchor so each image snaps to the exact cell box.
+  // Left photo fills B{top}..B{bottom}; right photo fills D{top}..D{bottom}.
+  // Using tl/br anchors avoids pixel rounding differences across Excel desktop/iOS/Android.
+  // Ref: ExcelJS image-over-range & anchors. :contentReference[oaicite:1]{index=1}
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
-    ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`); // fits the left box exactly
+    ws.addImage(
+      id,
+      {
+        tl: { col: 1, row: imageTopRow - 1 }, // B, zero-based col index
+        br: { col: 2, row: imageBottomRow },  // up to end of B
+        editAs: 'twoCell',
+      } as any
+    );
   }
-  // Right photo fills column D rows [imageTopRow .. imageBottomRow]
   if (base64s[1]) {
     const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
-    ws.addImage(id, `D${imageTopRow}:D${imageBottomRow}`); // fits the right box exactly
+    ws.addImage(
+      id,
+      {
+        tl: { col: 3, row: imageTopRow - 1 }, // D
+        br: { col: 4, row: imageBottomRow },  // up to end of D
+        editAs: 'twoCell',
+      } as any
+    );
   }
 
   // Download in the browser
