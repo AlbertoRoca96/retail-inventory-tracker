@@ -1,62 +1,48 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState
-} from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-type AuthCtx = {
-  authed: boolean;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+type Session = { user: { id: string; email?: string | null } } | null;
+type AuthValue = {
+  session: Session;
+  signInWithEmail: (email: string, password: string) => Promise<{ error?: Error }>;
+  signOut: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthCtx>({
-  authed: false,
-  loading: true,
-  login: async () => {},
-  logout: async () => {}
+const AuthContext = createContext<AuthValue>({
+  session: null,
+  signInWithEmail: async () => ({}),
+  signOut: async () => {}
 });
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const bypass = process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN === 'true';
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const [session, setSession] = useState<Session>(null);
 
-  const [authed, setAuthed] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // Initialize auth state
   useEffect(() => {
-    (async () => {
-      if (bypass) {
-        setAuthed(true);
-        setLoading(false);
-        return;
-      }
-      const { data: { session } } = await supabase.auth.getSession();
-      setAuthed(!!session);
-      setLoading(false);
-    })();
-  }, [bypass]);
-
-  const login = async (email: string, password: string) => {
+    const bypass = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
     if (bypass) {
-      setAuthed(true);
+      setSession({ user: { id: 'dev-user', email: 'dev@example.com' } });
       return;
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    setAuthed(true);
-  };
+    supabase.auth.getSession().then(({ data }) => setSession(data.session as Session));
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, s) => setSession(s as Session));
+    return () => subscription.unsubscribe();
+  }, []);
 
-  const logout = async () => {
-    if (!bypass) await supabase.auth.signOut();
-    setAuthed(false);
-  };
-
-  const value = useMemo(() => ({ authed, loading, login, logout }), [authed, loading]);
+  const value = useMemo<AuthValue>(
+    () => ({
+      session,
+      signInWithEmail: async (email, password) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        return { error: error ?? undefined };
+      },
+      signOut: async () => {
+        await supabase.auth.signOut();
+      }
+    }),
+    [session]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
