@@ -1,88 +1,131 @@
 // apps/mobile/src/lib/exportExcel.ts
 import ExcelJS from 'exceljs';
 
+/** Input data for export */
 export type SubmissionExcel = {
   date: string;
   store_location: string;
   conditions: string;
-  price_per_unit: string;
+  price_per_unit: string; // keep as string for display
   shelf_space: string;
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[]; // public URLs
+  photo_urls: string[];   // public URLs (we embed up to 2)
 };
 
-// Tiny helper to fetch an image as ArrayBuffer for ExcelJS (browser)
-async function fetchImageBuffer(url: string): Promise<ArrayBuffer> {
+/** Utility: fetch an image URL and return { base64, ext } for ExcelJS */
+async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' | 'jpeg' }> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
-  return await res.arrayBuffer();
-}
-
-function guessExt(url: string): 'png' | 'jpeg' {
-  const u = url.toLowerCase();
-  return u.endsWith('.png') ? 'png' : 'jpeg';
+  if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
+  const blob = await res.blob();
+  const ext: 'png' | 'jpeg' = blob.type.includes('png') ? 'png' : 'jpeg';
+  const buf = await blob.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  return { base64: `data:${blob.type};base64,${base64}`, ext };
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('submission');
 
-  // Layout: make room for two photos side by side (B and D), with a spacer C
-  ws.getColumn(1).width = 18; // A: "Field"
-  ws.getColumn(2).width = 48; // B: value / first photo
-  ws.getColumn(3).width = 4;  // C: spacer
-  ws.getColumn(4).width = 48; // D: second photo
-
-  // Header + fields
-  const rows = [
-    ['Field', 'Value'],
-    ['DATE', row.date],
-    ['STORE LOCATION', row.store_location],
-    ['CONDITIONS', row.conditions],
-    ['PRICE PER UNIT', row.price_per_unit],
-    ['SHELF SPACE', row.shelf_space],
-    ['ON SHELF', row.on_shelf],
-    ['TAGS', row.tags],
-    ['NOTES', row.notes],
-    ['PHOTOS', ''],
-  ];
-  ws.addRows(rows);
-
-  const photosRowIndex = rows.length; // 1-based row index where "PHOTOS" is
-  const startRowForImages = photosRowIndex; // place images just below the header cell
-  const imageHeight = 220;
-  const imageWidth = 300;
-
-  // Add up to two images side-by-side
-  const addImageAt = async (url: string, colIdxZeroBased: number, rowIdxZeroBased: number) => {
-    const buffer = await fetchImageBuffer(url);
-    const imgId = wb.addImage({ buffer, extension: guessExt(url) });
-    ws.addImage(imgId, {
-      tl: { col: colIdxZeroBased, row: rowIdxZeroBased },
-      ext: { width: imageWidth, height: imageHeight },
-    });
-  };
-
-  // B column (= 1 zero-based), D column (= 3 zero-based)
-  if (row.photo_urls[0]) {
-    await addImageAt(row.photo_urls[0], 1, startRowForImages); // B
-  }
-  if (row.photo_urls[1]) {
-    await addImageAt(row.photo_urls[1], 3, startRowForImages); // D
-  }
-
-  // Export to browser
-  const fname = `submission-${new Date().toISOString().replace(/[:]/g, '-')}.xlsx`;
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // Worksheet + page setup (tight margins, fit to one page width)
+  const ws = wb.addWorksheet('submission', {
+    properties: { defaultRowHeight: 18 },
+    pageSetup: {
+      fitToPage: true,
+      fitToWidth: 1,
+      orientation: 'portrait',
+      margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+    },
   });
-  const url = URL.createObjectURL(blob);
+
+  // 4 columns so we can place photos side-by-side in B and D with a small gap at C
+  ws.columns = [
+    { key: 'label', width: 22 }, // A
+    { key: 'value', width: 44 }, // B
+    { key: 'gap', width: 2 },    // C (visual gap)
+    { key: 'value2', width: 44 } // D (photo 2 column)
+  ];
+
+  const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
+  const labelStyle = { font: { bold: true }, alignment: { vertical: 'middle' as const }, border };
+  const valueStyle = { alignment: { vertical: 'middle' as const }, border };
+
+  let r = 1;
+  function addRow(label: string, value: string) {
+    ws.getCell(`A${r}`).value = label.toUpperCase();
+    Object.assign(ws.getCell(`A${r}`), labelStyle);
+    ws.getCell(`B${r}`).value = value || '';
+    Object.assign(ws.getCell(`B${r}`), valueStyle);
+
+    // Carry borders across the "gap" and D to form a continuous table
+    ws.getCell(`C${r}`).border = border;
+    ws.getCell(`D${r}`).border = border;
+
+    r++;
+  }
+
+  addRow('DATE', row.date);
+  addRow('STORE LOCATION', row.store_location);
+  addRow('CONDITIONS', row.conditions);
+  addRow('PRICE PER UNIT', row.price_per_unit);
+  addRow('SHELF SPACE', row.shelf_space);
+  addRow('ON SHELF', row.on_shelf);
+  addRow('TAGS', row.tags);
+  addRow('NOTES', row.notes);
+
+  // PHOTOS header row across A:D to match the PDF
+  ws.mergeCells(`A${r}:D${r}`);
+  const hdr = ws.getCell(`A${r}`);
+  hdr.value = 'PHOTOS';
+  hdr.font = { bold: true };
+  hdr.alignment = { vertical: 'middle', horizontal: 'left' };
+  hdr.border = border;
+  r++;
+
+  // Prepare a bordered area under PHOTOS (so it prints like a table)
+  const imageTopRow = r;
+  const rowsForImages = 18; // adjusts printable area height under the photos
+  for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
+    ws.getCell(`A${rr}`).border = border;
+    ws.getCell(`B${rr}`).border = border;
+    ws.getCell(`C${rr}`).border = border;
+    ws.getCell(`D${rr}`).border = border;
+  }
+
+  // Place two images side‑by‑side (B column and D column), scaled smaller
+  const urls = (row.photo_urls || []).slice(0, 2);
+  const base64s = await Promise.all(urls.map(fetchAsBase64).catch(() => null)).then(arr => arr.filter(Boolean) as { base64: string; ext: 'png' | 'jpeg' }[]);
+
+  if (base64s[0]) {
+    const id = wb.addImage({ base64: base64s[0].base64, extension: base64s[0].ext });
+    // Columns are zero-based in the image anchor: 0=A, 1=B, 2=C, 3=D
+    ws.addImage(id, {
+      tl: { col: 1, row: imageTopRow - 1 }, // start at B{imageTopRow}
+      ext: { width: 360, height: 230 },     // smaller so they sit side-by-side
+    });
+  }
+  if (base64s[1]) {
+    const id = wb.addImage({ base64: base64s[1].base64, extension: base64s[1].ext });
+    ws.addImage(id, {
+      tl: { col: 3, row: imageTopRow - 1 }, // D{imageTopRow}
+      ext: { width: 360, height: 230 },
+    });
+  }
+
+  // Slightly increase the rows covering the image area so the table looks neat
+  for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
+    ws.getRow(rr).height = 18; // consistent lines
+  }
+
+  // Download in the browser
+  const buffer = await wb.xlsx.writeBuffer(); // ExcelJS browser API
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
+
   const a = document.createElement('a');
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = fname;
   a.click();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(a.href);
 }
