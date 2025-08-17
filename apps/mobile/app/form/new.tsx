@@ -1,4 +1,3 @@
-// apps/mobile/app/form/new.tsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,10 +24,10 @@ type Photo = {
 
 const isWeb = Platform.OS === 'web';
 const hasWindow = typeof window !== 'undefined';
-const DRAFT_KEY = 'rit:new-form-draft:v3';
+const DRAFT_KEY = 'rit:new-form-draft:v4';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-// -------- localStorage helpers (no React setState here) --------
+// localStorage helpers (no setState in here)
 function saveDraftLocal(draft: unknown) {
   try {
     if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -51,80 +50,80 @@ function clearDraftLocal() {
 
 export default function NewFormScreen() {
   const { session } = useAuth();
-  const uid = useMemo(() => session?.user?.id || 'dev-user', [session?.user?.id]);
+  const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
+
+  const [hydrated, setHydrated] = useState(!isWeb); // avoid SSR/hydration mismatches
+  useEffect(() => {
+    if (isWeb) setHydrated(true);
+  }, []);
 
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  // controlled fields (stable, no remount)
+  const [date, setDate] = useState<string>(todayISO());
+  const [storeLocation, setStoreLocation] = useState<string>('');
+  const [conditions, setConditions] = useState<string>('');
+  const [pricePerUnit, setPricePerUnit] = useState<string>('');
+  const [shelfSpace, setShelfSpace] = useState<string>('');
+  const [onShelf, setOnShelf] = useState<string>('');
+  const [tags, setTags] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
   const [photos, setPhotos] = useState<Photo[]>([]);
 
-  // All field values live in refs; inputs are UNCONTROLLED (defaultValue only)
-  const refs = useRef({
-    date: todayISO(),
-    storeLocation: '',
-    conditions: '',
-    pricePerUnit: '',
-    shelfSpace: '',
-    onShelf: '',
-    tags: '',
-    notes: '',
-  });
-
-  // When we load a draft, we need inputs to re‑mount to apply new defaultValue.
-  const [inputVersion, setInputVersion] = useState(0);
-
-  // Load draft ONCE, then force a tiny remount of inputs to apply defaultValue
+  // Load draft ONCE after hydration
   const loadedOnce = useRef(false);
   useEffect(() => {
-    if (loadedOnce.current) return;
+    if (!hydrated || loadedOnce.current) return;
     loadedOnce.current = true;
 
-    const draft = loadDraftLocal<typeof refs.current & { photos?: Photo[] }>();
-    if (draft) {
-      refs.current = {
-        date: draft.date || todayISO(),
-        storeLocation: draft.storeLocation || '',
-        conditions: draft.conditions || '',
-        pricePerUnit: draft.pricePerUnit || '',
-        shelfSpace: draft.shelfSpace || '',
-        onShelf: draft.onShelf || '',
-        tags: draft.tags || '',
-        notes: draft.notes || '',
-      };
-      setPhotos(draft.photos || []);
-      setInputVersion((v) => v + 1); // re-mount inputs with new defaultValue
-      setBanner({ kind: 'success', text: 'Draft loaded.' });
-      setDirty(false);
-    }
-  }, []);
+    const draft = loadDraftLocal<{
+      date?: string;
+      storeLocation?: string;
+      conditions?: string;
+      pricePerUnit?: string;
+      shelfSpace?: string;
+      onShelf?: string;
+      tags?: string;
+      notes?: string;
+      photos?: Photo[];
+    }>();
 
-  // Debounced autosave reads ONLY from refs + photos (never writes to inputs)
+    if (draft) {
+      setDate(draft.date ?? todayISO());
+      setStoreLocation(draft.storeLocation ?? '');
+      setConditions(draft.conditions ?? '');
+      setPricePerUnit(draft.pricePerUnit ?? '');
+      setShelfSpace(draft.shelfSpace ?? '');
+      setOnShelf(draft.onShelf ?? '');
+      setTags(draft.tags ?? '');
+      setNotes(draft.notes ?? '');
+      setPhotos(draft.photos ?? []);
+      setBanner({ kind: 'success', text: 'Draft loaded.' });
+    }
+  }, [hydrated]);
+
+  // Debounced autosave: runs AFTER state changes; won’t remount inputs
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleAutosave = () => {
+  useEffect(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveDraftLocal({ ...refs.current, photos });
+      saveDraftLocal({ date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos });
     }, 400);
-  };
+    return () => saveTimer.current && clearTimeout(saveTimer.current);
+  }, [date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos]);
 
-  const markDirty = () => {
-    if (!dirty) setDirty(true);
-    scheduleAutosave();
-  };
+  const markDirty = () => setDirty(true);
 
-  // Photo pickers
   const addFromLibrary = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
       setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
       markDirty();
     }
   };
-
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -139,91 +138,89 @@ export default function NewFormScreen() {
     }
   };
 
-  // Manual save just writes refs to local storage
   const onSave = () => {
-    saveDraftLocal({ ...refs.current, photos });
+    saveDraftLocal({ date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos });
     setDirty(false);
     setBanner({ kind: 'success', text: 'Draft saved locally.' });
   };
 
-  // Submit: upload photos -> insert row -> optional Excel -> clear draft
+  // Submit: upload → try DB insert → ALWAYS export → clear draft on success
   const onSubmit = async () => {
     try {
       if (busy) return;
       setBusy(true);
       setBanner({ kind: 'info', text: 'Submitting…' });
 
-      const { date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes } = refs.current;
-      const photoUrls = await uploadPhotosAndGetUrls(uid, photos);
+      const userId = uid; // with anonymous sign-in this is a real uuid
+      const photoUrls = await uploadPhotosAndGetUrls(userId, photos);
 
-      const { error } = await supabase.from('submissions').insert({
-        user_id: uid,
-        status: 'submitted',
-        date: date || null,
-        store_location: storeLocation || null,
-        conditions: conditions || null,
-        price_per_unit: pricePerUnit ? Number(pricePerUnit) : null,
-        shelf_space: shelfSpace || null,
-        on_shelf: onShelf || null,
-        tags: tags || null,
-        notes: notes || null,
-        photo1_url: photoUrls[0] ?? null,
-        photo2_url: photoUrls[1] ?? null,
-      });
-      if (error) throw error;
-
-      // Optional Excel export
-      try {
-        await downloadSubmissionExcel({
-          date: date || '',
-          store_location: storeLocation || '',
-          conditions: conditions || '',
-          price_per_unit: pricePerUnit || '',
-          shelf_space: shelfSpace || '',
-          on_shelf: onShelf || '',
-          tags: tags || '',
-          notes: notes || '',
-          photo_urls: photoUrls.filter(Boolean),
+      let insertError: any = null;
+      if (userId) {
+        const { error } = await supabase.from('submissions').insert({
+          user_id: userId,
+          status: 'submitted',
+          date: date || null,
+          store_location: storeLocation || null,
+          conditions: conditions || null,
+          price_per_unit: pricePerUnit ? Number(pricePerUnit) : null,
+          shelf_space: shelfSpace || null,
+          on_shelf: onShelf || null,
+          tags: tags || null,
+          notes: notes || null,
+          photo1_url: photoUrls[0] ?? null,
+          photo2_url: photoUrls[1] ?? null,
         });
-      } catch {}
+        insertError = error ?? null;
+      } else {
+        // No session yet (very edge-case) – skip DB but still export
+        insertError = { message: 'Not authenticated – saved to Excel only.' };
+      }
+
+      // ALWAYS give the spreadsheet so field teams don’t lose work
+      await downloadSubmissionExcel({
+        date: date || '',
+        store_location: storeLocation || '',
+        conditions: conditions || '',
+        price_per_unit: pricePerUnit || '',
+        shelf_space: shelfSpace || '',
+        on_shelf: onShelf || '',
+        tags: tags || '',
+        notes: notes || '',
+        photo_urls: photoUrls.filter(Boolean),
+      });
+
+      if (insertError) {
+        setBanner({ kind: 'error', text: insertError.message ?? 'Row not saved (RLS). Excel exported.' });
+        return;
+      }
 
       clearDraftLocal();
       setDirty(false);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
-      console.error(e);
-      setBanner({ kind: 'error', text: e?.message ?? 'Upload failed' });
+      // even here, try to give feedback
+      setBanner({ kind: 'error', text: e?.message ?? 'Submit failed' });
     } finally {
       setBusy(false);
     }
   };
 
-  // Uncontrolled field (defaultValue, no value prop). We keep the latest text in refs.
   function Field(props: {
-    name:
-      | 'date'
-      | 'storeLocation'
-      | 'conditions'
-      | 'pricePerUnit'
-      | 'shelfSpace'
-      | 'onShelf'
-      | 'tags'
-      | 'notes';
     label: string;
+    value: string;
+    onChangeText: (s: string) => void;
     placeholder?: string;
     multiline?: boolean;
     keyboardType?: 'default' | 'numeric' | 'email-address';
   }) {
-    const { name, label, placeholder, multiline, keyboardType } = props;
+    const { label, value, onChangeText, placeholder, multiline, keyboardType } = props;
     return (
       <View style={{ marginBottom: 16 }}>
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
         <TextInput
-          // IMPORTANT: uncontrolled input
-          key={`${name}-${inputVersion}`}
-          defaultValue={(refs.current as any)[name] ?? ''}
+          value={value}
           onChangeText={(s) => {
-            (refs.current as any)[name] = s ?? '';
+            onChangeText(s);
             markDirty();
           }}
           placeholder={placeholder}
@@ -246,6 +243,11 @@ export default function NewFormScreen() {
     );
   }
 
+  if (!hydrated) {
+    // avoid SSR hydration quirks on web
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text>Loading…</Text></View>;
+  }
+
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
       <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>Create New Form</Text>
@@ -253,8 +255,7 @@ export default function NewFormScreen() {
       {banner ? (
         <View
           style={{
-            backgroundColor:
-              banner.kind === 'success' ? '#16a34a' : banner.kind === 'error' ? '#ef4444' : '#0ea5e9',
+            backgroundColor: banner.kind === 'success' ? '#16a34a' : banner.kind === 'error' ? '#ef4444' : '#0ea5e9',
             padding: 10,
             borderRadius: 8,
             marginBottom: 12,
@@ -264,67 +265,41 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      <Field name="date" label="DATE" placeholder="YYYY-MM-DD" />
-      <Field name="storeLocation" label="STORE LOCATION" />
-      <Field name="conditions" label="CONDITIONS" />
-      <Field name="pricePerUnit" label="PRICE PER UNIT" placeholder="$" keyboardType="numeric" />
-      <Field name="shelfSpace" label="SHELF SPACE" />
-      <Field name="onShelf" label="ON SHELF" />
-      <Field name="tags" label="TAGS" />
-      <Field name="notes" label="NOTES" multiline />
+      <Field label="DATE" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+      <Field label="STORE LOCATION" value={storeLocation} onChangeText={setStoreLocation} />
+      <Field label="CONDITIONS" value={conditions} onChangeText={setConditions} />
+      <Field label="PRICE PER UNIT" value={pricePerUnit} onChangeText={setPricePerUnit} placeholder="$" keyboardType="numeric" />
+      <Field label="SHELF SPACE" value={shelfSpace} onChangeText={setShelfSpace} />
+      <Field label="ON SHELF" value={onShelf} onChangeText={setOnShelf} />
+      <Field label="TAGS" value={tags} onChangeText={setTags} />
+      <Field label="NOTES" value={notes} onChangeText={setNotes} multiline />
 
       <Text style={{ fontWeight: '700', marginBottom: 8 }}>PHOTOS</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         {photos.map((p, i) => (
-          <Image
-            key={`${p.uri}-${i}`}
-            source={{ uri: p.uri }}
-            style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
-          />
+          <Image key={`${p.uri}-${i}`} source={{ uri: p.uri }} style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }} />
         ))}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-        <Pressable
-          onPress={takePhoto}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={takePhoto} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ color: 'white', fontWeight: '700' }}>Take Photo</Text>
         </Pressable>
-        <Pressable
-          onPress={addFromLibrary}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={addFromLibrary} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ color: 'white', fontWeight: '700' }}>Add from Library</Text>
         </Pressable>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <Pressable
-          onPress={onSave}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={onSave} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ fontWeight: '700' }}>Save</Text>
         </Pressable>
 
-        <Pressable
-          onPress={onSubmit}
-          disabled={busy}
-          style={{
-            flex: 1,
-            backgroundColor: busy ? '#94a3b8' : '#2563eb',
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: 'center',
-          }}
-        >
+        <Pressable onPress={onSubmit} disabled={busy} style={{ flex: 1, backgroundColor: busy ? '#94a3b8' : '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ color: 'white', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => router.back()}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ fontWeight: '700' }}>Exit</Text>
         </Pressable>
       </View>
