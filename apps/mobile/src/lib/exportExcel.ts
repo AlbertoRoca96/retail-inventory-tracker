@@ -13,75 +13,76 @@ export type SubmissionExcel = {
   photo_urls: string[]; // public URLs
 };
 
-// Convert a URL to base64 for ExcelJS images
-async function urlToBase64(url: string): Promise<{ base64: string; ext: 'png' | 'jpeg' }> {
+// Tiny helper to fetch an image as ArrayBuffer for ExcelJS (browser)
+async function fetchImageBuffer(url: string): Promise<ArrayBuffer> {
   const res = await fetch(url);
-  const blob = await res.blob();
-  // ExcelJS supports png/jpeg
-  const ext: 'png' | 'jpeg' = blob.type.includes('png') ? 'png' : 'jpeg';
-  const dataUrl: string = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(blob);
-  });
-  const base64 = dataUrl.split(',')[1] ?? '';
-  return { base64, ext };
+  if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
+  return await res.arrayBuffer();
+}
+
+function guessExt(url: string): 'png' | 'jpeg' {
+  const u = url.toLowerCase();
+  return u.endsWith('.png') ? 'png' : 'jpeg';
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('submission');
 
-  // Columns
-  ws.columns = [{ header: 'Field', width: 20 }, { header: 'Value', width: 60 }];
+  // Layout: make room for two photos side by side (B and D), with a spacer C
+  ws.getColumn(1).width = 18; // A: "Field"
+  ws.getColumn(2).width = 48; // B: value / first photo
+  ws.getColumn(3).width = 4;  // C: spacer
+  ws.getColumn(4).width = 48; // D: second photo
 
-  // Rows
+  // Header + fields
   const rows = [
-    { Field: 'DATE', Value: row.date },
-    { Field: 'STORE LOCATION', Value: row.store_location },
-    { Field: 'CONDITIONS', Value: row.conditions },
-    { Field: 'PRICE PER UNIT', Value: row.price_per_unit },
-    { Field: 'SHELF SPACE', Value: row.shelf_space },
-    { Field: 'ON SHELF', Value: row.on_shelf },
-    { Field: 'TAGS', Value: row.tags },
-    { Field: 'NOTES', Value: row.notes },
+    ['Field', 'Value'],
+    ['DATE', row.date],
+    ['STORE LOCATION', row.store_location],
+    ['CONDITIONS', row.conditions],
+    ['PRICE PER UNIT', row.price_per_unit],
+    ['SHELF SPACE', row.shelf_space],
+    ['ON SHELF', row.on_shelf],
+    ['TAGS', row.tags],
+    ['NOTES', row.notes],
+    ['PHOTOS', ''],
   ];
-  rows.forEach((r) => ws.addRow([r.Field, r.Value]));
+  ws.addRows(rows);
 
-  // Leave a blank row, then write "PHOTOS"
-  const startRow = ws.lastRow ? ws.lastRow.number + 2 : 12;
-  ws.getCell(`A${startRow}`).value = 'PHOTOS';
-  ws.getCell(`A${startRow}`).font = { bold: true };
+  const photosRowIndex = rows.length; // 1-based row index where "PHOTOS" is
+  const startRowForImages = photosRowIndex; // place images just below the header cell
+  const imageHeight = 220;
+  const imageWidth = 300;
 
-  // Embed up to 2 images
-  const targets = row.photo_urls.slice(0, 2);
-  let topRow = startRow + 1;
+  // Add up to two images side-by-side
+  const addImageAt = async (url: string, colIdxZeroBased: number, rowIdxZeroBased: number) => {
+    const buffer = await fetchImageBuffer(url);
+    const imgId = wb.addImage({ buffer, extension: guessExt(url) });
+    ws.addImage(imgId, {
+      tl: { col: colIdxZeroBased, row: rowIdxZeroBased },
+      ext: { width: imageWidth, height: imageHeight },
+    });
+  };
 
-  for (let i = 0; i < targets.length; i++) {
-    try {
-      const { base64, ext } = await urlToBase64(targets[i]);
-      const id = wb.addImage({ base64, extension: ext }); // ExcelJS API
-      // Place each image in a 10x16-ish cell region; adjust as you prefer
-      const from = `B${topRow}`;
-      const to = `E${topRow + 15}`;
-      ws.addImage(id, `${from}:${to}`);
-      topRow += 17;
-    } catch {
-      // If an image fetch fails, just skip it
-    }
+  // B column (= 1 zero-based), D column (= 3 zero-based)
+  if (row.photo_urls[0]) {
+    await addImageAt(row.photo_urls[0], 1, startRowForImages); // B
+  }
+  if (row.photo_urls[1]) {
+    await addImageAt(row.photo_urls[1], 3, startRowForImages); // D
   }
 
+  // Export to browser
+  const fname = `submission-${new Date().toISOString().replace(/[:]/g, '-')}.xlsx`;
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
-  const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = fname;
-  document.body.appendChild(a);
   a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  URL.revokeObjectURL(url);
 }
