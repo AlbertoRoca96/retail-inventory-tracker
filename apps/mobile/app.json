@@ -6,12 +6,28 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "retailinventory",
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.al96.retailinventory" },
-    "android": { "package": "com.al96.retailinventory" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.al96.retailinventory"
+    },
+    "android": {
+      "package": "com.al96.retailinventory"
+    },
     "plugins": [
-      ["expo-image-picker", { "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to attach store shelf images." }]
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to attach store shelf images."
+        }
+      ]
     ],
-    "extra": { "eas": { "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb" } },
-    "web": { "output": "static" }
+    "extra": {
+      "eas": {
+        "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb"
+      }
+    },
+    "web": {
+      "output": "static"
+    }
   }
 }
