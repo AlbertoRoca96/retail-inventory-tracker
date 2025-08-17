@@ -13,39 +13,40 @@ export type SubmissionExcel = {
   photo_urls: string[];
 };
 
-// --- NEW: robust fetch that supports http(s), blob:, and data: URLs ---
+// Robust fetch that works with http(s), blob:, and data: URLs.
+// IMPORTANT: return raw base64 (no "data:image/...;base64," prefix)
 async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' | 'jpeg' }> {
-  // data URL: no fetch needed
+  // data: URL (already base64)
   if (url.startsWith('data:')) {
-    const [, meta, b64] = url.match(/^data:(.*?);base64,(.*)$/) ?? [];
-    const isPng = (meta || '').includes('png');
-    return { base64: url, ext: isPng ? 'png' : 'jpeg' };
+    const m = url.match(/^data:(.*?);base64,(.*)$/);
+    const meta = m?.[1] ?? '';
+    const b64 = m?.[2] ?? '';
+    const ext: 'png' | 'jpeg' = meta.includes('png') ? 'png' : 'jpeg';
+    return { base64: b64, ext };
   }
 
+  // blob: or http(s):
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
-
   const blob = await res.blob();
   const buf = await blob.arrayBuffer();
   const u8 = new Uint8Array(buf);
 
-  // Sniff magic numbers when content-type is absent or generic.
-  // PNG: 89 50 4E 47, JPEG: FF D8
-  let ext: 'png' | 'jpeg';
+  // sniff extension if content-type is missing/ambiguous
   const ct = blob.type || res.headers.get('Content-Type') || '';
+  let ext: 'png' | 'jpeg';
   if (ct.includes('png')) ext = 'png';
   else if (ct.includes('jpeg') || ct.includes('jpg')) ext = 'jpeg';
-  else if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) ext = 'png';
-  else ext = 'jpeg';
+  else if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) ext = 'png'; // PNG signature
+  else ext = 'jpeg'; // default
 
+  // to base64 (raw)
   const base64 = btoa(String.fromCharCode(...u8));
-  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-  return { base64: `data:${mime};base64,${base64}`, ext };
+  return { base64, ext };
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
-
   const ws = wb.addWorksheet('submission', {
     properties: { defaultRowHeight: 18 },
     pageSetup: {
@@ -104,7 +105,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`D${rr}`).border = border;
   }
 
-  // --- NEW: be resilient if one image fails (use allSettled) ---
+  // Be resilient if one image fails
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(fetchAsBase64));
   const base64s = settled
