@@ -13,7 +13,6 @@ export type SubmissionExcel = {
   photo_urls: string[]; // public URLs
 };
 
-// Fetch an image as ArrayBuffer for ExcelJS (browser)
 async function fetchImageBuffer(url: string): Promise<ArrayBuffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
@@ -31,16 +30,17 @@ function isNumericLike(s: string): boolean {
   return Number.isFinite(n);
 }
 
-// Excel column width → approx pixels (Calibri 11 ≈ 7 px per “character” + padding)
+// Excel column width (chars) -> ~pixels (Calibri 11 ≈ 7px/char + padding)
 const colWidthToPx = (w: number | undefined) => Math.max(0, Math.floor((w ?? 10) * 7 + 5));
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('submission');
 
-  // --- EXACTLY TWO COLUMNS (A=label, B=value/photos) ---
-  ws.getColumn(1).width = 22; // A (labels)
-  ws.getColumn(2).width = 64; // B (values + right photo)
+  // === EXACTLY TWO EQUAL-WIDTH COLUMNS ===
+  const COL_WIDTH = 46;         // same width for A and B to mirror the PDF
+  ws.getColumn(1).width = COL_WIDTH; // A: labels (also left photo)
+  ws.getColumn(2).width = COL_WIDTH; // B: values (also right photo)
 
   const thin = {
     top: { style: 'thin', color: { argb: 'FF000000' } },
@@ -49,11 +49,11 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     right: { style: 'thin', color: { argb: 'FF000000' } },
   } as const;
 
-  // Rows: two columns only
+  // Two-column grid
   const rows: Array<[string, string]> = [
     ['DATE', row.date],
     ['STORE LOCATIONS', row.store_location],
-    ['LOCATIONS', ''], // reserved row to match your PDF layout
+    ['LOCATIONS', ''], // placeholder to match the PDF row (kept blank for now)
     ['CONDITIONS', row.conditions],
     ['PRICE PER UNIT', row.price_per_unit],
     ['SHELF SPACE', row.shelf_space],
@@ -64,49 +64,47 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   ];
   ws.addRows(rows);
 
-  // Style cells (grid + wrapping)
+  // Borders + wrapping
   for (let r = 1; r <= rows.length; r++) {
     const a = ws.getCell(r, 1);
     const b = ws.getCell(r, 2);
-    a.alignment = { vertical: 'middle' }; // labels plain (not bold) to match your PDF
+    a.alignment = { vertical: 'middle' };            // keep labels plain like the PDF
     b.alignment = { vertical: 'middle', wrapText: true };
     a.border = thin;
     b.border = thin;
   }
 
-  // Right-align numeric-looking values for PRICE PER UNIT (row 5) and TAGS (row 8)
+  // Right-align numeric-looking entries (PRICE PER UNIT row 5, TAGS row 8)
   if (isNumericLike(rows[5 - 1][1])) ws.getCell(5, 2).alignment = { vertical: 'middle', horizontal: 'right' };
   if (isNumericLike(rows[8 - 1][1])) ws.getCell(8, 2).alignment = { vertical: 'middle', horizontal: 'right' };
 
-  // Make NOTES a bit taller for readability
+  // Slightly taller NOTES for readability
   ws.getRow(9).height = 36;
 
-  // --- PHOTOS: two images side-by-side under the "PHOTOS" row ---
-  // Left photo should fit column A width; right photo should fit column B width.
-  const photosHeaderRow = rows.length;          // "PHOTOS" row index (1-based)
-  const anchorRowZero = photosHeaderRow;        // zero-based row to anchor images just below the row
-  const leftImgWidthPx = colWidthToPx(ws.getColumn(1).width) - 6; // small padding so borders show
+  // === PHOTOS sized to *column widths* and placed under "PHOTOS" ===
+  const photosHeaderRow = rows.length;   // 1-based
+  const anchorRowZero = photosHeaderRow; // zero-based for image anchor
+
+  const leftImgWidthPx = colWidthToPx(ws.getColumn(1).width) - 6;  // small padding inside borders
   const rightImgWidthPx = colWidthToPx(ws.getColumn(2).width) - 6;
-  const imageHeightPx = 300;                    // height similar to your PDF screenshots
+  const imageHeightPx = 300; // tune if you want a bit taller/shorter
 
   const addImageAt = async (url: string, zeroCol: number, widthPx: number) => {
     const buffer = await fetchImageBuffer(url);
-    const imgId = wb.addImage({ buffer, extension: guessExt(url) });
-    ws.addImage(imgId, {
+    const id = wb.addImage({ buffer, extension: guessExt(url) });
+    ws.addImage(id, {
       tl: { col: zeroCol, row: anchorRowZero }, // A=0, B=1
       ext: { width: widthPx, height: imageHeightPx },
     });
   };
 
-  if (row.photo_urls[0]) await addImageAt(row.photo_urls[0], 0, leftImgWidthPx);   // left image in column A
-  if (row.photo_urls[1]) await addImageAt(row.photo_urls[1], 1, rightImgWidthPx);  // right image in column B
+  if (row.photo_urls[0]) await addImageAt(row.photo_urls[0], 0, leftImgWidthPx);   // left photo in A
+  if (row.photo_urls[1]) await addImageAt(row.photo_urls[1], 1, rightImgWidthPx);  // right photo in B
 
-  // Export to browser
+  // Download
   const fname = `submission-${new Date().toISOString().replace(/[:]/g, '-')}.xlsx`;
   const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
