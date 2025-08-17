@@ -27,7 +27,7 @@ jobs:
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
-      - name: Ensure web deps (Expo SDK 53)
+      - name: Ensure web deps match SDK
         working-directory: apps/mobile
         env:
           CI: "true"
@@ -41,13 +41,34 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: npx expo export --platform web --output-dir dist
 
-      # Patch Expo’s index.html so asset URLs are relative (./_expo/…)
-      - name: Make asset URLs relative + add 404 and .nojekyll
+      # Rewrite index.html so it always loads the hashed entry from _expo/*
+      - name: Make robust index.html + 404 and disable Jekyll
         working-directory: apps/mobile/dist
         run: |
-          node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo');fs.writeFileSync('index.html',s)"
-          cp index.html 404.html
-          touch .nojekyll
+          node -e "
+            const fs = require('fs');
+            let html = fs.readFileSync('index.html','utf8');
+            // Grab first script or link that points to the entry in _expo/static/js/web
+            const m = html.match(/(?:src|href)=\"(\/?_expo\/static\/js\/web\/[^\"]+\.js)\"/);
+            if(!m){ throw new Error('Could not locate entry bundle path in index.html'); }
+            let entry = m[1];
+            if(!entry.startsWith('.')) entry = entry.replace(/^\//,'./');
+            const out = `<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\"/>
+  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>
+  <title>Retail Inventory Tracker</title>
+</head>
+<body>
+  <div id=\"root\">Loading…</div>
+  <script type=\"module\" src=\"${entry}\" defer></script>
+</body>
+</html>`;
+            fs.writeFileSync('index.html', out);
+            fs.copyFileSync('index.html','404.html');
+            fs.writeFileSync('.nojekyll','');
+          "
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
