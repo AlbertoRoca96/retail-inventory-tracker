@@ -8,12 +8,13 @@
     "scheme": "retailinventory",
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.al96.retailinventory" },
     "android": { "package": "com.al96.retailinventory" },
+
     "plugins": [
       ["expo-image-picker", { "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to attach store shelf images." }]
     ],
     "extra": { "eas": { "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb" } },
 
-    "web": { "output": "single", "bundler": "metro" },
+    "web": { "output": "single" },
     "experiments": { "baseUrl": "/retail-inventory-tracker" }
   }
 }
