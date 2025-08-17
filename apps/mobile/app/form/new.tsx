@@ -86,18 +86,16 @@ export default function NewFormScreen() {
   const [busy, setBusy] = useState(false);
 
   // ---------------- Values store ----------------
-  // Web: keep values in a ref (no per-keystroke React state) and render HTML inputs
-  // Native: standard controlled TextInputs
   const formRef = useRef<FormValues>(getDefaultValues());
   const [photos, setPhotos] = useState<Photo[]>([]);
 
-  // Native mirrored state (so phones behave naturally)
+  // Native mirrored state
   const [nVals, setNVals] = useState<FormValues>(getDefaultValues());
 
   // When we need web inputs to re-mount with new defaultValue (after Clear/Load), bump this key.
   const [formKey, setFormKey] = useState(0);
 
-  // ---- NEW (minimal): web camera/library fallbacks ----
+  // ---- web camera/library fallbacks ----
   const camInputRef = useRef<HTMLInputElement | null>(null);
   const libInputRef = useRef<HTMLInputElement | null>(null);
   const handleWebFile = useCallback((file?: File | null) => {
@@ -113,9 +111,8 @@ export default function NewFormScreen() {
         height: null,
       },
     ]);
-    // persist to draft
     setTimeout(scheduleAutosave, 0);
-  }, []); // scheduleAutosave is referenced at call time via setTimeout
+  }, []);
 
   // Load draft once after hydration
   const loaded = useRef(false);
@@ -126,20 +123,18 @@ export default function NewFormScreen() {
     if (draft) {
       const merged: FormValues = { ...getDefaultValues(), ...draft };
       formRef.current = merged;
-      setNVals(merged); // keep native in sync
+      setNVals(merged);
       setPhotos(draft.photos ?? []);
-      // re-mount web inputs with loaded defaults
       setFormKey((k) => k + 1);
       setBanner({ kind: 'success', text: 'Draft loaded.' });
     }
   }, [hydrated]);
 
-  // Unified getter (returns the latest values regardless of platform)
   const getValues = useCallback((): FormValues => {
     return isWeb ? { ...formRef.current } : { ...nVals };
   }, [nVals]);
 
-  // Debounced autosave (reads latest state/refs and writes to localStorage only)
+  // Debounced autosave
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutosave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -162,7 +157,6 @@ export default function NewFormScreen() {
       next.splice(idx, 1);
       return next;
     });
-    // persist removal
     setTimeout(scheduleAutosave, 0);
   };
 
@@ -187,7 +181,7 @@ export default function NewFormScreen() {
 
   const takePhoto = async () => {
     if (isWeb) {
-      camInputRef.current?.click(); // HTML file input with capture attr
+      camInputRef.current?.click();
       return;
     }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -213,25 +207,22 @@ export default function NewFormScreen() {
     setBanner({ kind: 'success', text: 'Draft saved locally.' });
   };
 
-  /** Reset everything to a clean form (optionally clear local draft). */
   const resetForm = (clearDraft: boolean) => {
     const fresh = getDefaultValues();
     formRef.current = fresh;
     setNVals(fresh);
     setPhotos([]);
-    // cause web inputs to re-mount with empty/default values
     setFormKey((k) => k + 1);
     if (clearDraft) clearDraftLocal();
   };
 
   const onClearAll = () => {
     resetForm(true);
-    // persist that the draft is now empty (helps if the tab stays open)
     saveDraftLocal({ ...getDefaultValues(), photos: [] });
     setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
   };
 
-  // Submit: upload → try DB insert → ALWAYS export → clear draft & reset on success
+  // Submit: upload → DB insert (optional) → ALWAYS export
   const onSubmit = async () => {
     try {
       if (busy) return;
@@ -240,14 +231,9 @@ export default function NewFormScreen() {
 
       const v = getValues();
 
-      // 1) Upload images (returns public URLs) — may be empty if upload fails or RLS blocks it
       const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
-
-      // 2) Choose which URLs to feed to Excel: prefer uploaded public URLs,
-      //    but fall back to local blob: URIs so images still embed in the sheet.
       const excelPhotoUrls = uploadedUrls.length ? uploadedUrls : photos.map((p) => p.uri);
 
-      // 3) Try DB insert (optional)
       let insertError: any = null;
       if (uid) {
         const { error } = await supabase.from('submissions').insert({
@@ -269,7 +255,6 @@ export default function NewFormScreen() {
         insertError = { message: 'Not authenticated – saved to Excel only.' };
       }
 
-      // 4) Always export a spreadsheet (side-by-side photos handled in exportExcel.ts)
       await downloadSubmissionExcel({
         date: v.date || '',
         store_location: v.storeLocation || '',
@@ -287,8 +272,7 @@ export default function NewFormScreen() {
         return;
       }
 
-      // New, clean form after successful submit
-      resetForm(true); // clears local draft too
+      resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message ?? 'Submit failed' });
@@ -297,8 +281,7 @@ export default function NewFormScreen() {
     }
   };
 
-  // ---------------- Field components ----------------
-  // WebField: pure DOM, uncontrolled; writes into formRef and debounced-saves
+  // ---------------- Fields ----------------
   const WebField = ({
     name,
     label,
@@ -361,7 +344,6 @@ export default function NewFormScreen() {
     </View>
   );
 
-  // NativeField: standard controlled TextInput for iOS/Android
   const NativeField = ({
     prop,
     label,
@@ -550,7 +532,6 @@ export default function NewFormScreen() {
         </Pressable>
       </View>
 
-      {/* Hidden web inputs for camera/library (no effect on native) */}
       {isWeb ? (
         <div style={{ height: 0, overflow: 'hidden' }}>
           <input
