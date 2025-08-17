@@ -11,17 +11,18 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[];   // public URLs (we embed up to 2)
+  photo_urls: string[];   // public URLs (we embed up to 2) -- can also be blob: URLs
 };
 
-/** Utility: fetch an image URL and return { base64, ext } for ExcelJS */
+/** Utility: fetch an image URL (public Supabase or blob:) and return { base64, ext } for ExcelJS */
 async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' | 'jpeg' }> {
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
   const blob = await res.blob();
   const ext: 'png' | 'jpeg' = blob.type.includes('png') ? 'png' : 'jpeg';
   const buf = await blob.arrayBuffer();
   const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  // ExcelJS accepts data-URL format for base64 images
   return { base64: `data:${blob.type};base64,${base64}`, ext };
 }
 
@@ -96,11 +97,10 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   // Place two images side-by-side (B column and D column), scaled smaller
   const urls = (row.photo_urls || []).slice(0, 2);
 
-  // FIX: avoid `.catch` on an array; use allSettled so one bad URL doesn't kill export
   const settled = await Promise.allSettled(urls.map((u) => fetchAsBase64(u)));
   const base64s = settled
-    .filter((s): s is PromiseFulfilledResult<{ base64: string; ext: 'png' | 'jpeg' }> => s.status === 'fulfilled')
-    .map((s) => s.value);
+    .filter((res): res is PromiseFulfilledResult<{ base64: string; ext: 'png' | 'jpeg' }> => res.status === 'fulfilled')
+    .map((res) => res.value);
 
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0].base64, extension: base64s[0].ext });
@@ -118,13 +118,13 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     });
   }
 
-  // Keep rows tidy under images
+  // Slightly increase the rows covering the image area so the table looks neat
   for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
-    ws.getRow(rr).height = 18;
+    ws.getRow(rr).height = 18; // consistent lines
   }
 
-  // Browser download
-  const buffer = await wb.xlsx.writeBuffer();
+  // Download in the browser
+  const buffer = await wb.xlsx.writeBuffer(); // ExcelJS browser API
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
 
