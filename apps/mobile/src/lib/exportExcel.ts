@@ -10,25 +10,19 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[]; // embed up to 2
+  photo_urls: string[];   // embed up to 2
 };
 
-/**
- * Load any image URL (http/https/blob/data), draw to a canvas (dropping EXIF),
- * and return raw base64 (no data: prefix). We use JPEG to keep size down.
- */
+/** Load any image URL (http/https/blob/data), draw to a canvas (drops EXIF),
+ *  and return raw base64 (no data: prefix). JPEG keeps file size reasonable. */
 async function toCanvasBase64(url: string): Promise<string> {
   let srcForImg = url;
-
-  // For http(s): fetch → blob → objectURL so the canvas isn't CORS-tainted.
   if (/^https?:/i.test(url)) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
     const blob = await res.blob();
     srcForImg = URL.createObjectURL(blob);
   }
-
-  // Load image (browsers already apply EXIF orientation when displaying)
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
     el.onload = () => resolve(el);
@@ -36,18 +30,13 @@ async function toCanvasBase64(url: string): Promise<string> {
     el.src = srcForImg;
   });
 
-  // Rasterize exactly as displayed (this strips EXIF so Excel won't rotate)
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth || (img.width as number);
   canvas.height = img.naturalHeight || (img.height as number);
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0);
+  canvas.getContext('2d')!.drawImage(img, 0, 0);
 
-  if (srcForImg.startsWith('blob:') && srcForImg !== url) {
-    URL.revokeObjectURL(srcForImg);
-  }
+  if (srcForImg.startsWith('blob:') && srcForImg !== url) URL.revokeObjectURL(srcForImg);
 
-  // Return raw base64 (no prefix)
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   return dataUrl.split(',')[1] || '';
 }
@@ -61,31 +50,19 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
       fitToPage: true,
       fitToWidth: 1,
       orientation: 'portrait',
-      margins: {
-        left: 0.25,
-        right: 0.25,
-        top: 0.5,
-        bottom: 0.5,
-        header: 0.3,
-        footer: 0.3,
-      },
+      margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
     },
   });
 
-  // Keep your original 4-column layout (gap at C)
+  // Two wide columns for text AND photos, plus tiny spacer columns to keep your old table feel.
   ws.columns = [
-    { key: 'label', width: 22 }, // A
-    { key: 'value', width: 44 }, // B
-    { key: 'gap',   width: 2  }, // C (visual gap)
-    { key: 'value2',width: 44 }, // D
+    { key: 'label',  width: 44 }, // A (widened so left photo fits under A)
+    { key: 'value',  width: 44 }, // B
+    { key: 'gap',    width: 2  }, // C (tiny spacer, optional)
+    { key: 'gap2',   width: 2  }, // D (tiny spacer, optional)
   ];
 
-  const border = {
-    top: { style: 'thin' as const },
-    bottom: { style: 'thin' as const },
-    left: { style: 'thin' as const },
-    right: { style: 'thin' as const },
-  };
+  const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
   const labelStyle = { font: { bold: true }, alignment: { vertical: 'middle' as const }, border };
   const valueStyle = { alignment: { vertical: 'middle' as const }, border };
 
@@ -95,8 +72,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     Object.assign(ws.getCell(`A${r}`), labelStyle);
     ws.getCell(`B${r}`).value = value || '';
     Object.assign(ws.getCell(`B${r}`), valueStyle);
-
-    // carry borders across C and D so the table looks continuous
+    // keep borders continuous across spacer cols
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
     r++;
@@ -111,26 +87,29 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header across A:D
-  ws.mergeCells(`A${r}:D${r}`);
+  // PHOTOS header spanning A:B only (matches where images will live)
+  ws.mergeCells(`A${r}:B${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
   hdr.font = { bold: true };
   hdr.alignment = { vertical: 'middle', horizontal: 'left' };
   hdr.border = border;
+  // carry borders on spacer cols so the table outline stays intact
+  ws.getCell(`C${r}`).border = border;
+  ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Bordered area below PHOTOS (so it prints like the PDF)
+  // Bordered photo area (rows) under A & B
   const imageTopRow = r;
-  const rowsForImages = 18; // height of the photo box
+  const rowsForImages = 18;                 // height of the photo box
   const imageBottomRow = imageTopRow + rowsForImages - 1;
 
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
     ws.getCell(`A${rr}`).border = border;
     ws.getCell(`B${rr}`).border = border;
-    ws.getCell(`C${rr}`).border = border;
+    ws.getCell(`C${rr}`).border = border;   // keep outline neat
     ws.getCell(`D${rr}`).border = border;
-    ws.getRow(rr).height = 18; // neat, consistent lines
+    ws.getRow(rr).height = 18;
   }
 
   // Load up to 2 photos; don’t bail if one fails
@@ -140,40 +119,29 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  // === Key change: use a TWO-CELL anchor so each image snaps to the exact cell box.
-  // Left photo fills B{top}..B{bottom}; right photo fills D{top}..D{bottom}.
-  // Using tl/br anchors avoids pixel rounding differences across Excel desktop/iOS/Android.
-  // Ref: ExcelJS image-over-range & anchors. :contentReference[oaicite:1]{index=1}
+  // Precisely anchor images to fill A and B ranges.
+  // two-cell anchors (tl/br) snap to cell edges consistently across Excel clients. :contentReference[oaicite:0]{index=0}
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
-    ws.addImage(
-      id,
-      {
-        tl: { col: 1, row: imageTopRow - 1 }, // B, zero-based col index
-        br: { col: 2, row: imageBottomRow },  // up to end of B
-        editAs: 'twoCell',
-      } as any
-    );
+    ws.addImage(id, {
+      tl: { col: 0, row: imageTopRow - 1 },      // A, zero-based
+      br: { col: 1, row: imageBottomRow },       // end of A
+      editAs: 'twoCell',
+    } as any);
   }
   if (base64s[1]) {
     const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
-    ws.addImage(
-      id,
-      {
-        tl: { col: 3, row: imageTopRow - 1 }, // D
-        br: { col: 4, row: imageBottomRow },  // up to end of D
-        editAs: 'twoCell',
-      } as any
-    );
+    ws.addImage(id, {
+      tl: { col: 1, row: imageTopRow - 1 },      // B
+      br: { col: 2, row: imageBottomRow },       // end of B
+      editAs: 'twoCell',
+    } as any);
   }
 
-  // Download in the browser
+  // Finalize download (browser)
   const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
-
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = fname;
