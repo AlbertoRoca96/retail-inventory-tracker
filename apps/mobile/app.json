@@ -25,6 +25,14 @@
       "eas": {
         "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb"
       }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "display": "standalone",
+      "shortName": "Inventory",
+      "themeColor": "#1E5EFF",
+      "backgroundColor": "#FFFFFF"
     }
   }
 }
