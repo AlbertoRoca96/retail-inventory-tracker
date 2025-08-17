@@ -1,39 +1,54 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Image, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import Button from '../components/Button';
-import { supabase } from '../lib/supabase';
-import * as SecureStore from 'expo-secure-store';
+import { View, Text, TextInput, Pressable } from 'react-native';
+import { useAuth } from '../hooks/useAuth';
 import { theme } from '../theme';
 
-export default function LoginScreen({ onLoggedIn }: { onLoggedIn: () => void }) {
+export default function LoginScreen() {
+  const { signIn, demo } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const signIn = async () => {
+  const onSubmit = async () => {
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setError(error.message); return; }
-    await SecureStore.setItemAsync('sb-email', email);
-    onLoggedIn();
+    try {
+      // Empty email/password + bypass flag => demo login
+      await signIn(email, password);
+    } catch (e: any) {
+      setError(e?.message ?? 'Invalid login credentials');
+    }
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-      <View style={styles.card}>
-        <Image source={{ uri: 'https://placehold.co/160x60?text=Logo' }} style={{ width: 160, height: 60, marginBottom: 16 }} />
-        <TextInput placeholder="Email" autoCapitalize="none" style={styles.input} value={email} onChangeText={setEmail} />
-        <TextInput placeholder="Password" secureTextEntry style={styles.input} value={password} onChangeText={setPassword} />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button title="Enter" onPress={signIn} />
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <View style={{ width: 320, backgroundColor: '#eee', padding: 20, borderRadius: 12 }}>
+        <View style={{ height: 60, backgroundColor: '#ddd', borderRadius: 8, marginBottom: 16, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 28, color: '#777' }}>Logo</Text>
+        </View>
+
+        <TextInput
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          style={theme.input}
+        />
+        <TextInput
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          style={[theme.input, { marginTop: 12 }]}
+        />
+
+        {!!error && <Text style={{ color: 'red', marginTop: 8 }}>{error}</Text>}
+        {demo && <Text style={{ color: '#555', marginTop: 8 }}>Demo mode</Text>}
+
+        <Pressable onPress={onSubmit} style={[theme.button, { marginTop: 16 }]}>
+          <Text style={theme.buttonText}>Enter</Text>
+        </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.white },
-  card: { width: '90%', backgroundColor: theme.colors.gray, borderRadius: theme.radius.xl, padding: theme.spacing(3), alignItems: 'center' },
-  input: { width: '100%', borderWidth: 1, borderColor: theme.colors.black, borderRadius: theme.radius.lg, padding: theme.spacing(1), marginVertical: 6, backgroundColor: theme.colors.white },
-  error: { color: 'red', marginTop: 8 }
-});
