@@ -19,18 +19,21 @@ type Photo = {
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
-  width?: number;
-  height?: number;
+  width?: number | null;
+  height?: number | null;
 };
 
 const isWeb = Platform.OS === 'web';
 const hasWindow = typeof window !== 'undefined';
+const DRAFT_KEY = 'rit:new-form-draft:v2';
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const DRAFT_KEY = 'rit:new-form-draft:v1';
 
+// ---------- localStorage helpers (never set React state here) ----------
 function saveDraftLocal(draft: unknown) {
   try {
-    if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    if (isWeb && hasWindow) {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }
   } catch {}
 }
 function loadDraftLocal<T>(): T | null {
@@ -48,56 +51,86 @@ function clearDraftLocal() {
   } catch {}
 }
 
-// On web, schedule setState on the next frame — avoids a RNW edge case
-const setTextLater = (fn: () => void) => {
-  if (isWeb && hasWindow && 'requestAnimationFrame' in window) {
-    window.requestAnimationFrame(fn);
-  } else {
-    fn();
-  }
-};
-
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id || 'dev-user', [session?.user?.id]);
 
   const [banner, setBanner] = useState<Banner>(null);
+  const [busy, setBusy] = useState(false); // disables Submit while uploading
   const [dirty, setDirty] = useState(false);
 
+  // Controlled field state (always strings)
   const [date, setDate] = useState<string>(todayISO());
   const [storeLocation, setStoreLocation] = useState<string>('');
   const [conditions, setConditions] = useState<string>('');
-  const [pricePerUnit, setPricePerUnit] = useState<string>('');
+  const [pricePerUnit, setPricePerUnit] = useState<string>(''); // keep as string until submit
   const [shelfSpace, setShelfSpace] = useState<string>('');
   const [onShelf, setOnShelf] = useState<string>('');
   const [tags, setTags] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [photos, setPhotos] = useState<Photo[]>([]);
 
-  // IMPORTANT: ensure the draft load runs only once (guards StrictMode double-mount / HMR)
-  const loadedRef = useRef(false);
+  // ------ FIX: make sure we only load the draft once (SSR/Strict double-mount safe) ------
+  const loadedOnce = useRef(false);
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
+    if (loadedOnce.current) return;
+    loadedOnce.current = true;
 
-    const draft = loadDraftLocal<any>();
+    const draft = loadDraftLocal<{
+      date?: string;
+      storeLocation?: string;
+      conditions?: string;
+      pricePerUnit?: string;
+      shelfSpace?: string;
+      onShelf?: string;
+      tags?: string;
+      notes?: string;
+      photos?: Photo[];
+    }>();
+
     if (draft) {
-      setDate(String(draft.date ?? todayISO()));
-      setStoreLocation(String(draft.storeLocation ?? ''));
-      setConditions(String(draft.conditions ?? ''));
-      setPricePerUnit(String(draft.pricePerUnit ?? ''));
-      setShelfSpace(String(draft.shelfSpace ?? ''));
-      setOnShelf(String(draft.onShelf ?? ''));
-      setTags(String(draft.tags ?? ''));
-      setNotes(String(draft.notes ?? ''));
-      setPhotos(Array.isArray(draft.photos) ? draft.photos : []);
+      setDate(draft.date ?? todayISO());
+      setStoreLocation(draft.storeLocation ?? '');
+      setConditions(draft.conditions ?? '');
+      setPricePerUnit(draft.pricePerUnit ?? '');
+      setShelfSpace(draft.shelfSpace ?? '');
+      setOnShelf(draft.onShelf ?? '');
+      setTags(draft.tags ?? '');
+      setNotes(draft.notes ?? '');
+      setPhotos(draft.photos ?? []);
       setBanner({ kind: 'success', text: 'Draft loaded.' });
       setDirty(false);
     }
   }, []);
 
-  const markDirty = () => { if (!dirty) setDirty(true); };
+  // ------ silent autosave: debounce to avoid thrashing; never writes back to state ------
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!dirty) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveDraftLocal({
+        date,
+        storeLocation,
+        conditions,
+        pricePerUnit,
+        shelfSpace,
+        onShelf,
+        tags,
+        notes,
+        photos,
+      });
+    }, 400);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [dirty, date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos]);
 
+  const markDirty = () => {
+    if (!dirty) setDirty(true);
+  };
+
+  // Photo pickers
   const addFromLibrary = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -109,7 +142,6 @@ export default function NewFormScreen() {
       markDirty();
     }
   };
-
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -124,24 +156,32 @@ export default function NewFormScreen() {
     }
   };
 
+  // Manual save button (shows banner)
   const onSave = () => {
-    const draft = {
-      date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos,
-    };
-    saveDraftLocal(draft);
+    saveDraftLocal({
+      date,
+      storeLocation,
+      conditions,
+      pricePerUnit,
+      shelfSpace,
+      onShelf,
+      tags,
+      notes,
+      photos,
+    });
     setDirty(false);
     setBanner({ kind: 'success', text: 'Draft saved locally.' });
   };
 
-  // >>> SUBMIT (your requested flow)
+  // Submit: upload photos -> insert row -> Excel -> clear draft
   const onSubmit = async () => {
     try {
+      if (busy) return;
+      setBusy(true);
       setBanner({ kind: 'info', text: 'Submitting…' });
 
-      // 1) Upload photos (if any)
       const photoUrls = await uploadPhotosAndGetUrls(uid, photos);
 
-      // 2) Insert submission row
       const { error } = await supabase.from('submissions').insert({
         user_id: uid,
         status: 'submitted',
@@ -158,7 +198,7 @@ export default function NewFormScreen() {
       });
       if (error) throw error;
 
-      // 3) Excel download (non-blocking)
+      // optional Excel
       try {
         await downloadSubmissionExcel({
           date: date || '',
@@ -179,57 +219,54 @@ export default function NewFormScreen() {
     } catch (e: any) {
       console.error(e);
       setBanner({ kind: 'error', text: e?.message ?? 'Upload failed' });
+    } finally {
+      setBusy(false);
     }
   };
 
-  const Field = ({
-    label,
-    value,
-    onChangeText,
-    multiline = false,
-    keyboardType,
-    placeholder,
-  }: {
+  // Reusable field
+  function Field(props: {
     label: string;
-    value: string | undefined | null;
+    value: string;
     onChangeText: (s: string) => void;
     multiline?: boolean;
     keyboardType?: 'default' | 'numeric' | 'email-address';
     placeholder?: string;
-  }) => (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
-      <TextInput
-        // keep inputs *controlled* and never undefined
-        value={value ?? ''}
-        onChangeText={(s) => {
-          setTextLater(() => onChangeText(s));
-          markDirty();
-        }}
-        placeholder={placeholder}
-        keyboardType={keyboardType}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        multiline={multiline}
-        style={{
-          backgroundColor: 'white',
-          borderWidth: 1,
-          borderColor: '#111',
-          borderRadius: 8,
-          paddingHorizontal: 12,
-          paddingVertical: multiline ? 10 : 8,
-          minHeight: multiline ? 80 : 40,
-        }}
-      />
-    </View>
-  );
+  }) {
+    const { label, value, onChangeText, multiline, keyboardType, placeholder } = props;
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+        <TextInput
+          value={value}
+          onChangeText={(s) => {
+            onChangeText(s);
+            markDirty();
+          }}
+          placeholder={placeholder}
+          keyboardType={keyboardType}
+          multiline={!!multiline}
+          autoCorrect={false}
+          autoCapitalize="none"
+          // Important for RN Web stability:
+          inputMode={keyboardType === 'numeric' ? 'decimal' : undefined}
+          style={{
+            backgroundColor: 'white',
+            borderWidth: 1,
+            borderColor: '#111',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: multiline ? 10 : 8,
+            minHeight: multiline ? 80 : 40,
+          }}
+        />
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
-        Create New Form
-      </Text>
+      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>Create New Form</Text>
 
       {banner ? (
         <View
@@ -296,9 +333,16 @@ export default function NewFormScreen() {
 
         <Pressable
           onPress={onSubmit}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+          disabled={busy}
+          style={{
+            flex: 1,
+            backgroundColor: busy ? '#94a3b8' : '#2563eb',
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Submit</Text>
+          <Text style={{ color: 'white', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </Pressable>
 
         <Pressable
