@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+// apps/mobile/app/form/new.tsx
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -6,7 +7,7 @@ import { router } from 'expo-router';
 import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
-import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
+import { downloadSubmissionExcel } from '../../src/lib/exportExcel'; // now uses ExcelJS with images
 
 type Banner =
   | { kind: 'info'; text: string }
@@ -24,10 +25,10 @@ type Photo = {
 
 const isWeb = Platform.OS === 'web';
 const hasWindow = typeof window !== 'undefined';
-const DRAFT_KEY = 'rit:new-form-draft:v4';
+const DRAFT_KEY = 'rit:new-form-draft:v5';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-// localStorage helpers (no setState in here)
+// ---- localStorage helpers (NO setState here) ----
 function saveDraftLocal(draft: unknown) {
   try {
     if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -52,16 +53,16 @@ export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
 
-  const [hydrated, setHydrated] = useState(!isWeb); // avoid SSR/hydration mismatches
+  // Avoid any SSR/hydration oddities
+  const [hydrated, setHydrated] = useState(!isWeb);
   useEffect(() => {
     if (isWeb) setHydrated(true);
   }, []);
 
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
 
-  // controlled fields (stable, no remount)
+  // Controlled field state
   const [date, setDate] = useState<string>(todayISO());
   const [storeLocation, setStoreLocation] = useState<string>('');
   const [conditions, setConditions] = useState<string>('');
@@ -77,7 +78,6 @@ export default function NewFormScreen() {
   useEffect(() => {
     if (!hydrated || loadedOnce.current) return;
     loadedOnce.current = true;
-
     const draft = loadDraftLocal<{
       date?: string;
       storeLocation?: string;
@@ -89,7 +89,6 @@ export default function NewFormScreen() {
       notes?: string;
       photos?: Photo[];
     }>();
-
     if (draft) {
       setDate(draft.date ?? todayISO());
       setStoreLocation(draft.storeLocation ?? '');
@@ -104,26 +103,42 @@ export default function NewFormScreen() {
     }
   }, [hydrated]);
 
-  // Debounced autosave: runs AFTER state changes; won’t remount inputs
+  // Debounced autosave (does not change any React state)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
+  const autosave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveDraftLocal({ date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos });
+      saveDraftLocal({
+        date,
+        storeLocation,
+        conditions,
+        pricePerUnit,
+        shelfSpace,
+        onShelf,
+        tags,
+        notes,
+        photos,
+      });
     }, 400);
-    return () => saveTimer.current && clearTimeout(saveTimer.current);
   }, [date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos]);
 
-  const markDirty = () => setDirty(true);
-
+  // Photo pickers
   const addFromLibrary = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
-      markDirty();
+      setPhotos((p) => [
+        ...p,
+        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
+      ]);
+      // autosave on photo changes
+      setTimeout(autosave, 0);
     }
   };
+
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -133,14 +148,16 @@ export default function NewFormScreen() {
     const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
-      markDirty();
+      setPhotos((p) => [
+        ...p,
+        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
+      ]);
+      setTimeout(autosave, 0);
     }
   };
 
   const onSave = () => {
     saveDraftLocal({ date, storeLocation, conditions, pricePerUnit, shelfSpace, onShelf, tags, notes, photos });
-    setDirty(false);
     setBanner({ kind: 'success', text: 'Draft saved locally.' });
   };
 
@@ -151,8 +168,8 @@ export default function NewFormScreen() {
       setBusy(true);
       setBanner({ kind: 'info', text: 'Submitting…' });
 
-      const userId = uid; // with anonymous sign-in this is a real uuid
-      const photoUrls = await uploadPhotosAndGetUrls(userId, photos);
+      const userId = uid; // anonymous sign‑in yields a UUID; if empty we still export
+      const photoUrls = await uploadPhotosAndGetUrls(userId || 'anon', photos);
 
       let insertError: any = null;
       if (userId) {
@@ -172,11 +189,10 @@ export default function NewFormScreen() {
         });
         insertError = error ?? null;
       } else {
-        // No session yet (very edge-case) – skip DB but still export
         insertError = { message: 'Not authenticated – saved to Excel only.' };
       }
 
-      // ALWAYS give the spreadsheet so field teams don’t lose work
+      // Always export a spreadsheet (with embedded images)
       await downloadSubmissionExcel({
         date: date || '',
         store_location: storeLocation || '',
@@ -195,40 +211,111 @@ export default function NewFormScreen() {
       }
 
       clearDraftLocal();
-      setDirty(false);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
-      // even here, try to give feedback
       setBanner({ kind: 'error', text: e?.message ?? 'Submit failed' });
     } finally {
       setBusy(false);
     }
   };
 
-  function Field(props: {
+  // WebField: native <input>/<textarea> to avoid RNW quirks
+  const WebField = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    multiline,
+    inputMode,
+  }: {
     label: string;
     value: string;
-    onChangeText: (s: string) => void;
+    onChange: (s: string) => void;
+    placeholder?: string;
+    multiline?: boolean;
+    inputMode?: 'text' | 'decimal';
+  }) => {
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+        {multiline ? (
+          <textarea
+            defaultValue={value}
+            onChange={(e) => {
+              onChange(e.currentTarget.value);
+              autosave();
+            }}
+            placeholder={placeholder}
+            autoCorrect="off"
+            autoCapitalize="none"
+            style={{
+              width: '100%',
+              backgroundColor: 'white',
+              borderWidth: 1,
+              borderColor: '#111',
+              borderStyle: 'solid',
+              borderRadius: 8,
+              padding: 10,
+              minHeight: 80,
+            } as any}
+          />
+        ) : (
+          <input
+            defaultValue={value}
+            onChange={(e) => {
+              onChange(e.currentTarget.value);
+              autosave();
+            }}
+            placeholder={placeholder}
+            autoCorrect="off"
+            autoCapitalize="none"
+            inputMode={inputMode}
+            style={{
+              width: '100%',
+              backgroundColor: 'white',
+              borderWidth: 1,
+              borderColor: '#111',
+              borderStyle: 'solid',
+              borderRadius: 8,
+              padding: 8,
+              height: 40,
+            } as any}
+          />
+        )}
+      </View>
+    );
+  };
+
+  // NativeField: React Native TextInput for iOS/Android
+  const NativeField = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    multiline,
+    keyboardType,
+  }: {
+    label: string;
+    value: string;
+    onChange: (s: string) => void;
     placeholder?: string;
     multiline?: boolean;
     keyboardType?: 'default' | 'numeric' | 'email-address';
-  }) {
-    const { label, value, onChangeText, placeholder, multiline, keyboardType } = props;
+  }) => {
     return (
       <View style={{ marginBottom: 16 }}>
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
         <TextInput
           value={value}
           onChangeText={(s) => {
-            onChangeText(s);
-            markDirty();
+            onChange(s);
+            autosave();
           }}
           placeholder={placeholder}
           multiline={!!multiline}
           autoCorrect={false}
           autoCapitalize="none"
           keyboardType={keyboardType}
-          inputMode={keyboardType === 'numeric' ? 'decimal' : undefined}
           style={{
             backgroundColor: 'white',
             borderWidth: 1,
@@ -237,15 +324,48 @@ export default function NewFormScreen() {
             paddingHorizontal: 12,
             paddingVertical: multiline ? 10 : 8,
             minHeight: multiline ? 80 : 40,
+            textAlignVertical: multiline ? 'top' : 'center',
           }}
         />
       </View>
     );
-  }
+  };
+
+  const Field = (p: {
+    label: string;
+    value: string;
+    onChange: (s: string) => void;
+    placeholder?: string;
+    multiline?: boolean;
+    keyboardType?: 'default' | 'numeric' | 'email-address';
+    inputMode?: 'text' | 'decimal';
+  }) =>
+    isWeb ? (
+      <WebField
+        label={p.label}
+        value={p.value}
+        onChange={p.onChange}
+        placeholder={p.placeholder}
+        multiline={p.multiline}
+        inputMode={p.keyboardType === 'numeric' ? 'decimal' : 'text'}
+      />
+    ) : (
+      <NativeField
+        label={p.label}
+        value={p.value}
+        onChange={p.onChange}
+        placeholder={p.placeholder}
+        multiline={p.multiline}
+        keyboardType={p.keyboardType}
+      />
+    );
 
   if (!hydrated) {
-    // avoid SSR hydration quirks on web
-    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text>Loading…</Text></View>;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text>Loading…</Text>
+      </View>
+    );
   }
 
   return (
@@ -265,48 +385,76 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      <Field label="DATE" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
-      <Field label="STORE LOCATION" value={storeLocation} onChangeText={setStoreLocation} />
-      <Field label="CONDITIONS" value={conditions} onChangeText={setConditions} />
-      <Field label="PRICE PER UNIT" value={pricePerUnit} onChangeText={setPricePerUnit} placeholder="$" keyboardType="numeric" />
-      <Field label="SHELF SPACE" value={shelfSpace} onChangeText={setShelfSpace} />
-      <Field label="ON SHELF" value={onShelf} onChangeText={setOnShelf} />
-      <Field label="TAGS" value={tags} onChangeText={setTags} />
-      <Field label="NOTES" value={notes} onChangeText={setNotes} multiline />
+      <Field label="DATE" value={date} onChange={setDate} placeholder="YYYY-MM-DD" />
+      <Field label="STORE LOCATION" value={storeLocation} onChange={setStoreLocation} />
+      <Field label="CONDITIONS" value={conditions} onChange={setConditions} />
+      <Field
+        label="PRICE PER UNIT"
+        value={pricePerUnit}
+        onChange={setPricePerUnit}
+        placeholder="$"
+        keyboardType="numeric"
+      />
+      <Field label="SHELF SPACE" value={shelfSpace} onChange={setShelfSpace} />
+      <Field label="ON SHELF" value={onShelf} onChange={setOnShelf} />
+      <Field label="TAGS" value={tags} onChange={setTags} />
+      <Field label="NOTES" value={notes} onChange={setNotes} multiline />
 
       <Text style={{ fontWeight: '700', marginBottom: 8 }}>PHOTOS</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         {photos.map((p, i) => (
-          <Image key={`${p.uri}-${i}`} source={{ uri: p.uri }} style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }} />
+          <Image
+            key={`${p.uri}-${i}`}
+            source={{ uri: p.uri }}
+            style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
+          />
         ))}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-        <Pressable onPress={takePhoto} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={takePhoto}
+          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ color: 'white', fontWeight: '700' }}>Take Photo</Text>
         </Pressable>
-        <Pressable onPress={addFromLibrary} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={addFromLibrary}
+          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ color: 'white', fontWeight: '700' }}>Add from Library</Text>
         </Pressable>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <Pressable onPress={onSave} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={onSave}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ fontWeight: '700' }}>Save</Text>
         </Pressable>
 
-        <Pressable onPress={onSubmit} disabled={busy} style={{ flex: 1, backgroundColor: busy ? '#94a3b8' : '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={onSubmit}
+          disabled={busy}
+          style={{
+            flex: 1,
+            backgroundColor: busy ? '#94a3b8' : '#2563eb',
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
+        >
           <Text style={{ color: 'white', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </Pressable>
 
-        <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={() => router.back()}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+        >
           <Text style={{ fontWeight: '700' }}>Exit</Text>
         </Pressable>
       </View>
-
-      <Text style={{ marginTop: 10, textAlign: 'center', color: '#6b7280', fontSize: 12 }}>
-        {dirty ? 'Unsaved changes' : 'All changes saved'}
-      </Text>
     </ScrollView>
   );
 }
