@@ -13,114 +13,128 @@ export type SubmissionExcel = {
   photo_urls: string[];
 };
 
-/** --- EXIF orientation (JPEG) parser: returns 1..8 (1 = normal) --- */
-function getJpegOrientation(buf: ArrayBuffer): number {
-  const view = new DataView(buf);
-  if (view.getUint16(0, false) !== 0xffd8) return 1; // not a JPEG
+/** Read EXIF Orientation (1..8) from a JPEG byte array. Returns 1 if not found. */
+function getJpegOrientation(u8: Uint8Array): number {
+  // Must be JPEG
+  if (u8.length < 4 || u8[0] !== 0xff || u8[1] !== 0xd8) return 1;
   let offset = 2;
-  const length = view.byteLength;
-  while (offset < length) {
-    const marker = view.getUint16(offset, false);
-    offset += 2;
-    if ((marker & 0xff00) !== 0xff00) break;
-    if (marker === 0xffe1) {
-      const exifLength = view.getUint16(offset, false);
-      offset += 2;
-      if (view.getUint32(offset, false) !== 0x45786966) return 1; // 'Exif'
-      const tiff = offset + 6;
-      const little = view.getUint16(tiff, false) === 0x4949; // 'II'
-      const ifdOffset = view.getUint32(tiff + 4, little);
-      let dir = tiff + ifdOffset;
-      const entries = view.getUint16(dir, little);
-      dir += 2;
-      for (let i = 0; i < entries; i++) {
-        const entry = dir + i * 12;
-        const tag = view.getUint16(entry, little);
-        if (tag === 0x0112) {
-          const val = view.getUint16(entry + 8, little);
-          return val || 1;
+  const end = u8.length;
+
+  const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+
+  while (offset + 4 < end && u8[offset] === 0xff) {
+    const marker = u8[offset + 1];
+    const size = view.getUint16(offset + 2, false);
+    if (size < 2) break;
+
+    // APP1 (EXIF)
+    if (marker === 0xe1 && offset + 4 + size <= end) {
+      // "Exif\0\0"
+      if (
+        u8[offset + 4] === 0x45 &&
+        u8[offset + 5] === 0x78 &&
+        u8[offset + 6] === 0x69 &&
+        u8[offset + 7] === 0x66 &&
+        u8[offset + 8] === 0x00 &&
+        u8[offset + 9] === 0x00
+      ) {
+        const tiff = offset + 10;
+        const little = view.getUint16(tiff, false) === 0x4949; // 'II' -> little endian
+        const magic = view.getUint16(tiff + 2, little);
+        if (magic !== 0x002a) return 1;
+        const ifdOffset = view.getUint32(tiff + 4, little);
+        let dirStart = tiff + ifdOffset;
+        if (dirStart + 2 > end) return 1;
+
+        const entries = view.getUint16(dirStart, little);
+        dirStart += 2;
+
+        for (let i = 0; i < entries; i++) {
+          const entry = dirStart + i * 12;
+          if (entry + 12 > end) break;
+          const tag = view.getUint16(entry, little);
+          if (tag === 0x0112) {
+            // Orientation tag
+            const val = view.getUint16(entry + 8, little);
+            return val || 1;
+          }
         }
       }
-      return 1;
-    } else {
-      offset += view.getUint16(offset, false);
     }
+
+    offset += 2 + size;
   }
   return 1;
 }
 
-/** load an HTMLImageElement from a Blob */
-function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = (e) => {
-      URL.revokeObjectURL(url);
-      reject(e);
-    };
-    img.src = url;
-  });
-}
-
-/** Draw an image to canvas with a given EXIF orientation */
-function drawOriented(img: HTMLImageElement, orientation: number, ext: 'png' | 'jpeg'): string {
+/** Draw an HTMLImageElement onto a canvas applying EXIF orientation. */
+function drawOriented(
+  img: HTMLImageElement,
+  orientation: number
+): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
   let w = img.naturalWidth;
   let h = img.naturalHeight;
 
-  // set canvas size & transform
+  // Swap canvas dims for orientations that rotate 90/270
+  if (orientation >= 5 && orientation <= 8) {
+    canvas.width = h;
+    canvas.height = w;
+  } else {
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  // Apply transforms (EXIF 1..8)
   switch (orientation) {
-    case 2: // mirror X
-      canvas.width = w; canvas.height = h;
-      ctx.translate(w, 0); ctx.scale(-1, 1);
+    case 2: // mirror horizontal
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       break;
-    case 3: // 180°
-      canvas.width = w; canvas.height = h;
-      ctx.translate(w, h); ctx.rotate(Math.PI);
+    case 3: // rotate 180
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate(Math.PI);
       break;
-    case 4: // mirror Y
-      canvas.width = w; canvas.height = h;
-      ctx.translate(0, h); ctx.scale(1, -1);
+    case 4: // mirror vertical
+      ctx.translate(0, canvas.height);
+      ctx.scale(1, -1);
       break;
-    case 5: // transpose
-      canvas.width = h; canvas.height = w;
+    case 5: // mirror horizontal + rotate 90 CW
       ctx.rotate(0.5 * Math.PI);
       ctx.scale(1, -1);
       break;
-    case 6: // 90° CW
-      canvas.width = h; canvas.height = w;
+    case 6: // rotate 90 CW
       ctx.rotate(0.5 * Math.PI);
-      ctx.translate(0, -h);
+      ctx.translate(0, -canvas.width);
       break;
-    case 7: // transverse
-      canvas.width = h; canvas.height = w;
-      ctx.rotate(0.5 * Math.PI);
-      ctx.translate(w, -h);
-      ctx.scale(-1, 1);
+    case 7: // mirror horizontal + rotate 270 CW
+      ctx.rotate(1.5 * Math.PI);
+      ctx.scale(1, -1);
+      ctx.translate(-canvas.height, 0);
       break;
-    case 8: // 90° CCW
-      canvas.width = h; canvas.height = w;
-      ctx.rotate(-0.5 * Math.PI);
-      ctx.translate(-w, 0);
+    case 8: // rotate 270 CW
+      ctx.rotate(1.5 * Math.PI);
+      ctx.translate(-canvas.height, 0);
       break;
-    default: // 1 = normal
-      canvas.width = w; canvas.height = h;
+    default:
+      // 1 = no transform
+      break;
   }
 
-  ctx.drawImage(img, 0, 0);
-  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-  // return RAW base64 (strip data URL header)
-  return canvas.toDataURL(mime, 0.92).split(',')[1];
+  // After transform, draw to fill canvas
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas;
 }
 
-/** Robust fetch: supports http(s), blob:, data:, fixes EXIF orientation for JPEGs. */
+/**
+ * Fetch image and return raw base64 + extension.
+ * - Handles http(s), blob:, and data: URLs.
+ * - Normalizes JPEG EXIF orientation so Excel shows the image upright.
+ * - Returns raw base64 (no data: prefix) as required by ExcelJS.
+ */
 async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' | 'jpeg' }> {
-  // data: URL — already base64
+  // Data URL
   if (url.startsWith('data:')) {
     const m = url.match(/^data:(.*?);base64,(.*)$/);
     const meta = m?.[1] ?? '';
@@ -136,7 +150,7 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' 
   const buf = await blob.arrayBuffer();
   const u8 = new Uint8Array(buf);
 
-  // detect extension
+  // Determine type
   const ct = blob.type || res.headers.get('Content-Type') || '';
   let ext: 'png' | 'jpeg';
   if (ct.includes('png')) ext = 'png';
@@ -144,22 +158,35 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' 
   else if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) ext = 'png';
   else ext = 'jpeg';
 
-  // If JPEG and orientation != 1, normalize pixels via canvas
+  // If JPEG, respect EXIF orientation by rasterizing through canvas.
   if (ext === 'jpeg') {
-    const orientation = getJpegOrientation(buf);
+    const orientation = getJpegOrientation(u8);
     if (orientation !== 1) {
-      const img = await loadImageFromBlob(new Blob([u8], { type: 'image/jpeg' }));
-      const fixed = drawOriented(img, orientation, 'jpeg');
-      return { base64: fixed, ext: 'jpeg' };
+      const obj = URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' }));
+      const img = new Image();
+      img.src = obj;
+      await new Promise((res, rej) => {
+        img.onload = () => res(undefined);
+        img.onerror = rej;
+      });
+      const canvas = drawOriented(img, orientation);
+      URL.revokeObjectURL(obj);
+      // quality 0.92 looks great and keeps size reasonable
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      // Strip "data:...;base64,"
+      const b64 = dataUrl.split(',')[1] || '';
+      return { base64: b64, ext: 'jpeg' };
     }
   }
 
-  // No fix needed — return raw bytes base64
-  return { base64: btoa(String.fromCharCode(...u8)), ext };
+  // No orientation fix needed (PNG or JPEG with orientation=1): return raw bytes
+  const base64 = btoa(String.fromCharCode(...u8));
+  return { base64, ext };
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
+
   const ws = wb.addWorksheet('submission', {
     properties: { defaultRowHeight: 18 },
     pageSetup: {
@@ -170,7 +197,6 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // 4 columns so photos can sit in B and D with a thin gap at C
   ws.columns = [
     { key: 'label', width: 22 }, // A
     { key: 'value', width: 44 }, // B
@@ -183,7 +209,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const valueStyle = { alignment: { vertical: 'middle' as const }, border };
 
   let r = 1;
-  const addRow = (label: string, value: string) => {
+  function addRow(label: string, value: string) {
     ws.getCell(`A${r}`).value = label.toUpperCase();
     Object.assign(ws.getCell(`A${r}`), labelStyle);
     ws.getCell(`B${r}`).value = value || '';
@@ -191,7 +217,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
     r++;
-  };
+  }
 
   addRow('DATE', row.date);
   addRow('STORE LOCATION', row.store_location);
@@ -202,7 +228,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header spanning A:D
+  // PHOTOS header
   ws.mergeCells(`A${r}:D${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
@@ -211,7 +237,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   hdr.border = border;
   r++;
 
-  // Bordered area under the photos (for a table look)
+  // Bordered area below PHOTOS
   const imageTopRow = r;
   const rowsForImages = 18;
   for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
@@ -219,10 +245,9 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`B${rr}`).border = border;
     ws.getCell(`C${rr}`).border = border;
     ws.getCell(`D${rr}`).border = border;
-    ws.getRow(rr).height = 18;
   }
 
-  // Get up to 2 photos; if one fails we still embed the other
+  // Robust: even if one fails, embed the other
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(fetchAsBase64));
   const base64s = settled
@@ -238,7 +263,10 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.addImage(id, { tl: { col: 3, row: imageTopRow - 1 }, ext: { width: 360, height: 230 } });
   }
 
-  // Browser download
+  for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
+    ws.getRow(rr).height = 18;
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
