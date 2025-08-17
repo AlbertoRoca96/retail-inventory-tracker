@@ -27,7 +27,7 @@ jobs:
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
-      - name: Ensure web deps match SDK
+      - name: Ensure web deps (Expo Web + Router)
         working-directory: apps/mobile
         env:
           CI: "true"
@@ -41,11 +41,13 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: npx expo export --platform web --output-dir dist
 
-      # Make the generated index.html use relative paths so it works under /<repo>/
-      - name: Patch index.html for subpath + add 404 and disable Jekyll
+      # Make the bundle paths relative for GitHub Pages and add 404 + .nojekyll
+      - name: Patch index.html for Pages
         working-directory: apps/mobile/dist
         run: |
-          node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo').replace(/(src|href)=\"\/assets/g,'$1=\"./assets');fs.writeFileSync('index.html',s);fs.copyFileSync('index.html','404.html');fs.writeFileSync('.nojekyll','');"
+          node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo');fs.writeFileSync('index.html',s)"
+          cp index.html 404.html
+          touch .nojekyll
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
