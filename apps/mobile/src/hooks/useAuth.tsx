@@ -2,49 +2,62 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 type Session = { user: { id: string; email?: string | null } } | null;
+
 type AuthValue = {
   session: Session;
-  signInWithEmail: (email: string, password: string) => Promise<{ error?: Error }>;
   signOut: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthValue>({
-  session: null,
-  signInWithEmail: async () => ({}),
-  signOut: async () => {}
-});
+const AuthCtx = createContext<AuthValue>({ session: null, signOut: async () => {} });
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+const BYPASS = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session>(null);
 
   useEffect(() => {
-    const bypass = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
-    if (bypass) {
-      setSession({ user: { id: 'dev-user', email: 'dev@example.com' } });
-      return;
-    }
-    supabase.auth.getSession().then(({ data }) => setSession(data.session as Session));
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, s) => setSession(s as Session));
-    return () => subscription.unsubscribe();
+    let cancelled = false;
+
+    const init = async () => {
+      // 1) pick up existing session
+      const { data } = await supabase.auth.getSession();
+      if (!cancelled) setSession((data.session as any) ?? null);
+
+      // 2) subscribe to changes
+      const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+        if (!cancelled) setSession((s as any) ?? null);
+      });
+
+      // 3) if bypass is ON and we’re not logged in, sign in anonymously
+      if (BYPASS) {
+        const cur = (await supabase.auth.getSession()).data.session;
+        if (!cur) {
+          await supabase.auth.signInAnonymously(); // creates a real user + JWT
+          const fresh = (await supabase.auth.getSession()).data.session;
+          if (!cancelled) setSession((fresh as any) ?? null);
+        }
+      }
+
+      return () => sub.subscription.unsubscribe();
+    };
+
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const value = useMemo<AuthValue>(
+  const value = useMemo(
     () => ({
       session,
-      signInWithEmail: async (email, password) => {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        return { error: error ?? undefined };
-      },
       signOut: async () => {
         await supabase.auth.signOut();
-      }
+      },
     }),
     [session]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
+}
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => useContext(AuthCtx);
