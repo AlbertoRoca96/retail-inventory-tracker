@@ -18,18 +18,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
       - name: Install deps
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
+
       - name: Ensure web deps match SDK
         working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime
-      - name: Export SPA build for Pages
+
+      - name: Export SPA for GitHub Pages
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -37,14 +41,18 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: |
           npx expo export --platform web --output-dir dist
+          # GitHub Pages niceties
           touch dist/.nojekyll
           cp dist/index.html dist/404.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: apps/mobile/dist
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
