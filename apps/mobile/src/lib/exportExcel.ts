@@ -10,7 +10,7 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[]; // public URLs
+  photo_urls: string[];
 };
 
 export function downloadSubmissionExcel(row: SubmissionExcel) {
@@ -23,17 +23,15 @@ export function downloadSubmissionExcel(row: SubmissionExcel) {
     { Field: 'ON SHELF', Value: row.on_shelf },
     { Field: 'TAGS', Value: row.tags },
     { Field: 'NOTES', Value: row.notes },
-    { Field: 'PHOTOS', Value: row.photo_urls.join(' | ') }
+    { Field: 'PHOTOS', Value: row.photo_urls.join(' | ') },
   ];
 
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Submission');
+  XLSX.utils.book_append_sheet(wb, ws, 'submission');
 
-  // File name includes date-time
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const fname = `submission-${ts}.xlsx`;
-
-  // Triggers a browser download
+  // Browser download via SheetJS writeFile:
+  // https://oss.sheetjs.com/sheetjs/tests/write
+  const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
   XLSX.writeFile(wb, fname);
 }
