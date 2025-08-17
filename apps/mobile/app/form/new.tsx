@@ -115,7 +115,7 @@ export default function NewFormScreen() {
     ]);
     // persist to draft
     setTimeout(scheduleAutosave, 0);
-  }, []); // scheduleAutosave is defined later; referenced lazily via setTimeout
+  }, []); // scheduleAutosave is referenced at call time via setTimeout
 
   // Load draft once after hydration
   const loaded = useRef(false);
@@ -239,8 +239,15 @@ export default function NewFormScreen() {
       setBanner({ kind: 'info', text: 'Submitting…' });
 
       const v = getValues();
-      const photoUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
 
+      // 1) Upload images (returns public URLs) — may be empty if upload fails or RLS blocks it
+      const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
+
+      // 2) Choose which URLs to feed to Excel: prefer uploaded public URLs,
+      //    but fall back to local blob: URIs so images still embed in the sheet.
+      const excelPhotoUrls = uploadedUrls.length ? uploadedUrls : photos.map((p) => p.uri);
+
+      // 3) Try DB insert (optional)
       let insertError: any = null;
       if (uid) {
         const { error } = await supabase.from('submissions').insert({
@@ -254,15 +261,15 @@ export default function NewFormScreen() {
           on_shelf: v.onShelf || null,
           tags: v.tags || null,
           notes: v.notes || null,
-          photo1_url: photoUrls[0] ?? null,
-          photo2_url: photoUrls[1] ?? null,
+          photo1_url: uploadedUrls[0] ?? null,
+          photo2_url: uploadedUrls[1] ?? null,
         });
         insertError = error ?? null;
       } else {
         insertError = { message: 'Not authenticated – saved to Excel only.' };
       }
 
-      // Always export a spreadsheet (side-by-side photos handled in exportExcel.ts)
+      // 4) Always export a spreadsheet (side-by-side photos handled in exportExcel.ts)
       await downloadSubmissionExcel({
         date: v.date || '',
         store_location: v.storeLocation || '',
@@ -272,7 +279,7 @@ export default function NewFormScreen() {
         on_shelf: v.onShelf || '',
         tags: v.tags || '',
         notes: v.notes || '',
-        photo_urls: photoUrls.filter(Boolean),
+        photo_urls: excelPhotoUrls.filter(Boolean),
       });
 
       if (insertError) {
