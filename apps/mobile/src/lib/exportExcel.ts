@@ -10,79 +10,53 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[]; // we’ll embed up to 2
+  photo_urls: string[]; // embed up to 2
 };
 
-// -- utils --------------------------------------------------------------
+// ---- helpers -------------------------------------------------------------
 
-function u8FromBase64(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  return u8;
-}
-
-/**
- * Load an image (http/https/blob/data), apply EXIF orientation using
- * blueimp-load-image, and return { base64 (raw), w, h } of the oriented bitmap.
- * We always re-encode to JPEG (orientation removed by design).
- *
- * Docs: https://www.npmjs.com/package/blueimp-load-image
- */
-async function toUprightBase64(
+/** Load any image URL (http/https/blob/data), rasterize via canvas (EXIF dropped),
+ *  and return { base64 (raw), width, height } for ExcelJS. */
+async function toCanvasBase64(
   url: string
 ): Promise<{ base64: string; w: number; h: number }> {
-  // Dynamic import (web-only); also load EXIF plugins
-  const loadImageMod: any = await import('blueimp-load-image');
-  await import('blueimp-load-image/js/load-image-meta');
-  await import('blueimp-load-image/js/load-image-exif');
-  await import('blueimp-load-image/js/load-image-exif-map');
-  const loadImage = loadImageMod.default || loadImageMod;
+  let srcForImg = url;
 
-  let blob: Blob;
-
-  if (url.startsWith('data:')) {
-    const m = url.match(/^data:(.*?);base64,(.*)$/);
-    const mime = (m?.[1] || 'image/jpeg').toLowerCase();
-    const b64 = m?.[2] || '';
-    blob = new Blob([u8FromBase64(b64)], { type: mime });
-  } else {
+  // For http(s) we fetch → blob → objectURL to avoid CORS-tainted canvas.
+  if (/^https?:/i.test(url)) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
-    blob = await res.blob();
+    const blob = await res.blob();
+    srcForImg = URL.createObjectURL(blob);
   }
 
-  // blueimp will read EXIF and draw an oriented canvas for us.
-  const canvas: HTMLCanvasElement = await new Promise((resolve, reject) => {
-    loadImage(
-      blob,
-      (img: HTMLCanvasElement | HTMLImageElement | Event) => {
-        if ((img as any)?.type === 'error') return reject(new Error('Image decode error'));
-        // If it returns <canvas>, orientation has been applied.
-        if (img instanceof HTMLCanvasElement) return resolve(img);
-        // Fallback: draw <img> onto a canvas (rare path)
-        const c = document.createElement('canvas');
-        c.width = (img as HTMLImageElement).naturalWidth;
-        c.height = (img as HTMLImageElement).naturalHeight;
-        c.getContext('2d')!.drawImage(img as HTMLImageElement, 0, 0);
-        resolve(c);
-      },
-      {
-        // key options:
-        orientation: true, // apply EXIF orientation
-        meta: true,        // parse metadata
-        canvas: true       // return a canvas
-      }
-    );
+  // Create and load <img> (browsers render EXIF orientation for display)
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = reject;
+    el.src = srcForImg;
   });
 
-  // Re-encode as JPEG; this strips EXIF (so Excel won’t rotate again).
+  // Draw exactly as displayed into a canvas to strip EXIF for good.
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+
+  // Clean up any object URL we created.
+  if (srcForImg.startsWith('blob:') && srcForImg !== url) {
+    URL.revokeObjectURL(srcForImg);
+  }
+
+  // Re-encode to JPEG; ExcelJS expects raw base64 (no prefix).
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  const base64 = dataUrl.split(',')[1] || '';
-  return { base64, w: canvas.width, h: canvas.height };
+  const b64 = dataUrl.split(',')[1] || '';
+  return { base64: b64, w: canvas.width, h: canvas.height };
 }
 
-// -- main ---------------------------------------------------------------
+// ---- main ---------------------------------------------------------------
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
@@ -97,11 +71,12 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
+  // Keep your original layout
   ws.columns = [
     { key: 'label', width: 22 }, // A
     { key: 'value', width: 44 }, // B
-    { key: 'gap', width: 2  },   // C
-    { key: 'value2', width: 44 } // D
+    { key: 'gap',   width: 2  }, // C
+    { key: 'value2',width: 44 }, // D
   ];
 
   const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
@@ -137,7 +112,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   hdr.border = border;
   r++;
 
-  // Bordered area beneath PHOTOS
+  // Bordered area below PHOTOS
   const imageTopRow = r;
   const rowsForImages = 18;
   for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
@@ -147,13 +122,13 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`D${rr}`).border = border;
   }
 
-  // Max render size in pixels for each photo
+  // Scale to fit these boxes
   const MAX_W = 360;
   const MAX_H = 230;
 
-  // Load up to two photos, upright; don’t fail if one errors
+  // Load up to 2 photos; be resilient if one fails
   const urls = (row.photo_urls || []).slice(0, 2);
-  const settled = await Promise.allSettled(urls.map(toUprightBase64));
+  const settled = await Promise.allSettled(urls.map(toCanvasBase64));
   const imgs = settled
     .filter((s): s is PromiseFulfilledResult<{ base64: string; w: number; h: number }> => s.status === 'fulfilled')
     .map((s) => s.value);
@@ -161,7 +136,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const place = (i: 0 | 1) => {
     const img = imgs[i];
     if (!img) return;
-    const scale = Math.min(MAX_W / img.w, MAX_H / img.h, 1); // contain, never upscale
+    const scale = Math.min(MAX_W / img.w, MAX_H / img.h, 1);
     const w = Math.round(img.w * scale);
     const h = Math.round(img.h * scale);
     const id = wb.addImage({ base64: img.base64, extension: 'jpeg' });
@@ -178,7 +153,6 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getRow(rr).height = 18;
   }
 
-  // Download
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
