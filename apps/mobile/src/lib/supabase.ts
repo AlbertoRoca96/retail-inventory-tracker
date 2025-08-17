@@ -1,18 +1,31 @@
-import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { createClient } from '@supabase/supabase-js';
 
 const storage = {
-  getItem: (k: string) =>
-    Platform.OS === 'web' ? Promise.resolve(localStorage.getItem(k)) : SecureStore.getItemAsync(k),
-  setItem: (k: string, v: string) =>
-    Platform.OS === 'web' ? (localStorage.setItem(k, v), Promise.resolve()) : SecureStore.setItemAsync(k, v),
-  removeItem: (k: string) =>
-    Platform.OS === 'web' ? (localStorage.removeItem(k), Promise.resolve()) : SecureStore.deleteItemAsync(k),
+  getItem: (key: string) =>
+    Platform.OS === 'web'
+      ? Promise.resolve(localStorage.getItem(key))
+      : SecureStore.getItemAsync(key),
+  setItem: (key: string, value: string) =>
+    Platform.OS === 'web'
+      ? (localStorage.setItem(key, value), Promise.resolve())
+      : SecureStore.setItemAsync(key, value),
+  removeItem: (key: string) =>
+    Platform.OS === 'web'
+      ? (localStorage.removeItem(key), Promise.resolve())
+      : SecureStore.deleteItemAsync(key)
 };
 
 export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { storage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
+  {
+    auth: {
+      storage,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  }
 );
