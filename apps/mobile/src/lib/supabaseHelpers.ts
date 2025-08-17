@@ -1,82 +1,47 @@
-// apps/mobile/src/lib/supabaseHelpers.ts
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
-export type FormValues = {
-  date: string;
-  store_location: string;
-  conditions: string;
-  price_per_unit: string;
-  shelf_space: string;
-  on_shelf: string;
-  tags: string;
-  notes: string;
-};
+type Picked = { uri: string; mimeType?: string | null };
 
-export async function uploadPhotosToBucket(
-  files: { uri: string; name?: string; type?: string }[],
-  folder: string,
-  bucket = 'form-photos'
-) {
-  const urls: string[] = [];
-
-  for (const [idx, f] of files.entries()) {
-    // Convert the URI to a Blob / File for upload
-    const res = await fetch(f.uri);
-    const blob = await res.blob();
-
-    const ext =
-      f.type?.split('/').pop() ||
-      (blob.type.includes('jpeg') ? 'jpg' : blob.type.split('/').pop() || 'bin');
-
-    const path = `${folder}/photo-${idx + 1}.${ext}`;
-
-    const { error } = await supabase.storage.from(bucket).upload(path, blob, {
-      contentType: blob.type,
-      upsert: true
-    });
-    if (error) throw error;
-
-    // Build a public URL (assuming bucket is public)
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    urls.push(data.publicUrl);
-  }
-
-  return urls;
+async function uriToBlobWeb(uri: string): Promise<Blob> {
+  const r = await fetch(uri);
+  return await r.blob();
 }
 
-export async function insertSubmission(
-  values: FormValues,
-  photo_urls: string[],
-  status: 'draft' | 'submitted'
-) {
-  // Insert main row
-  const { data, error } = await supabase
-    .from('submissions')
-    .insert({
-      status,
-      date: values.date,
-      store_location: values.store_location,
-      conditions: values.conditions,
-      price_per_unit: values.price_per_unit,
-      shelf_space: values.shelf_space,
-      on_shelf: values.on_shelf,
-      tags: values.tags,
-      notes: values.notes
-    })
-    .select('id')
-    .single();
+export async function uploadPhotosAndGetUrls(
+  userId: string,
+  photos: Picked[]
+): Promise<string[]> {
+  const urls: string[] = [];
+  for (let i = 0; i < photos.length; i++) {
+    const { uri, mimeType } = photos[i];
+    const ext =
+      (mimeType && mimeType.split('/')[1]) ||
+      uri.split('?')[0].split('#')[0].split('.').pop() ||
+      'jpg';
 
-  if (error) throw error;
+    const path = `${userId}/${Date.now()}-${i}.${ext}`;
 
-  // Optional: store photos in a separate table if you created it
-  if (photo_urls.length) {
-    const rows = photo_urls.map((url) => ({
-      submission_id: data.id,
-      url
-    }));
-    const { error: pErr } = await supabase.from('submission_photos').insert(rows);
-    if (pErr) throw pErr;
+    // Prepare file data per platform
+    let fileBody: any;
+    let contentType = mimeType || `image/${ext}`;
+
+    if (Platform.OS === 'web') {
+      fileBody = await uriToBlobWeb(uri);
+    } else {
+      // Native — Supabase accepts a File/Blob or Uint8Array; RN fetch->blob works too
+      const res = await fetch(uri);
+      fileBody = await res.blob();
+    }
+
+    const { error } = await supabase.storage
+      .from('photos')
+      .upload(path, fileBody, { contentType, upsert: false });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage.from('photos').getPublicUrl(path);
+    urls.push(data.publicUrl);
   }
-
-  return data.id as string;
+  return urls;
 }
