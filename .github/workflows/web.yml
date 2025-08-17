@@ -22,82 +22,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
+          # ⬇️ no cache inputs here on purpose
 
-      # Install app deps
       - name: Install deps
         working-directory: apps/mobile
-        run: npm ci || npm i --no-audit --no-fund
+        run: npm i --no-audit --no-fund
 
-      # Ensure Expo Web peer deps only (NO expo-router)
       - name: Ensure web deps match SDK
         working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime
 
-      # Export the web bundle (no SSR/router)
       - name: Export static web build
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
-        run: npx expo export --platform web --output-dir dist
-
-      # Make the bundle work on GitHub Pages under /retail-inventory-tracker/
-      - name: Fix GitHub Pages paths and loader
-        working-directory: apps/mobile/dist
-        shell: bash
         run: |
-          # prevent Jekyll, add 404 fallback
-          touch .nojekyll
-          cp index.html 404.html
+          npx expo export --platform web --output-dir dist
+          touch dist/.nojekyll
+          cp dist/index.html dist/404.html
 
-          # Rewrite metadata.json bundleUrl to include the repo base path if needed
-          node -e "const fs=require('fs');const p='metadata.json';const m=JSON.parse(fs.readFileSync(p,'utf8'));if(m.bundleUrl){const base='/retail-inventory-tracker/';if(m.bundleUrl.startsWith('_expo/')) m.bundleUrl=base+m.bundleUrl; if(m.bundleUrl.startsWith('/_expo/')) m.bundleUrl=base+m.bundleUrl.slice(1);}fs.writeFileSync(p,JSON.stringify(m));"
-
-          # Robust loader index.html that pulls the (possibly rewritten) bundleUrl
-          cat > index.html <<'HTML'
-          <!doctype html><html lang="en"><head>
-            <meta charset="utf-8"/>
-            <meta name="viewport" content="width=device-width,initial-scale=1"/>
-            <title>Retail Inventory Tracker</title>
-          </head><body>
-            <div id="root">Loading…</div>
-            <script>
-              (async function(){
-                try{
-                  const meta = await fetch('./metadata.json').then(r=>r.json());
-                  let u = (meta && meta.bundleUrl) || '';
-                  const base = '/retail-inventory-tracker/';
-                  if (u.startsWith('_expo/')) u = base + u;
-                  else if (u.startsWith('/_expo/')) u = base + u.slice(1);
-                  else if (!/^https?:/.test(u) && !u.startsWith('/')) u = './' + u;
-
-                  const s = document.createElement('script');
-                  s.defer = true;
-                  s.src = u;
-                  s.onerror = () => {
-                    document.body.innerHTML =
-                      '<pre style="padding:16px;white-space:pre-wrap">Failed to load app bundle:\\n' + u + '</pre>';
-                  };
-                  document.body.appendChild(s);
-                } catch (e) {
-                  document.body.innerHTML =
-                    '<pre style="padding:16px;white-space:pre-wrap">Boot error:\\n' + (e && e.message || e) + '</pre>';
-                }
-              })();
-            </script>
-          </body></html>
-          HTML
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/mobile/dist
 
