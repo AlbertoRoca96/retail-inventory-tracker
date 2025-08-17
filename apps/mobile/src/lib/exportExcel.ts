@@ -13,7 +13,7 @@ export type SubmissionExcel = {
   photo_urls: string[]; // public URLs
 };
 
-// Tiny helper to fetch an image as ArrayBuffer for ExcelJS (browser)
+// Fetch an image as ArrayBuffer for ExcelJS (browser)
 async function fetchImageBuffer(url: string): Promise<ArrayBuffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
@@ -25,98 +25,92 @@ function guessExt(url: string): 'png' | 'jpeg' {
   return u.endsWith('.png') ? 'png' : 'jpeg';
 }
 
+function isNumericLike(s: string): boolean {
+  if (!s) return false;
+  const n = Number(s);
+  return Number.isFinite(n);
+}
+
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('submission');
 
-  // --- Layout: 3-column grid like the PDF ---
-  // A = label, B = main value, C = numeric/right column (e.g., price)
-  ws.getColumn(1).width = 20; // A
+  // --- Layout to mirror the PDF ---
+  // A = label (narrower), B = spacer / left image column, C = value / right image column
+  ws.getColumn(1).width = 22; // A
   ws.getColumn(2).width = 44; // B
-  ws.getColumn(3).width = 16; // C
+  ws.getColumn(3).width = 44; // C
 
-  // Helper: thin black border for all table cells
-  const thinBorder = {
+  // Thin borders on every cell in the table
+  const thin = {
     top: { style: 'thin', color: { argb: 'FF000000' } },
     left: { style: 'thin', color: { argb: 'FF000000' } },
     bottom: { style: 'thin', color: { argb: 'FF000000' } },
     right: { style: 'thin', color: { argb: 'FF000000' } },
   } as const;
 
-  // Build rows (no "Field/Value" header row; matches the PDF-style grid)
-  // Most rows merge B:C; PRICE PER UNIT keeps value in C aligned right.
-  const rows: Array<[string, string, string?]> = [
-    ['DATE', row.date, ''],
-    ['STORE LOCATION', row.store_location, ''],
-    ['CONDITIONS', row.conditions, ''],
+  // Build rows: put ALL values into column C; keep column B intentionally empty (spacer),
+  // so the sheet looks exactly like the PDF screenshot.
+  const rows: Array<[string, string, string]> = [
+    ['DATE', '', row.date],
+    ['STORE LOCATIONS', '', row.store_location],
+    // "LOCATIONS" row exists in the PDF; we include it (blank if not provided in the current schema)
+    ['LOCATIONS', '', ''],
+    ['CONDITIONS', '', row.conditions],
     ['PRICE PER UNIT', '', row.price_per_unit],
-    ['SHELF SPACE', row.shelf_space, ''],
-    ['ON SHELF', row.on_shelf, ''],
-    ['TAGS', row.tags, ''],
-    ['NOTES', row.notes, ''],
+    ['SHELF SPACE', '', row.shelf_space],
+    ['ON SHELF', '', row.on_shelf],
+    ['TAGS', '', row.tags],
+    ['NOTES', '', row.notes],
     ['PHOTOS', '', ''],
   ];
-
   ws.addRows(rows);
 
-  // Style the grid
-  const lastRow = rows.length;
-  for (let r = 1; r <= lastRow; r++) {
-    // Labels bold, vertically centered
+  // Style rows
+  for (let r = 1; r <= rows.length; r++) {
+    // Label cell
     const a = ws.getCell(r, 1);
-    a.font = { bold: true };
-    a.alignment = { vertical: 'middle' };
-    a.border = thinBorder;
+    a.alignment = { vertical: 'middle' }; // (labels not bold to match the PDF feel)
+    a.border = thin;
 
-    // Values column (B)
+    // Spacer cell (B) — draw borders so the grid shows, but keep empty
     const b = ws.getCell(r, 2);
-    b.alignment = { vertical: 'middle', wrapText: true };
-    b.border = thinBorder;
+    b.alignment = { vertical: 'middle' };
+    b.border = thin;
 
-    // Right column (C)
+    // Value cell (C)
     const c = ws.getCell(r, 3);
-    c.alignment = { vertical: 'middle' };
-    c.border = thinBorder;
-
-    // Merge B:C for all rows except explicit right-column ones
-    // Keep PRICE PER UNIT (row 4) unmerged so its value sits in C like the PDF.
-    if (![4, 9].includes(r)) {
-      ws.mergeCells(r, 2, r, 3); // B:r .. C:r
-      // After merge, keep left/top alignment and border on the merged cell
-      ws.getCell(r, 2).alignment = { vertical: 'middle', wrapText: true };
-      ws.getCell(r, 2).border = thinBorder;
-    }
+    c.alignment = { vertical: 'middle', wrapText: true }; // wrap for long notes/conditions
+    c.border = thin;
   }
 
-  // Special formatting
-  // - PRICE PER UNIT right-aligned in column C
-  ws.getCell(4, 3).alignment = { vertical: 'middle', horizontal: 'right' };
+  // Right-align numeric-looking fields in column C like the PDF
+  if (isNumericLike(rows[4 - 1][2])) ws.getCell(4, 3).alignment = { vertical: 'middle', horizontal: 'right' }; // PRICE PER UNIT
+  if (isNumericLike(rows[8 - 1][2])) ws.getCell(8, 3).alignment = { vertical: 'middle', horizontal: 'right' }; // TAGS
 
-  // - NOTES row: give a bit more height so wrapped text looks nice
-  ws.getRow(8).height = 36;
+  // Make NOTES a bit taller for readability
+  ws.getRow(9).height = 36;
 
-  // --- Photos below the "PHOTOS" row, placed side-by-side in B and C ---
-  const photoRowIndex = 9; // "PHOTOS" row index (1-based)
-  const startImageRow = photoRowIndex; // anchor at the PHOTOS row
-  const imageHeight = 220;
-  const imageWidth = 285; // sized to the B/C columns
+  // --- Photos side-by-side under PHOTOS (columns B and C) ---
+  // ExcelJS image position uses zero-based col/row via `tl` (top-left) and pixel size via `ext`.
+  // We'll anchor both images at the PHOTOS row so they sit directly below it.
+  const photosHeaderRow = rows.length; // "PHOTOS" row index (1-based)
+  const anchorRowZero = photosHeaderRow; // zero-based row anchor
+  const imageHeight = 280; // adjust to taste
+  const imageWidth = 360;  // fits each B/C column nicely
 
-  const addImageAt = async (url: string, colZeroBased: number, rowZeroBased: number) => {
+  const addImageAt = async (url: string, zeroCol: number, zeroRow: number) => {
     const buffer = await fetchImageBuffer(url);
     const imgId = wb.addImage({ buffer, extension: guessExt(url) });
     ws.addImage(imgId, {
-      tl: { col: colZeroBased, row: rowZeroBased },
+      tl: { col: zeroCol, row: zeroRow },
       ext: { width: imageWidth, height: imageHeight },
     });
   };
 
-  // Put first photo in column B (index 1 zero-based) and second in column C (index 2)
-  if (row.photo_urls[0]) {
-    await addImageAt(row.photo_urls[0], 1, startImageRow); // B
-  }
-  if (row.photo_urls[1]) {
-    await addImageAt(row.photo_urls[1], 2, startImageRow); // C
-  }
+  // Left photo in column B (index 1 zero-based); right photo in column C (index 2)
+  if (row.photo_urls[0]) await addImageAt(row.photo_urls[0], 1, anchorRowZero);
+  if (row.photo_urls[1]) await addImageAt(row.photo_urls[1], 2, anchorRowZero);
 
   // Export to browser
   const fname = `submission-${new Date().toISOString().replace(/[:]/g, '-')}.xlsx`;
