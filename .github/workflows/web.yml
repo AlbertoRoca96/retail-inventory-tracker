@@ -27,13 +27,13 @@ jobs:
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
-      - name: Ensure web deps
+      - name: Ensure web deps match SDK
         working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
-      - name: Export static web
+      - name: Export static web build
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -41,33 +41,11 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: npx expo export --platform web --output-dir dist
 
-      - name: Fix index and 404 for Pages
+      # Make the generated index.html use relative paths so it works under /<repo>/
+      - name: Patch index.html for subpath + add 404 and disable Jekyll
         working-directory: apps/mobile/dist
         run: |
-          node - <<'NODE'
-          const fs = require('fs');
-          const html = fs.readFileSync('index.html','utf8');
-          const m = html.match(/(?:src|href)=\"(\/?_expo\/static\/js\/web\/[^\"]+\.js)\"/);
-          if(!m){ console.error('entry bundle not found'); process.exit(1); }
-          let entry = m[1];
-          if(!entry.startsWith('.')) entry = entry.replace(/^\//,'./');
-          const out = `<!doctype html>
-          <html lang="en">
-          <head>
-          <meta charset="utf-8"/>
-          <meta name="viewport" content="width=device-width,initial-scale=1"/>
-          <title>Retail Inventory Tracker</title>
-          <meta name="theme-color" content="#ffffff"/>
-          </head>
-          <body>
-          <div id="root">Loading…</div>
-          <script defer src="${entry}"></script>
-          </body>
-          </html>`;
-          fs.writeFileSync('index.html', out);
-          fs.writeFileSync('404.html', out);
-          NODE
-          touch .nojekyll
+          node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo').replace(/(src|href)=\"\/assets/g,'$1=\"./assets');fs.writeFileSync('index.html',s);fs.copyFileSync('index.html','404.html');fs.writeFileSync('.nojekyll','');"
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
