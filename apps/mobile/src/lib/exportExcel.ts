@@ -10,18 +10,63 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[]; // public URLs
+  photo_urls: string[]; // public HTTPS, blob:, or data: URLs
 };
 
-async function fetchImageBuffer(url: string): Promise<ArrayBuffer> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
-  return await res.arrayBuffer();
+// --- Utilities ---------------------------------------------------------------
+
+// Excel column width (chars) -> ~pixels (Calibri 11 ≈ 7px/char + padding)
+const colWidthToPx = (w: number | undefined) => Math.max(0, Math.floor((w ?? 10) * 7 + 5));
+
+/** XHR fallback that can load blob:, data:, and http(s) into an ArrayBuffer (Safari friendly). */
+function xhrToArrayBuffer(url: string): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'arraybuffer';
+    xhr.onload = () => {
+      // Safari returns status 0 for blob: URLs; accept 0 or 200-range.
+      const ok = xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300);
+      if (ok && xhr.response) resolve(xhr.response as ArrayBuffer);
+      else reject(new Error(`XHR failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('XHR network error'));
+    xhr.send();
+  });
 }
 
-function guessExt(url: string): 'png' | 'jpeg' {
-  const u = url.toLowerCase();
-  return u.endsWith('.png') ? 'png' : 'jpeg';
+/** Convert data: URL → ArrayBuffer */
+function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
+  const [meta, payload] = dataUrl.split(',', 2);
+  const isBase64 = /;base64/i.test(meta);
+  const byteStr = isBase64 ? atob(payload) : decodeURIComponent(payload);
+  const out = new Uint8Array(byteStr.length);
+  for (let i = 0; i < byteStr.length; i++) out[i] = byteStr.charCodeAt(i);
+  return out.buffer;
+}
+
+/** Portable image loader that works around iOS Safari blob/data URL quirks. */
+async function loadImageBuffer(url: string): Promise<ArrayBuffer> {
+  if (url.startsWith('data:')) {
+    return dataUrlToArrayBuffer(url);
+  }
+  try {
+    // Normal path (HTTPS, modern browsers)
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch status ${res.status}`);
+    return await res.arrayBuffer();
+  } catch {
+    // Fallback that also works with blob: in iOS Safari
+    return xhrToArrayBuffer(url);
+  }
+}
+
+/** Sniff PNG vs JPEG from the buffer’s magic bytes (default to JPEG). */
+function sniffImageExt(buf: ArrayBuffer): 'png' | 'jpeg' {
+  const b = new Uint8Array(buf.slice(0, 8));
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return 'png';
+  return 'jpeg';
 }
 
 function isNumericLike(s: string): boolean {
@@ -30,15 +75,14 @@ function isNumericLike(s: string): boolean {
   return Number.isFinite(n);
 }
 
-// Excel column width (chars) -> ~pixels (Calibri 11 ≈ 7px/char + padding)
-const colWidthToPx = (w: number | undefined) => Math.max(0, Math.floor((w ?? 10) * 7 + 5));
+// --- Main --------------------------------------------------------------------
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('submission');
 
   // === EXACTLY TWO EQUAL-WIDTH COLUMNS ===
-  const COL_WIDTH = 46;         // same width for A and B to mirror the PDF
+  const COL_WIDTH = 46; // tune if you want wider/narrower; photos auto-fit
   ws.getColumn(1).width = COL_WIDTH; // A: labels (also left photo)
   ws.getColumn(2).width = COL_WIDTH; // B: values (also right photo)
 
@@ -49,11 +93,11 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     right: { style: 'thin', color: { argb: 'FF000000' } },
   } as const;
 
-  // Two-column grid
+  // Two-column grid (A=label, B=value)
   const rows: Array<[string, string]> = [
     ['DATE', row.date],
     ['STORE LOCATIONS', row.store_location],
-    ['LOCATIONS', ''], // placeholder to match the PDF row (kept blank for now)
+    ['LOCATIONS', ''], // placeholder to match your PDF layout
     ['CONDITIONS', row.conditions],
     ['PRICE PER UNIT', row.price_per_unit],
     ['SHELF SPACE', row.shelf_space],
@@ -68,30 +112,31 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   for (let r = 1; r <= rows.length; r++) {
     const a = ws.getCell(r, 1);
     const b = ws.getCell(r, 2);
-    a.alignment = { vertical: 'middle' };            // keep labels plain like the PDF
+    a.alignment = { vertical: 'middle' }; // PDF look (labels not bold)
     b.alignment = { vertical: 'middle', wrapText: true };
     a.border = thin;
     b.border = thin;
   }
 
-  // Right-align numeric-looking entries (PRICE PER UNIT row 5, TAGS row 8)
+  // Right-align numeric-looking entries
   if (isNumericLike(rows[5 - 1][1])) ws.getCell(5, 2).alignment = { vertical: 'middle', horizontal: 'right' };
   if (isNumericLike(rows[8 - 1][1])) ws.getCell(8, 2).alignment = { vertical: 'middle', horizontal: 'right' };
 
-  // Slightly taller NOTES for readability
+  // Slightly taller NOTES
   ws.getRow(9).height = 36;
 
   // === PHOTOS sized to *column widths* and placed under "PHOTOS" ===
   const photosHeaderRow = rows.length;   // 1-based
   const anchorRowZero = photosHeaderRow; // zero-based for image anchor
 
-  const leftImgWidthPx = colWidthToPx(ws.getColumn(1).width) - 6;  // small padding inside borders
+  const leftImgWidthPx = colWidthToPx(ws.getColumn(1).width) - 6;  // padding so borders show
   const rightImgWidthPx = colWidthToPx(ws.getColumn(2).width) - 6;
-  const imageHeightPx = 300; // tune if you want a bit taller/shorter
+  const imageHeightPx = 300;
 
-  const addImageAt = async (url: string, zeroCol: number, widthPx: number) => {
-    const buffer = await fetchImageBuffer(url);
-    const id = wb.addImage({ buffer, extension: guessExt(url) });
+  const addImageAt = async (src: string, zeroCol: number, widthPx: number) => {
+    const buffer = await loadImageBuffer(src);
+    const ext = sniffImageExt(buffer);
+    const id = wb.addImage({ buffer, extension: ext });
     ws.addImage(id, {
       tl: { col: zeroCol, row: anchorRowZero }, // A=0, B=1
       ext: { width: widthPx, height: imageHeightPx },
