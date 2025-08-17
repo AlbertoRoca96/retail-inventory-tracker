@@ -1,35 +1,51 @@
 // apps/mobile/src/lib/exportExcel.ts
 import ExcelJS from 'exceljs';
 
-/** Input data for export */
 export type SubmissionExcel = {
   date: string;
   store_location: string;
   conditions: string;
-  price_per_unit: string; // keep as string for display
+  price_per_unit: string;
   shelf_space: string;
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[];   // public URLs (we embed up to 2) -- can also be blob: URLs
+  photo_urls: string[];
 };
 
-/** Utility: fetch an image URL (public Supabase or blob:) and return { base64, ext } for ExcelJS */
+// --- NEW: robust fetch that supports http(s), blob:, and data: URLs ---
 async function fetchAsBase64(url: string): Promise<{ base64: string; ext: 'png' | 'jpeg' }> {
-  const res = await fetch(url, { cache: 'no-store' });
+  // data URL: no fetch needed
+  if (url.startsWith('data:')) {
+    const [, meta, b64] = url.match(/^data:(.*?);base64,(.*)$/) ?? [];
+    const isPng = (meta || '').includes('png');
+    return { base64: url, ext: isPng ? 'png' : 'jpeg' };
+  }
+
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
+
   const blob = await res.blob();
-  const ext: 'png' | 'jpeg' = blob.type.includes('png') ? 'png' : 'jpeg';
   const buf = await blob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-  // ExcelJS accepts data-URL format for base64 images
-  return { base64: `data:${blob.type};base64,${base64}`, ext };
+  const u8 = new Uint8Array(buf);
+
+  // Sniff magic numbers when content-type is absent or generic.
+  // PNG: 89 50 4E 47, JPEG: FF D8
+  let ext: 'png' | 'jpeg';
+  const ct = blob.type || res.headers.get('Content-Type') || '';
+  if (ct.includes('png')) ext = 'png';
+  else if (ct.includes('jpeg') || ct.includes('jpg')) ext = 'jpeg';
+  else if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4e && u8[3] === 0x47) ext = 'png';
+  else ext = 'jpeg';
+
+  const base64 = btoa(String.fromCharCode(...u8));
+  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+  return { base64: `data:${mime};base64,${base64}`, ext };
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const wb = new ExcelJS.Workbook();
 
-  // Worksheet + page setup (tight margins, fit to one page width)
   const ws = wb.addWorksheet('submission', {
     properties: { defaultRowHeight: 18 },
     pageSetup: {
@@ -40,12 +56,11 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // 4 columns so we can place photos side-by-side in B and D with a small gap at C
   ws.columns = [
     { key: 'label', width: 22 }, // A
     { key: 'value', width: 44 }, // B
-    { key: 'gap', width: 2 },    // C (visual gap)
-    { key: 'value2', width: 44 } // D (photo 2 column)
+    { key: 'gap', width: 2 },    // C
+    { key: 'value2', width: 44 } // D
   ];
 
   const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
@@ -58,11 +73,8 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     Object.assign(ws.getCell(`A${r}`), labelStyle);
     ws.getCell(`B${r}`).value = value || '';
     Object.assign(ws.getCell(`B${r}`), valueStyle);
-
-    // Carry borders across the "gap" and D to form a continuous table
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
-
     r++;
   }
 
@@ -75,7 +87,6 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header row across A:D to match the PDF
   ws.mergeCells(`A${r}:D${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
@@ -84,9 +95,8 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   hdr.border = border;
   r++;
 
-  // Prepare a bordered area under PHOTOS (so it prints like a table)
   const imageTopRow = r;
-  const rowsForImages = 18; // adjusts printable area height under the photos
+  const rowsForImages = 18;
   for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
     ws.getCell(`A${rr}`).border = border;
     ws.getCell(`B${rr}`).border = border;
@@ -94,40 +104,29 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getCell(`D${rr}`).border = border;
   }
 
-  // Place two images side-by-side (B column and D column), scaled smaller
+  // --- NEW: be resilient if one image fails (use allSettled) ---
   const urls = (row.photo_urls || []).slice(0, 2);
-
-  const settled = await Promise.allSettled(urls.map((u) => fetchAsBase64(u)));
+  const settled = await Promise.allSettled(urls.map(fetchAsBase64));
   const base64s = settled
-    .filter((res): res is PromiseFulfilledResult<{ base64: string; ext: 'png' | 'jpeg' }> => res.status === 'fulfilled')
-    .map((res) => res.value);
+    .filter((s): s is PromiseFulfilledResult<{ base64: string; ext: 'png' | 'jpeg' }> => s.status === 'fulfilled')
+    .map((s) => s.value);
 
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0].base64, extension: base64s[0].ext });
-    // Columns are zero-based in the image anchor: 0=A, 1=B, 2=C, 3=D
-    ws.addImage(id, {
-      tl: { col: 1, row: imageTopRow - 1 }, // start at B{imageTopRow}
-      ext: { width: 360, height: 230 },     // smaller so they sit side-by-side
-    });
+    ws.addImage(id, { tl: { col: 1, row: imageTopRow - 1 }, ext: { width: 360, height: 230 } });
   }
   if (base64s[1]) {
     const id = wb.addImage({ base64: base64s[1].base64, extension: base64s[1].ext });
-    ws.addImage(id, {
-      tl: { col: 3, row: imageTopRow - 1 }, // D{imageTopRow}
-      ext: { width: 360, height: 230 },
-    });
+    ws.addImage(id, { tl: { col: 3, row: imageTopRow - 1 }, ext: { width: 360, height: 230 } });
   }
 
-  // Slightly increase the rows covering the image area so the table looks neat
   for (let rr = imageTopRow; rr < imageTopRow + rowsForImages; rr++) {
-    ws.getRow(rr).height = 18; // consistent lines
+    ws.getRow(rr).height = 18;
   }
 
-  // Download in the browser
-  const buffer = await wb.xlsx.writeBuffer(); // ExcelJS browser API
+  const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
-
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = fname;
