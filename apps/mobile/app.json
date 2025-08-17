@@ -13,6 +13,7 @@
       "expo-router"
     ],
     "extra": { "eas": { "projectId": "71c55632-484d-4208-a4f6-ca6fa815a5bb" } },
-    "web": { "bundler": "metro", "output": "static" }
+    "web": { "bundler": "metro", "output": "static" },
+    "experiments": { "baseUrl": "/retail-inventory-tracker" }
   }
 }
