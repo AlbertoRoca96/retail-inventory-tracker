@@ -1,11 +1,15 @@
-// apps/mobile/src/lib/exportExcel.ts
 import ExcelJS from 'exceljs';
 
 export type SubmissionExcel = {
+  // NEW
+  store_site: string;      // e.g., "WHOLE FOODS" — shown as a title across A:B
+  location: string;        // e.g., "Middle Shelf"
+
+  // Existing
   date: string;
   store_location: string;
   conditions: string;
-  price_per_unit: string; // keep as string for display
+  price_per_unit: string;
   shelf_space: string;
   on_shelf: string;
   tags: string;
@@ -23,6 +27,7 @@ async function toCanvasBase64(url: string): Promise<string> {
     const blob = await res.blob();
     srcForImg = URL.createObjectURL(blob);
   }
+
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
     el.onload = () => resolve(el);
@@ -54,12 +59,12 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // Two wide columns for text AND photos, plus tiny spacer columns to keep your old table feel.
+  // Two wide text columns (A & B) + tiny spacers (C & D) to keep your table borders.
   ws.columns = [
-    { key: 'label',  width: 44 }, // A (widened so left photo fits under A)
-    { key: 'value',  width: 44 }, // B
-    { key: 'gap',    width: 2  }, // C (tiny spacer, optional)
-    { key: 'gap2',   width: 2  }, // D (tiny spacer, optional)
+    { key: 'label',  width: 44 }, // A — wide so photo fits underneath
+    { key: 'value',  width: 44 }, // B — wide so photo fits underneath
+    { key: 'gap',    width: 2  }, // C
+    { key: 'gap2',   width: 2  }, // D
   ];
 
   const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
@@ -67,19 +72,29 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const valueStyle = { alignment: { vertical: 'middle' as const }, border };
 
   let r = 1;
+
+  // === Title row (STORE SITE) across A:B like your PDF ===
+  ws.mergeCells(`A${r}:B${r}`);
+  const siteCell = ws.getCell(`A${r}`);
+  siteCell.value = (row.store_site || '').toUpperCase();
+  siteCell.font = { bold: true };
+  siteCell.border = border;
+  ws.getCell(`C${r}`).border = border;
+  ws.getCell(`D${r}`).border = border;
+  r++;
+
   const addRow = (label: string, value: string) => {
     ws.getCell(`A${r}`).value = label.toUpperCase();
     Object.assign(ws.getCell(`A${r}`), labelStyle);
     ws.getCell(`B${r}`).value = value || '';
     Object.assign(ws.getCell(`B${r}`), valueStyle);
-    // keep borders continuous across spacer cols
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
     r++;
   };
 
-  addRow('DATE', row.date);
   addRow('STORE LOCATION', row.store_location);
+  addRow('LOCATIONS', row.location); // NEW row to match the PDF label
   addRow('CONDITIONS', row.conditions);
   addRow('PRICE PER UNIT', row.price_per_unit);
   addRow('SHELF SPACE', row.shelf_space);
@@ -87,27 +102,25 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header spanning A:B only (matches where images will live)
+  // PHOTOS header only across A:B — the pictures live under these columns
   ws.mergeCells(`A${r}:B${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
   hdr.font = { bold: true };
   hdr.alignment = { vertical: 'middle', horizontal: 'left' };
   hdr.border = border;
-  // carry borders on spacer cols so the table outline stays intact
   ws.getCell(`C${r}`).border = border;
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Bordered photo area (rows) under A & B
+  // Bordered photo area (under A & B)
   const imageTopRow = r;
-  const rowsForImages = 18;                 // height of the photo box
+  const rowsForImages = 18;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
-
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
     ws.getCell(`A${rr}`).border = border;
     ws.getCell(`B${rr}`).border = border;
-    ws.getCell(`C${rr}`).border = border;   // keep outline neat
+    ws.getCell(`C${rr}`).border = border;
     ws.getCell(`D${rr}`).border = border;
     ws.getRow(rr).height = 18;
   }
@@ -119,26 +132,18 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  // Precisely anchor images to fill A and B ranges.
-  // two-cell anchors (tl/br) snap to cell edges consistently across Excel clients. :contentReference[oaicite:0]{index=0}
+  // Anchor images to exact cell ranges so they snap to A and B precisely.
+  // (ExcelJS supports covering a cell range like 'A1:B3' and also tl/br anchors.) :contentReference[oaicite:0]{index=0}
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
-    ws.addImage(id, {
-      tl: { col: 0, row: imageTopRow - 1 },      // A, zero-based
-      br: { col: 1, row: imageBottomRow },       // end of A
-      editAs: 'twoCell',
-    } as any);
+    ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
   }
   if (base64s[1]) {
     const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
-    ws.addImage(id, {
-      tl: { col: 1, row: imageTopRow - 1 },      // B
-      br: { col: 2, row: imageBottomRow },       // end of B
-      editAs: 'twoCell',
-    } as any);
+    ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
   }
 
-  // Finalize download (browser)
+  // Browser download (ExcelJS supports writeBuffer in the browser). :contentReference[oaicite:1]{index=1}
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
