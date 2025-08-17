@@ -23,19 +23,16 @@ jobs:
         with:
           node-version: 20
 
-      # Install project deps (no audit/fund noise)
       - name: Install deps
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
-      # Ensure Expo Web + Router deps (keeps versions aligned with SDK)
       - name: Ensure web deps (Expo Web + Router)
         working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
-      # Export the web build
       - name: Export static web build
         working-directory: apps/mobile
         env:
@@ -44,24 +41,10 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: npx expo export --platform web --output-dir dist
 
-      # Make index robust for GitHub Pages:
-      #  - Switch absolute "/_expo" and "/assets" to relative ("./...")
-      #  - Add a <base> for any remaining absolute asset paths
-      #  - Provide 404.html for client-side routing
-      #  - Disable Jekyll so "_expo" isn’t stripped
-      - name: Patch index.html for Pages
+      - name: Patch index.html for GitHub Pages
         working-directory: apps/mobile/dist
         run: |
-          node -e "const fs=require('fs');
-          let html=fs.readFileSync('index.html','utf8');
-          // make absolute runtime bundle & assets relative
-          html=html.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo');
-          html=html.replace(/(src|href)=\"\/assets/g,'$1=\"./assets');
-          // ensure a base href to catch any remaining absolute refs inside Router pages
-          if(!/<base /i.test(html)){
-            html=html.replace('<head>','<head><base href=\"/retail-inventory-tracker/\">');
-          }
-          fs.writeFileSync('index.html',html);"
+          node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo');fs.writeFileSync('index.html',s)"
           cp index.html 404.html
           touch .nojekyll
 
