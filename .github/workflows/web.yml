@@ -1,40 +1,43 @@
 name: web
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+        with: { node-version: 20 }
+
+      - name: Install Expo CLI
+        run: npm i -g expo-cli
 
       - name: Install deps
-        run: cd apps/mobile && npm ci || npm i
+        working-directory: apps/mobile
+        run: npm ci || npm i
 
-      - name: Export static web
+      - name: Ensure web deps match SDK
+        working-directory: apps/mobile
+        run: npx expo install react-dom react-native-web @expo/metro-runtime --non-interactive
+
+      - name: Export static web build
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: npx expo export --platform web --output-dir dist
+        run: |
+          npx expo export --platform web --output-dir dist --public-url .
+          cp dist/index.html dist/404.html
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/mobile/dist
 
