@@ -22,28 +22,69 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          # ⬇️ no cache inputs here on purpose
 
+      # Install project deps
       - name: Install deps
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
+      # Ensure Expo Web peer deps + expo-router (for static export)
       - name: Ensure web deps match SDK
         working-directory: apps/mobile
         env:
           CI: "true"
-        run: npx expo install react-dom react-native-web @expo/metro-runtime
+        run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
+      # Export the static web build
       - name: Export static web build
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
+        run: npx expo export --platform web --output-dir dist
+
+      # Make index resilient to hashed paths; provide /404.html; disable Jekyll
+      - name: Harden index.html for GitHub Pages
+        working-directory: apps/mobile/dist
         run: |
-          npx expo export --platform web --output-dir dist
-          touch dist/.nojekyll
-          cp dist/index.html dist/404.html
+          cat > index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width,initial-scale=1" />
+            <title>Retail Inventory Tracker</title>
+            <meta name="theme-color" content="#ffffff" />
+          </head>
+          <body>
+            <div id="root">Loading…</div>
+            <script>
+              (async function () {
+                try {
+                  const meta = await fetch('./metadata.json').then(r => r.json());
+                  let url = meta && meta.bundleUrl ? meta.bundleUrl : null;
+                  if (!url) throw new Error('metadata.json missing bundleUrl');
+                  if (!/^https?:\/\//.test(url) && !url.startsWith('/')) url = './' + url;
+                  const s = document.createElement('script');
+                  s.defer = true;
+                  s.src = url;
+                  s.onerror = function () {
+                    document.body.innerHTML =
+                      '<pre style="padding:16px;white-space:pre-wrap">Failed to load app bundle:\\n' + url + '</pre>';
+                  };
+                  document.body.appendChild(s);
+                } catch (err) {
+                  document.body.innerHTML =
+                    '<pre style="padding:16px;white-space:pre-wrap">Boot error:\\n' + (err && err.message || err) + '</pre>';
+                }
+              })();
+            </script>
+          </body>
+          </html>
+          HTML
+          cp index.html 404.html
+          touch .nojekyll
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
