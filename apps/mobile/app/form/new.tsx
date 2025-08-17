@@ -24,6 +24,11 @@ type Photo = {
 };
 
 type FormValues = {
+  // NEW fields
+  storeSite: string;     // e.g., "WHOLE FOODS"
+  location: string;      // e.g., "Middle Shelf"
+
+  // Existing fields
   date: string;
   storeLocation: string;
   conditions: string;
@@ -38,9 +43,12 @@ const isWeb = Platform.OS === 'web';
 const hasWindow = typeof window !== 'undefined';
 
 /** Bump this key when the local-draft format changes to avoid loading stale drafts */
-const DRAFT_KEY = 'rit:new-form-draft:v7';
+const DRAFT_KEY = 'rit:new-form-draft:v8';
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
 const getDefaultValues = (): FormValues => ({
+  storeSite: '',          // NEW
+  location: '',           // NEW
   date: todayISO(),
   storeLocation: '',
   conditions: '',
@@ -231,14 +239,22 @@ export default function NewFormScreen() {
 
       const v = getValues();
 
+      // 1) Upload photos (if signed out, we'll still export with local URIs)
       const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
       const excelPhotoUrls = uploadedUrls.length ? uploadedUrls : photos.map((p) => p.uri);
 
+      // 2) Optional DB insert
       let insertError: any = null;
       if (uid) {
         const { error } = await supabase.from('submissions').insert({
           user_id: uid,
           status: 'submitted',
+
+          // NEW columns
+          store_site: v.storeSite || null,
+          location: v.location || null,
+
+          // Existing columns
           date: v.date || null,
           store_location: v.storeLocation || null,
           conditions: v.conditions || null,
@@ -255,7 +271,13 @@ export default function NewFormScreen() {
         insertError = { message: 'Not authenticated – saved to Excel only.' };
       }
 
+      // 3) Always export Excel
       await downloadSubmissionExcel({
+        // NEW fields for the Excel header rows
+        store_site: v.storeSite || '',
+        location: v.location || '',
+
+        // Existing fields
         date: v.date || '',
         store_location: v.storeLocation || '',
         conditions: v.conditions || '',
@@ -272,6 +294,7 @@ export default function NewFormScreen() {
         return;
       }
 
+      // 4) Clean reset after success
       resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
@@ -440,8 +463,12 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      <Field name="date" label="DATE" placeholder="YYYY-MM-DD" />
+      {/* NEW fields at the top, matching the PDF */}
+      <Field name="storeSite" label="STORE SITE" />
       <Field name="storeLocation" label="STORE LOCATION" />
+      <Field name="location" label="LOCATIONS" />
+
+      <Field name="date" label="DATE" placeholder="YYYY-MM-DD" />
       <Field name="conditions" label="CONDITIONS" />
       <Field name="pricePerUnit" label="PRICE PER UNIT" placeholder="$" keyboardType="numeric" />
       <Field name="shelfSpace" label="SHELF SPACE" />
@@ -532,6 +559,7 @@ export default function NewFormScreen() {
         </Pressable>
       </View>
 
+      {/* Hidden web inputs for camera/library (no effect on native) */}
       {isWeb ? (
         <div style={{ height: 0, overflow: 'hidden' }}>
           <input
