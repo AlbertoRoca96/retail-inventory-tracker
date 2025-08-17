@@ -5,9 +5,13 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -15,18 +19,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-
-      - name: Install Expo CLI
-        run: npm i -g expo-cli
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
 
       - name: Install deps
         working-directory: apps/mobile
         run: npm ci || npm i
 
-      - name: Ensure web deps match SDK
+      - name: Ensure web deps match SDK (non-interactive)
         working-directory: apps/mobile
-        run: npx expo install react-dom react-native-web @expo/metro-runtime --non-interactive
+        env:
+          CI: "true"
+        run: npx expo install react-dom react-native-web @expo/metro-runtime
 
       - name: Export static web build
         working-directory: apps/mobile
@@ -37,7 +43,11 @@ jobs:
           npx expo export --platform web --output-dir dist --public-url .
           cp dist/index.html dist/404.html
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: apps/mobile/dist
 
