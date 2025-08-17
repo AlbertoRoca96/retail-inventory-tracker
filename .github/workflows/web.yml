@@ -23,19 +23,16 @@ jobs:
         with:
           node-version: 20
 
-      # Install app deps
       - name: Install deps
         working-directory: apps/mobile
         run: npm i --no-audit --no-fund
 
-      # Ensure web peer deps for Expo Web are present
       - name: Ensure web deps match SDK
         working-directory: apps/mobile
         env:
           CI: "true"
-        run: npx expo install react-dom react-native-web @expo/metro-runtime
+        run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
-      # Export the static web build
       - name: Export static web build
         working-directory: apps/mobile
         env:
@@ -44,49 +41,10 @@ jobs:
           EXPO_PUBLIC_DEV_BYPASS_LOGIN: "true"
         run: npx expo export --platform web --output-dir dist
 
-      # Replace index.html with a tiny loader that pulls the hashed bundle URL
-      # from metadata.json and injects it. This avoids any base-path quirks and
-      # shows a visible error if loading fails.
-      - name: Make robust index.html loader
-        working-directory: apps/mobile/dist
+      - name: Bake index.html from metadata.json
+        working-directory: apps/mobile
         run: |
-          cat > index.html <<'HTML'
-          <!doctype html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width,initial-scale=1" />
-            <title>Retail Inventory Tracker</title>
-            <meta name="theme-color" content="#ffffff" />
-          </head>
-          <body>
-            <div id="root">Loading…</div>
-            <script>
-              (async function () {
-                try {
-                  const meta = await fetch('./metadata.json').then(r => r.json());
-                  var url = meta && meta.bundleUrl ? meta.bundleUrl : null;
-                  if (!url) throw new Error('metadata.json missing bundleUrl');
-                  if (!/^https?:\/\//.test(url) && !url.startsWith('/')) url = './' + url;
-                  var s = document.createElement('script');
-                  s.defer = true;
-                  s.src = url;
-                  s.onerror = function () {
-                    document.body.innerHTML =
-                      '<pre style="padding:16px;white-space:pre-wrap">Failed to load app bundle:\\n' + url + '</pre>';
-                  };
-                  document.body.appendChild(s);
-                } catch (err) {
-                  document.body.innerHTML =
-                    '<pre style="padding:16px;white-space:pre-wrap">Boot error:\\n' + (err && err.message || err) + '</pre>';
-                }
-              })();
-            </script>
-          </body>
-          </html>
-          HTML
-          cp index.html 404.html
-          touch .nojekyll
+          node -e "const fs=require('fs');const p='dist/metadata.json';const m=JSON.parse(fs.readFileSync(p,'utf8'));let u=m.bundleUrl||'';if(!/^https?:\/\//.test(u)&&!u.startsWith('/'))u='./'+u;const html='<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>Retail Inventory Tracker</title><meta name=\"theme-color\" content=\"#ffffff\"/></head><body><div id=\"root\">Loading…</div><script defer src=\"'+u+'\"></script></body></html>';fs.writeFileSync('dist/index.html',html);fs.copyFileSync('dist/index.html','dist/404.html');fs.writeFileSync('dist/.nojekyll','');"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
