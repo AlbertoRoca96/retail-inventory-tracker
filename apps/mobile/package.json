@@ -20,7 +20,7 @@
     "expo-image-picker": "~16.1.4",
     "expo-router": "^5.0.0",
     "expo-secure-store": "~14.2.3",
-    "exceljs": "4.3.0",
+    "exceljs": "^4.4.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-hook-form": "^7.52.1",
