@@ -97,6 +97,26 @@ export default function NewFormScreen() {
   // When we need web inputs to re-mount with new defaultValue (after Clear/Load), bump this key.
   const [formKey, setFormKey] = useState(0);
 
+  // ---- NEW (minimal): web camera/library fallbacks ----
+  const camInputRef = useRef<HTMLInputElement | null>(null);
+  const libInputRef = useRef<HTMLInputElement | null>(null);
+  const handleWebFile = useCallback((file?: File | null) => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setPhotos((p) => [
+      ...p,
+      {
+        uri: url,
+        fileName: file.name,
+        mimeType: file.type || 'image/jpeg',
+        width: null,
+        height: null,
+      },
+    ]);
+    // persist to draft
+    setTimeout(scheduleAutosave, 0);
+  }, []); // scheduleAutosave is defined later; referenced lazily via setTimeout
+
   // Load draft once after hydration
   const loaded = useRef(false);
   useEffect(() => {
@@ -147,6 +167,10 @@ export default function NewFormScreen() {
   };
 
   const addFromLibrary = async () => {
+    if (isWeb) {
+      libInputRef.current?.click();
+      return;
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
@@ -162,6 +186,10 @@ export default function NewFormScreen() {
   };
 
   const takePhoto = async () => {
+    if (isWeb) {
+      camInputRef.current?.click(); // HTML file input with capture attr
+      return;
+    }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       setBanner({ kind: 'error', text: 'Camera permission denied' });
@@ -200,7 +228,7 @@ export default function NewFormScreen() {
     resetForm(true);
     // persist that the draft is now empty (helps if the tab stays open)
     saveDraftLocal({ ...getDefaultValues(), photos: [] });
-    setBanner({ kind: 'success', text: 'Cleared all saved fields and photos.' });
+    setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
   };
 
   // Submit: upload → try DB insert → ALWAYS export → clear draft & reset on success
@@ -514,6 +542,25 @@ export default function NewFormScreen() {
           <Text style={{ fontWeight: '700' }}>Clear (wipe saved fields & photos)</Text>
         </Pressable>
       </View>
+
+      {/* Hidden web inputs for camera/library (no effect on native) */}
+      {isWeb ? (
+        <div style={{ height: 0, overflow: 'hidden' }}>
+          <input
+            ref={camInputRef as any}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)}
+          />
+          <input
+            ref={libInputRef as any}
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)}
+          />
+        </div>
+      ) : null}
     </ScrollView>
   );
 }
