@@ -8,6 +8,7 @@ import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
+// PDF export is loaded dynamically inside onSubmit to avoid hard coupling.
 
 type Banner =
   | { kind: 'info'; text: string }
@@ -28,8 +29,9 @@ type FormValues = {
   storeSite: string;     // e.g., "WHOLE FOODS"
   location: string;      // e.g., "Middle Shelf"
 
-  // Existing fields
+  // Existing fields (+ NEW brand below)
   date: string;
+  brand?: string;        // NEW: under DATE in the sheet & PDF
   storeLocation: string;
   conditions: string;
   pricePerUnit: string;
@@ -50,6 +52,7 @@ const getDefaultValues = (): FormValues => ({
   storeSite: '',          // NEW
   location: '',           // NEW
   date: todayISO(),
+  brand: '',              // NEW
   storeLocation: '',
   conditions: '',
   pricePerUnit: '',
@@ -253,6 +256,7 @@ export default function NewFormScreen() {
           // NEW columns
           store_site: v.storeSite || null,
           location: v.location || null,
+          brand: v.brand || null, // NEW
 
           // Existing columns
           date: v.date || null,
@@ -268,18 +272,16 @@ export default function NewFormScreen() {
         });
         insertError = error ?? null;
       } else {
-        insertError = { message: 'Not authenticated – saved to Excel only.' };
+        insertError = { message: 'Not authenticated – saved to Excel/PDF only.' };
       }
 
-      // 3) Always export Excel
+      // 3) Always export Excel (now includes BRAND)
       await downloadSubmissionExcel({
-        // NEW fields for the Excel header rows
         store_site: v.storeSite || '',
-        location: v.location || '',
-
-        // Existing fields
         date: v.date || '',
+        brand: v.brand || '',
         store_location: v.storeLocation || '',
+        location: v.location || '',
         conditions: v.conditions || '',
         price_per_unit: v.pricePerUnit || '',
         shelf_space: v.shelfSpace || '',
@@ -289,8 +291,31 @@ export default function NewFormScreen() {
         photo_urls: excelPhotoUrls.filter(Boolean),
       });
 
+      // 3b) PDF export (centered) — loaded dynamically; if the file isn’t present yet, silently skip
+      try {
+        const mod = await import('../../src/lib/exportPdf');
+        if (mod?.downloadSubmissionPdf) {
+          await mod.downloadSubmissionPdf({
+            store_site: v.storeSite || '',
+            date: v.date || '',
+            brand: v.brand || '',
+            store_location: v.storeLocation || '',
+            location: v.location || '',
+            conditions: v.conditions || '',
+            price_per_unit: v.pricePerUnit || '',
+            shelf_space: v.shelfSpace || '',
+            on_shelf: v.onShelf || '',
+            tags: v.tags || '',
+            notes: v.notes || '',
+            photo_urls: excelPhotoUrls.filter(Boolean),
+          });
+        }
+      } catch {
+        // no-op: PDF helper not installed yet
+      }
+
       if (insertError) {
-        setBanner({ kind: 'error', text: insertError.message ?? 'Row not saved (RLS). Excel exported.' });
+        setBanner({ kind: 'error', text: insertError.message ?? 'Row not saved (RLS). Files exported.' });
         return;
       }
 
@@ -469,6 +494,7 @@ export default function NewFormScreen() {
       <Field name="location" label="LOCATIONS" />
 
       <Field name="date" label="DATE" placeholder="YYYY-MM-DD" />
+      <Field name="brand" label="BRAND" /> {/* NEW under DATE */}
       <Field name="conditions" label="CONDITIONS" />
       <Field name="pricePerUnit" label="PRICE PER UNIT" placeholder="$" keyboardType="numeric" />
       <Field name="shelfSpace" label="SHELF SPACE" />
