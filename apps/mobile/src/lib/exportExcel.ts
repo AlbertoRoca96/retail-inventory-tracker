@@ -1,11 +1,10 @@
-// apps/mobile/src/lib/exportExcel.ts
 import ExcelJS from 'exceljs';
 
 export type SubmissionExcel = {
   // header/title info
-  store_site: string;       // shown as a title across A:B (e.g., "WHOLE FOODS")
+  store_site: string;       // e.g., "WHOLE FOODS" shown across A:B
 
-  // rows (left label / right value)
+  // rows
   date: string;
   brand: string;            // NEW — directly under DATE
   store_location: string;   // e.g., "BELLINGHAM, MA"
@@ -21,8 +20,8 @@ export type SubmissionExcel = {
   photo_urls: string[];     // up to 2
 };
 
-/** Load any image URL (http/https/blob/data), draw to a canvas (drops EXIF),
- *  and return raw base64 (no data: prefix). JPEG keeps file size reasonable. */
+/** Load any image URL (http/https/blob/data), rasterize to strip EXIF,
+ * and return raw base64 (no data: prefix). */
 async function toCanvasBase64(url: string): Promise<string> {
   let srcForImg = url;
   if (/^https?:/i.test(url)) {
@@ -63,12 +62,12 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // Two wide text columns (A & B) + tiny spacers (C & D) to keep the grid look.
+  // Two wide columns (A & B) + two thin spacers (C & D) to preserve borders.
   ws.columns = [
-    { key: 'label',  width: 44 }, // A — wide so the left photo fits under A
-    { key: 'value',  width: 44 }, // B — wide so the right photo fits under B
-    { key: 'gap',    width: 2  }, // C — spacer with borders
-    { key: 'gap2',   width: 2  }, // D — spacer with borders
+    { key: 'label',  width: 44 }, // A — left text + left photo
+    { key: 'value',  width: 44 }, // B — right text + right photo
+    { key: 'gap',    width: 2  }, // C — spacer
+    { key: 'gap2',   width: 2  }, // D — spacer
   ];
 
   const border = {
@@ -82,7 +81,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
 
   let r = 1;
 
-  // === Top title: STORE SITE (merged across A:B)
+  // STORE SITE title across A:B
   ws.mergeCells(`A${r}:B${r}`);
   const siteCell = ws.getCell(`A${r}`);
   siteCell.value = (row.store_site || '').toUpperCase();
@@ -103,7 +102,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     r++;
   };
 
-  // rows in the requested order
+  // Order requested
   addRow('DATE', row.date);
   addRow('BRAND', row.brand);                 // NEW
   addRow('STORE LOCATION', row.store_location);
@@ -126,7 +125,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Bordered photo area under A & B
+  // Photo grid under A & B
   const imageTopRow = r;
   const rowsForImages = 18;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
@@ -139,14 +138,13 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getRow(rr).height = 18;
   }
 
-  // Load up to two photos; ignore failures
+  // Add up to 2 images
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
   const base64s = settled
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  // Snap precisely into A and B ranges
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
     ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
@@ -156,7 +154,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
   }
 
-  // Download (browser)
+  // Download
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
