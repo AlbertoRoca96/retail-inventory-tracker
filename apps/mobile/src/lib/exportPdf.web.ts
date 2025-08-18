@@ -1,5 +1,4 @@
-// apps/mobile/src/lib/exportPdf.web.ts
-// Web-only PDF generator (static import so no runtime chunk loads).
+// Web-only PDF generator (Safari/Metro-web friendly)
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
@@ -15,7 +14,7 @@ export type SubmissionPdf = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[]; // up to 2
+  photo_urls: string[];
 };
 
 // Page constants
@@ -37,7 +36,6 @@ function drawRect(page: any, x: number, y: number, w: number, h: number) {
 async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
   if (!url) return null;
 
-  // data: URL
   if (url.startsWith('data:')) {
     try {
       const base64 = url.split(',')[1] ?? '';
@@ -50,7 +48,6 @@ async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
     }
   }
 
-  // blob:, http(s):
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
@@ -131,7 +128,8 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
     if (!img) continue;
 
     const scale = Math.min(b.w / img.width, b.h / img.height);
-    const w = img.width * scale, h = img.height * scale;
+    const w = img.width * scale;
+    const h = img.height * scale;
     page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
   }
 
@@ -149,5 +147,4 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// Keep a default export for the dynamic-import path used by new.tsx
 export default { downloadSubmissionPdf };
