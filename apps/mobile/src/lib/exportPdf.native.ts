@@ -1,5 +1,4 @@
 // apps/mobile/src/lib/exportPdf.native.ts
-import * as Print from 'expo-print';
 
 export type SubmissionPdf = {
   store_site: string;
@@ -17,15 +16,26 @@ export type SubmissionPdf = {
 };
 
 export async function downloadSubmissionPdf(data: SubmissionPdf) {
+  // 🧩 Load native modules at runtime (keeps web clean even if mistakenly resolved)
+  const Print = await import('expo-print');
+  const FileSystem = await import('expo-file-system');
+  let Sharing: typeof import('expo-sharing') | null = null;
+  try {
+    Sharing = await import('expo-sharing');
+  } catch {
+    // Sharing might not be available on every platform; we'll just skip if so.
+  }
+
   const [img1, img2] = (data.photo_urls || []).slice(0, 2);
   const esc = (s: string) =>
     (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+  // Simple table layout that mirrors your Excel, centered on the page
   const html = `<!doctype html>
 <html><head><meta charset="utf-8"/><style>
   @page { size: Letter portrait; margin: 36pt; }
   * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; margin: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; margin: 0; }
   .wrapper { width: 100%; }
   table { width: 100%; border-collapse: collapse; }
   td, th { border: 1px solid #777; padding: 6pt; font-size: 10pt; vertical-align: middle; }
@@ -62,5 +72,40 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   </div>
 </body></html>`;
 
-  await Print.printAsync({ html });
+  // 1) Render HTML → PDF file on device
+  const { uri } = await Print.printToFileAsync({ html, base64: false });
+
+  // 2) Give it a nice name and move into app documents folder
+  const fileName = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
+  const dest = `${FileSystem.documentDirectory}${fileName}`;
+  try {
+    await FileSystem.copyAsync({ from: uri, to: dest });
+  } catch {
+    // If copy fails, use the original URI
+    return await shareIfPossible(uri, Sharing);
+  }
+
+  // 3) Open the system share sheet so the user can "Save to Files" (iOS)
+  return await shareIfPossible(dest, Sharing);
+}
+
+async function shareIfPossible(
+  fileUri: string,
+  Sharing: typeof import('expo-sharing') | null
+) {
+  try {
+    if (Sharing && (await Sharing.isAvailableAsync())) {
+      await Sharing.shareAsync(fileUri, {
+        UTI: 'com.adobe.pdf',
+        mimeType: 'application/pdf',
+      });
+    } else {
+      // Fallback: if Sharing isn't available, at least try to open the native print dialog
+      const Print = await import('expo-print');
+      await Print.printAsync({ uri: fileUri });
+    }
+  } catch {
+    // swallow; we don't want to crash submission if user cancels share
+  }
+  return fileUri;
 }
