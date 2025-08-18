@@ -149,7 +149,7 @@ export default function NewFormScreen() {
   useEffect(() => {
     if (!hydrated || loaded.current) return;
     loaded.current = true;
-    const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>();
+    const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>>();
     if (draft) {
       const merged: FormValues = { ...getDefaultValues(), ...draft };
       formRef.current = merged;
@@ -254,10 +254,12 @@ export default function NewFormScreen() {
     setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
   };
 
+  // Web-only: one-tap PDF download (satisfies user gesture)
   const onDownloadPdf = async () => {
     if (!pdfReady) return;
     try {
-      const mod = await import('../../src/lib/exportPdf');
+      // Explicitly resolve the .web variant for GH Pages / Metro web.
+      const mod = await import('../../src/lib/exportPdf.web');
       const fn = (mod as any)?.downloadSubmissionPdf ?? (mod as any)?.default?.downloadSubmissionPdf;
       if (typeof fn !== 'function') {
         throw new Error('PDF export function not found.');
@@ -267,11 +269,10 @@ export default function NewFormScreen() {
       setBanner({ kind: 'error', text: e?.message || 'PDF export failed' });
       return;
     } finally {
-    // Hide the button only after we’ve tried.
-    setPdfReady(null);
+      // Hide the button only after we’ve tried.
+      setPdfReady(null);
     }
   };
-
 
   // Submit: upload → DB insert (optional) → ALWAYS export (Excel) → PDF
   const onSubmit = async () => {
