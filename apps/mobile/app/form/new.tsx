@@ -1,4 +1,3 @@
-// apps/mobile/app/form/new.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,7 +7,6 @@ import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
-// PDF export is loaded dynamically inside onSubmit / onDownloadPdf to avoid hard coupling.
 
 type Banner =
   | { kind: 'info'; text: string }
@@ -25,13 +23,10 @@ type Photo = {
 };
 
 type FormValues = {
-  // NEW fields
-  storeSite: string;     // e.g., "WHOLE FOODS"
-  location: string;      // e.g., "Middle Shelf"
-
-  // Existing fields (+ NEW brand below)
+  storeSite: string;
+  location: string;
   date: string;
-  brand?: string;        // NEW: under DATE in the sheet & PDF
+  brand?: string;
   storeLocation: string;
   conditions: string;
   pricePerUnit: string;
@@ -41,7 +36,6 @@ type FormValues = {
   notes: string;
 };
 
-// Local type for the PDF call so we don't statically import the module on web
 type PdfPayload = {
   store_site: string;
   date: string;
@@ -59,16 +53,14 @@ type PdfPayload = {
 
 const isWeb = Platform.OS === 'web';
 const hasWindow = typeof window !== 'undefined';
-
-/** Bump this key when the local-draft format changes to avoid loading stale drafts */
 const DRAFT_KEY = 'rit:new-form-draft:v8';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const getDefaultValues = (): FormValues => ({
-  storeSite: '',          // NEW
-  location: '',           // NEW
+  storeSite: '',
+  location: '',
   date: todayISO(),
-  brand: '',              // NEW
+  brand: '',
   storeLocation: '',
   conditions: '',
   pricePerUnit: '',
@@ -78,11 +70,8 @@ const getDefaultValues = (): FormValues => ({
   notes: '',
 });
 
-// ---------- localStorage helpers (no React setState inside) ----------
 function saveDraftLocal(draft: unknown) {
-  try {
-    if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  } catch {}
+  try { if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch {}
 }
 function loadDraftLocal<T>(): T | null {
   try {
@@ -93,58 +82,33 @@ function loadDraftLocal<T>(): T | null {
   } catch {}
   return null;
 }
-function clearDraftLocal() {
-  try {
-    if (isWeb && hasWindow) window.localStorage.removeItem(DRAFT_KEY);
-  } catch {}
-}
+function clearDraftLocal() { try { if (isWeb && hasWindow) window.localStorage.removeItem(DRAFT_KEY); } catch {} }
 
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
 
-  // Avoid hydration quirks for static web
   const [hydrated, setHydrated] = useState(!isWeb);
-  useEffect(() => {
-    if (isWeb) setHydrated(true);
-  }, []);
+  useEffect(() => { if (isWeb) setHydrated(true); }, []);
 
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
 
-  // ---------------- Values store ----------------
   const formRef = useRef<FormValues>(getDefaultValues());
   const [photos, setPhotos] = useState<Photo[]>([]);
-
-  // Native mirrored state
   const [nVals, setNVals] = useState<FormValues>(getDefaultValues());
-
-  // When we need web inputs to re-mount with new defaultValue (after Clear/Load), bump this key.
   const [formKey, setFormKey] = useState(0);
-
-  // NEW: when set on web, shows a one-tap PDF download button (to satisfy user gesture)
   const [pdfReady, setPdfReady] = useState<PdfPayload | null>(null);
 
-  // ---- web camera/library fallbacks ----
   const camInputRef = useRef<HTMLInputElement | null>(null);
   const libInputRef = useRef<HTMLInputElement | null>(null);
   const handleWebFile = useCallback((file?: File | null) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
-    setPhotos((p) => [
-      ...p,
-      {
-        uri: url,
-        fileName: file.name,
-        mimeType: file.type || 'image/jpeg',
-        width: null,
-        height: null,
-      },
-    ]);
+    setPhotos((p) => [...p, { uri: url, fileName: file.name, mimeType: file.type || 'image/jpeg', width: null, height: null }]);
     setTimeout(scheduleAutosave, 0);
   }, []);
 
-  // Load draft once after hydration
   const loaded = useRef(false);
   useEffect(() => {
     if (!hydrated || loaded.current) return;
@@ -160,11 +124,8 @@ export default function NewFormScreen() {
     }
   }, [hydrated]);
 
-  const getValues = useCallback((): FormValues => {
-    return isWeb ? { ...formRef.current } : { ...nVals };
-  }, [nVals]);
+  const getValues = useCallback((): FormValues => (isWeb ? { ...formRef.current } : { ...nVals }), [nVals]);
 
-  // Debounced autosave
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutosave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -173,64 +134,35 @@ export default function NewFormScreen() {
       saveDraftLocal({ ...v, photos });
     }, 350);
   }, [getValues, photos]);
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
-  // ---------------- Photos ----------------
   const removePhotoAt = (idx: number) => {
-    setPhotos((prev) => {
-      const next = prev.slice();
-      next.splice(idx, 1);
-      return next;
-    });
+    setPhotos((prev) => { const next = prev.slice(); next.splice(idx, 1); return next; });
     setTimeout(scheduleAutosave, 0);
   };
 
   const addFromLibrary = async () => {
-    if (isWeb) {
-      libInputRef.current?.click();
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
+    if (isWeb) { libInputRef.current?.click(); return; }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [
-        ...p,
-        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
-      ]);
+      setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
       setTimeout(scheduleAutosave, 0);
     }
   };
 
   const takePhoto = async () => {
-    if (isWeb) {
-      camInputRef.current?.click();
-      return;
-    }
+    if (isWeb) { camInputRef.current?.click(); return; }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setBanner({ kind: 'error', text: 'Camera permission denied' });
-      return;
-    }
+    if (status !== 'granted') { setBanner({ kind: 'error', text: 'Camera permission denied' }); return; }
     const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [
-        ...p,
-        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
-      ]);
+      setPhotos((p) => [...p, { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height }]);
       setTimeout(scheduleAutosave, 0);
     }
   };
 
-  // ---------------- Actions ----------------
   const onSave = () => {
     const v = getValues();
     saveDraftLocal({ ...v, photos });
@@ -244,8 +176,6 @@ export default function NewFormScreen() {
     setPhotos([]);
     setFormKey((k) => k + 1);
     if (clearDraft) clearDraftLocal();
-    // Note: intentionally do NOT clear pdfReady here so the user can still tap "Download PDF"
-    // after a successful submission/reset if needed.
   };
 
   const onClearAll = () => {
@@ -257,23 +187,19 @@ export default function NewFormScreen() {
   const onDownloadPdf = async () => {
     if (!pdfReady) return;
     try {
-      const mod = await import('../../src/lib/exportPdf');
+      // Explicitly import the .web implementation for web
+      const mod = await import('../../src/lib/exportPdf.web');
       const fn = (mod as any)?.downloadSubmissionPdf ?? (mod as any)?.default?.downloadSubmissionPdf;
-      if (typeof fn !== 'function') {
-        throw new Error('PDF export function not found.');
-      }
+      if (typeof fn !== 'function') throw new Error('PDF export function not found.');
       await fn(pdfReady);
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message || 'PDF export failed' });
       return;
     } finally {
-    // Hide the button only after we’ve tried.
-    setPdfReady(null);
+      setPdfReady(null);
     }
   };
 
-
-  // Submit: upload → DB insert (optional) → ALWAYS export (Excel) → PDF
   const onSubmit = async () => {
     try {
       if (busy) return;
@@ -282,23 +208,17 @@ export default function NewFormScreen() {
 
       const v = getValues();
 
-      // 1) Upload photos (if signed out, we'll still export with local URIs)
       const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
       const excelPhotoUrls = uploadedUrls.length ? uploadedUrls : photos.map((p) => p.uri);
 
-      // 2) Optional DB insert
       let insertError: any = null;
       if (uid) {
         const { error } = await supabase.from('submissions').insert({
           user_id: uid,
           status: 'submitted',
-
-          // NEW columns
           store_site: v.storeSite || null,
           location: v.location || null,
-          brand: v.brand || null, // NEW
-
-          // Existing columns
+          brand: v.brand || null,
           date: v.date || null,
           store_location: v.storeLocation || null,
           conditions: v.conditions || null,
@@ -315,7 +235,6 @@ export default function NewFormScreen() {
         insertError = { message: 'Not authenticated – saved to Excel/PDF only.' };
       }
 
-      // 3) Always export Excel (now includes BRAND)
       await downloadSubmissionExcel({
         store_site: v.storeSite || '',
         date: v.date || '',
@@ -331,7 +250,6 @@ export default function NewFormScreen() {
         photo_urls: excelPhotoUrls.filter(Boolean),
       });
 
-      // 3b) PDF export setup
       const pdfPayload: PdfPayload = {
         store_site: v.storeSite || '',
         date: v.date || '',
@@ -348,7 +266,6 @@ export default function NewFormScreen() {
       };
 
       if (isWeb) {
-        // 👉 Web: show a user-gesture button to avoid multiple auto-downloads being blocked.
         setPdfReady(pdfPayload);
         setBanner((b) =>
           b?.kind === 'error'
@@ -356,11 +273,10 @@ export default function NewFormScreen() {
             : { kind: 'info', text: 'Excel downloaded. Tap "Download PDF" below to save the PDF.' }
         );
       } else {
-        // 👉 Native: keep auto-export via dynamic import
         try {
           const mod = await import('../../src/lib/exportPdf');
-          if (mod?.downloadSubmissionPdf) {
-            await mod.downloadSubmissionPdf(pdfPayload);
+          if ((mod as any)?.downloadSubmissionPdf) {
+            await (mod as any).downloadSubmissionPdf(pdfPayload);
           }
         } catch {}
       }
@@ -370,7 +286,6 @@ export default function NewFormScreen() {
         return;
       }
 
-      // 4) Clean reset after success (pdfReady is intentionally preserved)
       resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
@@ -380,19 +295,10 @@ export default function NewFormScreen() {
     }
   };
 
-  // ---------------- Fields ----------------
   const WebField = ({
-    name,
-    label,
-    placeholder,
-    multiline,
-    inputMode,
+    name, label, placeholder, multiline, inputMode,
   }: {
-    name: keyof FormValues;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-    inputMode?: 'text' | 'decimal';
+    name: keyof FormValues; label: string; placeholder?: string; multiline?: boolean; inputMode?: 'text' | 'decimal';
   }) => (
     <View style={{ marginBottom: 16 }}>
       <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
@@ -400,61 +306,29 @@ export default function NewFormScreen() {
         <textarea
           key={`${name}-${formKey}`}
           defaultValue={formRef.current[name] ?? ''}
-          onInput={(e) => {
-            formRef.current[name] = (e.currentTarget.value as any) ?? '';
-            scheduleAutosave();
-          }}
+          onInput={(e) => { (formRef.current as any)[name] = (e.currentTarget.value as any) ?? ''; scheduleAutosave(); }}
           onBlur={scheduleAutosave}
           placeholder={placeholder}
-          style={{
-            width: '100%',
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderStyle: 'solid',
-            borderRadius: 8,
-            padding: 10,
-            minHeight: 80,
-          } as any}
+          style={{ width: '100%', backgroundColor: 'white', borderWidth: 1, borderColor: '#111', borderStyle: 'solid', borderRadius: 8, padding: 10, minHeight: 80 } as any}
         />
       ) : (
         <input
           key={`${name}-${formKey}`}
           defaultValue={formRef.current[name] ?? ''}
-          onInput={(e) => {
-            formRef.current[name] = (e.currentTarget.value as any) ?? '';
-            scheduleAutosave();
-          }}
+          onInput={(e) => { (formRef.current as any)[name] = (e.currentTarget.value as any) ?? ''; scheduleAutosave(); }}
           onBlur={scheduleAutosave}
           placeholder={placeholder}
           inputMode={inputMode}
-          style={{
-            width: '100%',
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderStyle: 'solid',
-            borderRadius: 8,
-            padding: 8,
-            height: 40,
-          } as any}
+          style={{ width: '100%', backgroundColor: 'white', borderWidth: 1, borderColor: '#111', borderStyle: 'solid', borderRadius: 8, padding: 8, height: 40 } as any}
         />
       )}
     </View>
   );
 
   const NativeField = ({
-    prop,
-    label,
-    placeholder,
-    multiline,
-    keyboardType,
+    prop, label, placeholder, multiline, keyboardType,
   }: {
-    prop: keyof FormValues;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-    keyboardType?: 'default' | 'numeric' | 'email-address';
+    prop: keyof FormValues; label: string; placeholder?: string; multiline?: boolean; keyboardType?: 'default' | 'numeric' | 'email-address';
   }) => {
     const value = nVals[prop];
     return (
@@ -462,53 +336,25 @@ export default function NewFormScreen() {
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
         <TextInput
           value={value}
-          onChangeText={(s) => {
-            setNVals((prev) => ({ ...prev, [prop]: s ?? '' }));
-            scheduleAutosave();
-          }}
+          onChangeText={(s) => { setNVals((prev) => ({ ...prev, [prop]: s ?? '' })); scheduleAutosave(); }}
           placeholder={placeholder}
           multiline={!!multiline}
           autoCorrect={false}
           autoCapitalize="none"
           keyboardType={keyboardType}
-          style={{
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: multiline ? 10 : 8,
-            minHeight: multiline ? 80 : 40,
-            textAlignVertical: multiline ? 'top' : 'center',
-          }}
+          style={{ backgroundColor: 'white', borderWidth: 1, borderColor: '#111', borderRadius: 8, paddingHorizontal: 12, paddingVertical: multiline ? 10 : 8, minHeight: multiline ? 80 : 40, textAlignVertical: multiline ? 'top' : 'center' }}
         />
       </View>
     );
   };
 
   const Field = (p: {
-    name: keyof FormValues;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-    keyboardType?: 'default' | 'numeric' | 'email-address';
+    name: keyof FormValues; label: string; placeholder?: string; multiline?: boolean; keyboardType?: 'default' | 'numeric' | 'email-address';
   }) =>
     isWeb ? (
-      <WebField
-        name={p.name}
-        label={p.label}
-        placeholder={p.placeholder}
-        multiline={p.multiline}
-        inputMode={p.keyboardType === 'numeric' ? 'decimal' : 'text'}
-      />
+      <WebField name={p.name} label={p.label} placeholder={p.placeholder} multiline={p.multiline} inputMode={p.keyboardType === 'numeric' ? 'decimal' : 'text'} />
     ) : (
-      <NativeField
-        prop={p.name}
-        label={p.label}
-        placeholder={p.placeholder}
-        multiline={p.multiline}
-        keyboardType={p.keyboardType}
-      />
+      <NativeField prop={p.name} label={p.label} placeholder={p.placeholder} multiline={p.multiline} keyboardType={p.keyboardType} />
     );
 
   if (!hydrated) {
@@ -526,26 +372,17 @@ export default function NewFormScreen() {
       </Text>
 
       {banner ? (
-        <View
-          style={{
-            backgroundColor:
-              banner.kind === 'success' ? '#16a34a' : banner.kind === 'error' ? '#ef4444' : '#0ea5e9',
-            padding: 10,
-            borderRadius: 8,
-            marginBottom: 12,
-          }}
-        >
+        <View style={{ backgroundColor: banner.kind === 'success' ? '#16a34a' : banner.kind === 'error' ? '#ef4444' : '#0ea5e9', padding: 10, borderRadius: 8, marginBottom: 12 }}>
           <Text style={{ color: 'white', textAlign: 'center' }}>{banner.text}</Text>
         </View>
       ) : null}
 
-      {/* NEW fields at the top, matching the PDF */}
       <Field name="storeSite" label="STORE SITE" />
       <Field name="storeLocation" label="STORE LOCATION" />
       <Field name="location" label="LOCATIONS" />
 
       <Field name="date" label="DATE" placeholder="YYYY-MM-DD" />
-      <Field name="brand" label="BRAND" /> {/* NEW under DATE */}
+      <Field name="brand" label="BRAND" />
       <Field name="conditions" label="CONDITIONS" />
       <Field name="pricePerUnit" label="PRICE PER UNIT" placeholder="$" keyboardType="numeric" />
       <Field name="shelfSpace" label="SHELF SPACE" />
@@ -557,24 +394,11 @@ export default function NewFormScreen() {
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         {photos.map((p, i) => (
           <View key={`${p.uri}-${i}`} style={{ position: 'relative' }}>
-            <Image
-              source={{ uri: p.uri }}
-              style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
-            />
+            <Image source={{ uri: p.uri }} style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }} />
             <Pressable
               onPress={() => removePhotoAt(i)}
               accessibilityRole="button"
-              style={{
-                position: 'absolute',
-                top: -6,
-                right: -6,
-                backgroundColor: '#ef4444',
-                borderRadius: 12,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderWidth: 1,
-                borderColor: 'white',
-              }}
+              style={{ position: 'absolute', top: -6, right: -6, backgroundColor: '#ef4444', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: 'white' }}
             >
               <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>×</Text>
             </Pressable>
@@ -583,63 +407,33 @@ export default function NewFormScreen() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-        <Pressable
-          onPress={takePhoto}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={takePhoto} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ color: 'white', fontWeight: '700' }}>Take Photo</Text>
         </Pressable>
-        <Pressable
-          onPress={addFromLibrary}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={addFromLibrary} style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ color: 'white', fontWeight: '700' }}>Add from Library</Text>
         </Pressable>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <Pressable
-          onPress={onSave}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={onSave} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ fontWeight: '700' }}>Save</Text>
         </Pressable>
 
-        <Pressable
-          onPress={onSubmit}
-          disabled={busy}
-          style={{
-            flex: 1,
-            backgroundColor: busy ? '#94a3b8' : '#2563eb',
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: 'center',
-          }}
-        >
+        <Pressable onPress={onSubmit} disabled={busy} style={{ flex: 1, backgroundColor: busy ? '#94a3b8' : '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ color: 'white', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => router.back()}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
-        >
+        <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
           <Text style={{ fontWeight: '700' }}>Exit</Text>
         </Pressable>
       </View>
 
-      {/* Web-only: one-tap PDF download (satisfies user gesture) */}
       {isWeb && pdfReady ? (
         <View style={{ marginTop: 12, gap: 8 as any }}>
           <Pressable
             onPress={onDownloadPdf}
-            style={{
-              backgroundColor: '#2563eb',
-              paddingVertical: 12,
-              borderRadius: 10,
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: '#1d4ed8',
-            }}
+            style={{ backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#1d4ed8' }}
           >
             <Text style={{ color: 'white', fontWeight: '700' }}>Download PDF</Text>
           </Pressable>
@@ -652,36 +446,16 @@ export default function NewFormScreen() {
       <View style={{ marginTop: 12, flexDirection: 'row', gap: 12 }}>
         <Pressable
           onPress={onClearAll}
-          style={{
-            flex: 1,
-            backgroundColor: '#f3f4f6',
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: 'center',
-            borderWidth: 1,
-            borderColor: '#d1d5db',
-          }}
+          style={{ flex: 1, backgroundColor: '#f3f4f6', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' }}
         >
           <Text style={{ fontWeight: '700' }}>Clear (wipe saved fields & photos)</Text>
         </Pressable>
       </View>
 
-      {/* Hidden web inputs for camera/library (no effect on native) */}
       {isWeb ? (
         <div style={{ height: 0, overflow: 'hidden' }}>
-          <input
-            ref={camInputRef as any}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)}
-          />
-          <input
-            ref={libInputRef as any}
-            type="file"
-            accept="image/*"
-            onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)}
-          />
+          <input ref={camInputRef as any} type="file" accept="image/*" capture="environment" onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)} />
+          <input ref={libInputRef as any} type="file" accept="image/*" onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)} />
         </div>
       ) : null}
     </ScrollView>
