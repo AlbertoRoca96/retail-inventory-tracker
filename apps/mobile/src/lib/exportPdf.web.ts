@@ -1,7 +1,7 @@
 // apps/mobile/src/lib/exportPdf.web.ts
-// Web-only PDF generator (static import so it’s bundled into the main chunk).
+// Web-only PDF generator (static import so no runtime chunk loads).
 
-import * as PDFLib from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 export type SubmissionPdf = {
   store_site: string;
@@ -18,17 +18,11 @@ export type SubmissionPdf = {
   photo_urls: string[]; // up to 2
 };
 
-// Pull what we need up front (static, not dynamic)
-const PDFDocument = PDFLib.PDFDocument;
-const StandardFonts = PDFLib.StandardFonts;
-const rgb = PDFLib.rgb;
-
 // Page constants
 const PAGE_W = 612; // 8.5in * 72dpi
 const PAGE_H = 792; // 11in * 72dpi
 const M = 36;       // 0.5" margin
 
-// Helpers (no destructuring inside hot paths)
 function drawText(page: any, str: string, x: number, y: number, size: number, font: any) {
   page.drawText(str ?? '', { x, y, size, font, color: rgb(0, 0, 0) });
 }
@@ -67,7 +61,6 @@ async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
 }
 
 export async function downloadSubmissionPdf(data: SubmissionPdf) {
-  // Create doc + fonts
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -80,7 +73,7 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   drawText(page, (data.store_site || '').toUpperCase(), M + 6, y - 15, 12, bold);
   y -= TITLE_H;
 
-  // Table rows (avoid array-destructuring in the loop)
+  // Table rows
   const rows: Array<[string, string]> = [
     ['DATE', data.date],
     ['BRAND', data.brand],
@@ -99,9 +92,8 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   const VAL_W = (PAGE_W - 2 * M) - LBL_W;
 
   for (let i = 0; i < rows.length; i++) {
-    const pair = rows[i] || (['', ''] as [string, string]);
-    const label = pair[0] ?? '';
-    const value = pair[1] ?? '';
+    const label = rows[i][0] ?? '';
+    const value = rows[i][1] ?? '';
     drawRect(page, M, y - ROW_H, LBL_W, ROW_H);
     drawRect(page, M + LBL_W, y - ROW_H, VAL_W, ROW_H);
     drawText(page, String(label).toUpperCase(), M + 6, y - 14, 10, bold);
@@ -139,12 +131,11 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
     if (!img) continue;
 
     const scale = Math.min(b.w / img.width, b.h / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
+    const w = img.width * scale, h = img.height * scale;
     page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
   }
 
-  // Save + Download (user-gesture already handled by caller on web)
+  // Save + Download
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const name = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
@@ -158,5 +149,5 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// Default export for defensive dynamic import paths.
+// Keep a default export for the dynamic-import path used by new.tsx
 export default { downloadSubmissionPdf };
