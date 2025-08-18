@@ -2,13 +2,14 @@
 import ExcelJS from 'exceljs';
 
 export type SubmissionExcel = {
-  // NEW from the form
-  store_site: string;      // rendered as a title across A:B (e.g., "WHOLE FOODS")
-  location: string;        // "Middle Shelf"
+  // header/title info
+  store_site: string;       // shown as a title across A:B (e.g., "WHOLE FOODS")
 
-  // Existing
+  // rows (left label / right value)
   date: string;
-  store_location: string;
+  brand: string;            // NEW — directly under DATE
+  store_location: string;   // e.g., "BELLINGHAM, MA"
+  location: string;         // e.g., "Middle Shelf"
   conditions: string;
   price_per_unit: string;
   shelf_space: string;
@@ -16,18 +17,14 @@ export type SubmissionExcel = {
   tags: string;
   notes: string;
 
-  // Photos (we embed up to 2)
-  photo_urls: string[];
+  // images
+  photo_urls: string[];     // up to 2
 };
 
-/**
- * Load any image URL (http/https/blob/data), draw to a canvas (drops EXIF),
- * and return raw base64 (no data: prefix). JPEG keeps file size reasonable.
- */
+/** Load any image URL (http/https/blob/data), draw to a canvas (drops EXIF),
+ *  and return raw base64 (no data: prefix). JPEG keeps file size reasonable. */
 async function toCanvasBase64(url: string): Promise<string> {
   let srcForImg = url;
-
-  // For http(s) we fetch → blob → objectURL to avoid CORS-tainted canvas
   if (/^https?:/i.test(url)) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
@@ -66,13 +63,12 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // Two wide text columns for labels/values AND for photos beneath them.
-  // Keep tiny spacer columns (C, D) so the bordered grid matches the look you want.
+  // Two wide text columns (A & B) + tiny spacers (C & D) to keep the grid look.
   ws.columns = [
-    { key: 'label',  width: 44 }, // A
-    { key: 'value',  width: 44 }, // B
-    { key: 'gap',    width: 2  }, // C
-    { key: 'gap2',   width: 2  }, // D
+    { key: 'label',  width: 44 }, // A — wide so the left photo fits under A
+    { key: 'value',  width: 44 }, // B — wide so the right photo fits under B
+    { key: 'gap',    width: 2  }, // C — spacer with borders
+    { key: 'gap2',   width: 2  }, // D — spacer with borders
   ];
 
   const border = {
@@ -86,13 +82,13 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
 
   let r = 1;
 
-  // === STORE SITE as a title across A:B (matches “WHOLE FOODS” row in your PDF)
+  // === Top title: STORE SITE (merged across A:B)
   ws.mergeCells(`A${r}:B${r}`);
-  const site = ws.getCell(`A${r}`);
-  site.value = (row.store_site || '').toUpperCase();
-  site.font = { bold: true };
-  site.alignment = { vertical: 'middle', horizontal: 'left' };
-  site.border = border;
+  const siteCell = ws.getCell(`A${r}`);
+  siteCell.value = (row.store_site || '').toUpperCase();
+  siteCell.font = { bold: true };
+  siteCell.alignment = { vertical: 'middle', horizontal: 'left' };
+  siteCell.border = border;
   ws.getCell(`C${r}`).border = border;
   ws.getCell(`D${r}`).border = border;
   r++;
@@ -100,20 +96,18 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const addRow = (label: string, value: string) => {
     ws.getCell(`A${r}`).value = label.toUpperCase();
     Object.assign(ws.getCell(`A${r}`), labelStyle);
-
     ws.getCell(`B${r}`).value = value || '';
     Object.assign(ws.getCell(`B${r}`), valueStyle);
-
-    // keep the table outline continuous across spacer columns
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
     r++;
   };
 
-  // Order aligned with the current form (storeSite/title already added)
+  // rows in the requested order
+  addRow('DATE', row.date);
+  addRow('BRAND', row.brand);                 // NEW
   addRow('STORE LOCATION', row.store_location);
   addRow('LOCATIONS', row.location);
-  addRow('DATE', row.date);
   addRow('CONDITIONS', row.conditions);
   addRow('PRICE PER UNIT', row.price_per_unit);
   addRow('SHELF SPACE', row.shelf_space);
@@ -121,7 +115,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header (under A & B because images live in those columns)
+  // PHOTOS header (A:B)
   ws.mergeCells(`A${r}:B${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
@@ -132,9 +126,9 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Bordered photo area directly under A and B
+  // Bordered photo area under A & B
   const imageTopRow = r;
-  const rowsForImages = 18; // same visual height as before
+  const rowsForImages = 18;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
 
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
@@ -145,14 +139,14 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getRow(rr).height = 18;
   }
 
-  // Load & embed up to two photos (be resilient if one fails)
+  // Load up to two photos; ignore failures
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
   const base64s = settled
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  // Anchor each image to its exact column range so it “snaps” under A and B.
+  // Snap precisely into A and B ranges
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
     ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
@@ -162,9 +156,11 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
   }
 
-  // Browser download
+  // Download (browser)
   const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
