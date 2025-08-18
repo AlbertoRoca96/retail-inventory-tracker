@@ -1,5 +1,7 @@
 // apps/mobile/src/lib/exportPdf.web.ts
-// Web-only PDF generator with defensive (Safari-friendly) patterns.
+// Web-only PDF generator (static import so it’s bundled into the main chunk).
+
+import * as PDFLib from 'pdf-lib';
 
 export type SubmissionPdf = {
   store_site: string;
@@ -16,16 +18,21 @@ export type SubmissionPdf = {
   photo_urls: string[]; // up to 2
 };
 
+// Pull what we need up front (static, not dynamic)
+const PDFDocument = PDFLib.PDFDocument;
+const StandardFonts = PDFLib.StandardFonts;
+const rgb = PDFLib.rgb;
+
 // Page constants
 const PAGE_W = 612; // 8.5in * 72dpi
 const PAGE_H = 792; // 11in * 72dpi
 const M = 36;       // 0.5" margin
 
-// --- small helpers (no destructuring) ---
-function drawText(page: any, str: string, x: number, y: number, size: number, font: any, rgb: any) {
-  page.drawText(str ?? "", { x, y, size, font, color: rgb(0, 0, 0) });
+// Helpers (no destructuring inside hot paths)
+function drawText(page: any, str: string, x: number, y: number, size: number, font: any) {
+  page.drawText(str ?? '', { x, y, size, font, color: rgb(0, 0, 0) });
 }
-function drawRect(page: any, x: number, y: number, w: number, h: number, rgb: any) {
+function drawRect(page: any, x: number, y: number, w: number, h: number) {
   page.drawRectangle({
     x, y, width: w, height: h, borderWidth: 1,
     color: rgb(1, 1, 1),
@@ -37,10 +44,10 @@ async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
   if (!url) return null;
 
   // data: URL
-  if (url.startsWith("data:")) {
+  if (url.startsWith('data:')) {
     try {
-      const base64 = url.split(",")[1] ?? "";
-      const bin = (globalThis.atob as any)(base64);
+      const base64 = url.split(',')[1] ?? '';
+      const bin = atob(base64);
       const arr = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
       return arr.buffer;
@@ -60,20 +67,7 @@ async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
 }
 
 export async function downloadSubmissionPdf(data: SubmissionPdf) {
-  // Load pdf-lib lazily and avoid destructuring in case the import fails
-  let pdfLib: any;
-  try {
-    pdfLib = await import("pdf-lib");
-  } catch {
-    throw new Error("Failed to load PDF engine (pdf-lib).");
-  }
-  const PDFDocument = pdfLib && pdfLib.PDFDocument;
-  const StandardFonts = pdfLib && pdfLib.StandardFonts;
-  const rgb = pdfLib && pdfLib.rgb;
-  if (!PDFDocument || !StandardFonts || !rgb) {
-    throw new Error("Failed to load PDF engine (pdf-lib).");
-  }
-
+  // Create doc + fonts
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -82,22 +76,22 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   // Title (STORE SITE)
   let y = PAGE_H - M;
   const TITLE_H = 22;
-  drawRect(page, M, y - TITLE_H, PAGE_W - 2 * M, TITLE_H, rgb);
-  drawText(page, (data.store_site || "").toUpperCase(), M + 6, y - 15, 12, bold, rgb);
+  drawRect(page, M, y - TITLE_H, PAGE_W - 2 * M, TITLE_H);
+  drawText(page, (data.store_site || '').toUpperCase(), M + 6, y - 15, 12, bold);
   y -= TITLE_H;
 
   // Table rows (avoid array-destructuring in the loop)
   const rows: Array<[string, string]> = [
-    ["DATE", data.date],
-    ["BRAND", data.brand],
-    ["STORE LOCATION", data.store_location],
-    ["LOCATIONS", data.location],
-    ["CONDITIONS", data.conditions],
-    ["PRICE PER UNIT", data.price_per_unit],
-    ["SHELF SPACE", data.shelf_space],
-    ["ON SHELF", data.on_shelf],
-    ["TAGS", data.tags],
-    ["NOTES", data.notes],
+    ['DATE', data.date],
+    ['BRAND', data.brand],
+    ['STORE LOCATION', data.store_location],
+    ['LOCATIONS', data.location],
+    ['CONDITIONS', data.conditions],
+    ['PRICE PER UNIT', data.price_per_unit],
+    ['SHELF SPACE', data.shelf_space],
+    ['ON SHELF', data.on_shelf],
+    ['TAGS', data.tags],
+    ['NOTES', data.notes],
   ];
 
   const ROW_H = 20;
@@ -105,20 +99,20 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   const VAL_W = (PAGE_W - 2 * M) - LBL_W;
 
   for (let i = 0; i < rows.length; i++) {
-    const pair = rows[i] || (["", ""] as [string, string]);
-    const label = pair[0] ?? "";
-    const value = pair[1] ?? "";
-    drawRect(page, M, y - ROW_H, LBL_W, ROW_H, rgb);
-    drawRect(page, M + LBL_W, y - ROW_H, VAL_W, ROW_H, rgb);
-    drawText(page, String(label).toUpperCase(), M + 6, y - 14, 10, bold, rgb);
-    drawText(page, String(value), M + LBL_W + 6, y - 14, 10, font, rgb);
+    const pair = rows[i] || (['', ''] as [string, string]);
+    const label = pair[0] ?? '';
+    const value = pair[1] ?? '';
+    drawRect(page, M, y - ROW_H, LBL_W, ROW_H);
+    drawRect(page, M + LBL_W, y - ROW_H, VAL_W, ROW_H);
+    drawText(page, String(label).toUpperCase(), M + 6, y - 14, 10, bold);
+    drawText(page, String(value), M + LBL_W + 6, y - 14, 10, font);
     y -= ROW_H;
   }
 
   // Photos header
   const HDR_H = 20;
-  drawRect(page, M, y - HDR_H, PAGE_W - 2 * M, HDR_H, rgb);
-  drawText(page, "PHOTOS", M + 6, y - 14, 10, bold, rgb);
+  drawRect(page, M, y - HDR_H, PAGE_W - 2 * M, HDR_H);
+  drawText(page, 'PHOTOS', M + 6, y - 14, 10, bold);
   y -= HDR_H;
 
   // Two photo boxes
@@ -134,7 +128,7 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
 
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
-    drawRect(page, b.x, b.y, b.w, b.h, rgb);
+    drawRect(page, b.x, b.y, b.w, b.h);
 
     const bytes = await bytesFromUrl(b.url);
     if (!bytes) continue;
@@ -150,12 +144,12 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
     page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
   }
 
-  // Save + Download
+  // Save + Download (user-gesture already handled by caller on web)
   const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
-  const name = `submission-${new Date().toISOString().replace(/[:.]/g, "-")}.pdf`;
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const name = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
 
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
   document.body.appendChild(a);
@@ -164,5 +158,5 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// Keep a default export shape for defensive dynamic import code paths
+// Default export for defensive dynamic import paths.
 export default { downloadSubmissionPdf };
