@@ -1,3 +1,5 @@
+-- supabase/schema.sql
+
 create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -30,4 +32,8 @@ create table if not exists public.submissions (
   photo2_path text
 );
 
+-- existing helpful index
 create index if not exists submissions_team_created_idx on public.submissions (team_id, created_at desc);
+
+-- NEW: speeds up per-user & YTD/time-bucket queries
+create index if not exists submissions_created_by_created_idx on public.submissions (created_by, created_at desc);
