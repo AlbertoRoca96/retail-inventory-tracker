@@ -1,4 +1,6 @@
 // apps/mobile/src/lib/exportPdf.web.ts
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+
 export type SubmissionPdf = {
   store_site: string;
   date: string;
@@ -11,49 +13,65 @@ export type SubmissionPdf = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[];
+  photo_urls: string[]; // up to 2
 };
 
-export async function downloadSubmissionPdf(data: SubmissionPdf) {
-  // 🚧 Robust dynamic import: avoid destructuring until the module is verified.
-  let PDFLib: any;
+// Small helpers
+const PAGE_W = 612; // 8.5in * 72dpi
+const PAGE_H = 792; // 11in * 72dpi
+const M = 36;       // 0.5" margin
+
+function text(page: any, str: string, x: number, y: number, size = 10, font: any) {
+  page.drawText(str ?? '', { x, y, size, font, color: rgb(0, 0, 0) });
+}
+function rect(page: any, x: number, y: number, w: number, h: number) {
+  page.drawRectangle({
+    x, y, width: w, height: h, borderWidth: 1,
+    color: rgb(1, 1, 1),
+    borderColor: rgb(0.46, 0.46, 0.46),
+  });
+}
+
+async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
+  if (!url) return null;
+
+  // data: URL
+  if (url.startsWith('data:')) {
+    try {
+      const base64 = url.split(',')[1] ?? '';
+      const bin = atob(base64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr.buffer;
+    } catch {
+      return null;
+    }
+  }
+
+  // blob:, http(s):
   try {
-    PDFLib = await import('pdf-lib');
-  } catch (e) {
-    throw new Error('Failed to load PDF engine (pdf-lib).');
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.arrayBuffer();
+  } catch {
+    return null;
   }
-  const PDFDocument = PDFLib?.PDFDocument ?? PDFLib?.default?.PDFDocument;
-  const StandardFonts = PDFLib?.StandardFonts ?? PDFLib?.default?.StandardFonts;
-  const rgb = PDFLib?.rgb ?? PDFLib?.default?.rgb;
-  if (!PDFDocument || !StandardFonts || !rgb) {
-    throw new Error('PDF engine loaded but exports are missing.');
-  }
+}
 
-  const PAGE_W = 612, PAGE_H = 792; // Letter 8.5x11 @72dpi
-  const M = 36;
-
+export async function downloadSubmissionPdf(data: SubmissionPdf) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const drawText = (txt: string, x: number, y: number, size = 10, f = font) =>
-    page.drawText(txt ?? '', { x, y, size, font: f, color: rgb(0, 0, 0) });
-
-  const drawRect = (x: number, y: number, w: number, h: number) =>
-    page.drawRectangle({
-      x, y, width: w, height: h, borderWidth: 1,
-      color: rgb(1, 1, 1), borderColor: rgb(0.46, 0.46, 0.46)
-    });
-
-  // Title
-  let cursorY = PAGE_H - M;
+  // Title (STORE SITE)
+  let y = PAGE_H - M;
   const TITLE_H = 22;
-  drawRect(M, cursorY - TITLE_H, PAGE_W - 2 * M, TITLE_H);
-  drawText((data.store_site || '').toUpperCase(), M + 6, cursorY - 15, 12, bold);
-  cursorY -= TITLE_H;
+  rect(page, M, y - TITLE_H, PAGE_W - 2 * M, TITLE_H);
+  text(page, (data.store_site || '').toUpperCase(), M + 6, y - 15, 12, bold);
+  y -= TITLE_H;
 
-  // Rows
+  // Table rows
   const rows: Array<[string, string]> = [
     ['DATE', data.date],
     ['BRAND', data.brand],
@@ -71,72 +89,58 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   const LBL_W = Math.round((PAGE_W - 2 * M) * 0.38);
   const VAL_W = (PAGE_W - 2 * M) - LBL_W;
 
-  for (const pair of rows) {
-    const label = pair?.[0] ?? '';
-    const value = pair?.[1] ?? '';
-    drawRect(M, cursorY - ROW_H, LBL_W, ROW_H);
-    drawRect(M + LBL_W, cursorY - ROW_H, VAL_W, ROW_H);
-    drawText(String(label).toUpperCase(), M + 6, cursorY - 14, 10, bold);
-    drawText(String(value), M + LBL_W + 6, cursorY - 14, 10, font);
-    cursorY -= ROW_H;
+  for (const [label, value] of rows) {
+    rect(page, M, y - ROW_H, LBL_W, ROW_H);
+    rect(page, M + LBL_W, y - ROW_H, VAL_W, ROW_H);
+    text(page, label.toUpperCase(), M + 6, y - 14, 10, bold);
+    text(page, value || '', M + LBL_W + 6, y - 14, 10, font);
+    y -= ROW_H;
   }
 
-  // Photos
+  // Photos header
   const HDR_H = 20;
-  drawRect(M, cursorY - HDR_H, PAGE_W - 2 * M, HDR_H);
-  drawText('PHOTOS', M + 6, cursorY - 14, 10, bold);
-  cursorY -= HDR_H;
+  rect(page, M, y - HDR_H, PAGE_W - 2 * M, HDR_H);
+  text(page, 'PHOTOS', M + 6, y - 14, 10, bold);
+  y -= HDR_H;
 
+  // Two photo boxes
   const GAP = 12;
   const BOX_W = Math.floor((PAGE_W - 2 * M - GAP) / 2);
   const BOX_H = 250;
-  const urls = Array.isArray(data.photo_urls) ? data.photo_urls.slice(0, 2) : [];
+
   const boxes = [
-    { x: M, y: cursorY - BOX_H, w: BOX_W, h: BOX_H, url: urls[0] },
-    { x: M + BOX_W + GAP, y: cursorY - BOX_H, w: BOX_W, h: BOX_H, url: urls[1] },
+    { x: M, y: y - BOX_H, w: BOX_W, h: BOX_H, url: (data.photo_urls || [])[0] },
+    { x: M + BOX_W + GAP, y: y - BOX_H, w: BOX_W, h: BOX_H, url: (data.photo_urls || [])[1] },
   ];
 
-  const fetchBytes = async (url?: string) => {
-    if (!url) return null;
-    try {
-      const r = await fetch(url);
-      if (!r.ok) return null;
-      return await r.arrayBuffer();
-    } catch {
-      return null;
-    }
-  };
-
   for (const b of boxes) {
-    drawRect(b.x, b.y, b.w, b.h);
-    const bytes = await fetchBytes(b.url);
+    rect(page, b.x, b.y, b.w, b.h);
+    const bytes = await bytesFromUrl(b.url);
     if (!bytes) continue;
 
     let img: any = null;
     try { img = await pdfDoc.embedJpg(bytes); } catch {}
-    if (!img) {
-      try { img = await pdfDoc.embedPng(bytes); } catch {}
-    }
+    if (!img) { try { img = await pdfDoc.embedPng(bytes); } catch {} }
     if (!img) continue;
 
     const scale = Math.min(b.w / img.width, b.h / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
+    const w = img.width * scale, h = img.height * scale;
     page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
   }
 
+  // Save + Download (must be triggered by a user gesture on some mobile browsers)
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const name = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
 
-  // ✅ User-gesture friendly download; works on iOS Safari when invoked from a tap.
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }, 2000);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+// Also provide a default object for defensive dynamic import code paths.
+export default { downloadSubmissionPdf };
