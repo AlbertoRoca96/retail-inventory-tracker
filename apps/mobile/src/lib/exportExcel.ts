@@ -1,9 +1,10 @@
+// apps/mobile/src/lib/exportExcel.ts
 import ExcelJS from 'exceljs';
 
 export type SubmissionExcel = {
-  // NEW
-  store_site: string;      // e.g., "WHOLE FOODS" — shown as a title across A:B
-  location: string;        // e.g., "Middle Shelf"
+  // NEW from the form
+  store_site: string;      // rendered as a title across A:B (e.g., "WHOLE FOODS")
+  location: string;        // "Middle Shelf"
 
   // Existing
   date: string;
@@ -14,13 +15,19 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[];   // embed up to 2
+
+  // Photos (we embed up to 2)
+  photo_urls: string[];
 };
 
-/** Load any image URL (http/https/blob/data), draw to a canvas (drops EXIF),
- *  and return raw base64 (no data: prefix). JPEG keeps file size reasonable. */
+/**
+ * Load any image URL (http/https/blob/data), draw to a canvas (drops EXIF),
+ * and return raw base64 (no data: prefix). JPEG keeps file size reasonable.
+ */
 async function toCanvasBase64(url: string): Promise<string> {
   let srcForImg = url;
+
+  // For http(s) we fetch → blob → objectURL to avoid CORS-tainted canvas
   if (/^https?:/i.test(url)) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
@@ -59,26 +66,33 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // Two wide text columns (A & B) + tiny spacers (C & D) to keep your table borders.
+  // Two wide text columns for labels/values AND for photos beneath them.
+  // Keep tiny spacer columns (C, D) so the bordered grid matches the look you want.
   ws.columns = [
-    { key: 'label',  width: 44 }, // A — wide so photo fits underneath
-    { key: 'value',  width: 44 }, // B — wide so photo fits underneath
+    { key: 'label',  width: 44 }, // A
+    { key: 'value',  width: 44 }, // B
     { key: 'gap',    width: 2  }, // C
     { key: 'gap2',   width: 2  }, // D
   ];
 
-  const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
+  const border = {
+    top: { style: 'thin' as const },
+    bottom: { style: 'thin' as const },
+    left: { style: 'thin' as const },
+    right: { style: 'thin' as const },
+  };
   const labelStyle = { font: { bold: true }, alignment: { vertical: 'middle' as const }, border };
   const valueStyle = { alignment: { vertical: 'middle' as const }, border };
 
   let r = 1;
 
-  // === Title row (STORE SITE) across A:B like your PDF ===
+  // === STORE SITE as a title across A:B (matches “WHOLE FOODS” row in your PDF)
   ws.mergeCells(`A${r}:B${r}`);
-  const siteCell = ws.getCell(`A${r}`);
-  siteCell.value = (row.store_site || '').toUpperCase();
-  siteCell.font = { bold: true };
-  siteCell.border = border;
+  const site = ws.getCell(`A${r}`);
+  site.value = (row.store_site || '').toUpperCase();
+  site.font = { bold: true };
+  site.alignment = { vertical: 'middle', horizontal: 'left' };
+  site.border = border;
   ws.getCell(`C${r}`).border = border;
   ws.getCell(`D${r}`).border = border;
   r++;
@@ -86,15 +100,20 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   const addRow = (label: string, value: string) => {
     ws.getCell(`A${r}`).value = label.toUpperCase();
     Object.assign(ws.getCell(`A${r}`), labelStyle);
+
     ws.getCell(`B${r}`).value = value || '';
     Object.assign(ws.getCell(`B${r}`), valueStyle);
+
+    // keep the table outline continuous across spacer columns
     ws.getCell(`C${r}`).border = border;
     ws.getCell(`D${r}`).border = border;
     r++;
   };
 
+  // Order aligned with the current form (storeSite/title already added)
   addRow('STORE LOCATION', row.store_location);
-  addRow('LOCATIONS', row.location); // NEW row to match the PDF label
+  addRow('LOCATIONS', row.location);
+  addRow('DATE', row.date);
   addRow('CONDITIONS', row.conditions);
   addRow('PRICE PER UNIT', row.price_per_unit);
   addRow('SHELF SPACE', row.shelf_space);
@@ -102,7 +121,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header only across A:B — the pictures live under these columns
+  // PHOTOS header (under A & B because images live in those columns)
   ws.mergeCells(`A${r}:B${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
@@ -113,10 +132,11 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Bordered photo area (under A & B)
+  // Bordered photo area directly under A and B
   const imageTopRow = r;
-  const rowsForImages = 18;
+  const rowsForImages = 18; // same visual height as before
   const imageBottomRow = imageTopRow + rowsForImages - 1;
+
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
     ws.getCell(`A${rr}`).border = border;
     ws.getCell(`B${rr}`).border = border;
@@ -125,15 +145,14 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getRow(rr).height = 18;
   }
 
-  // Load up to 2 photos; don’t bail if one fails
+  // Load & embed up to two photos (be resilient if one fails)
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
   const base64s = settled
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  // Anchor images to exact cell ranges so they snap to A and B precisely.
-  // (ExcelJS supports covering a cell range like 'A1:B3' and also tl/br anchors.) :contentReference[oaicite:0]{index=0}
+  // Anchor each image to its exact column range so it “snaps” under A and B.
   if (base64s[0]) {
     const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
     ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
@@ -143,7 +162,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
   }
 
-  // Browser download (ExcelJS supports writeBuffer in the browser). :contentReference[oaicite:1]{index=1}
+  // Browser download
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fname = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.xlsx`;
