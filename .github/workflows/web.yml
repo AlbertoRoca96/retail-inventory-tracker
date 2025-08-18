@@ -16,6 +16,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+
     steps:
       - uses: actions/checkout@v4
 
@@ -25,32 +29,31 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
 
-      # Install deps (use npm ci if a lockfile exists, otherwise npm install)
+      # Use the lockfile when present; otherwise do a normal install.
       - name: Install deps
-        working-directory: apps/mobile
         run: |
           if [ -f package-lock.json ]; then
             echo "Using npm ci (lockfile present)"
             npm ci --no-audit --no-fund
           else
-            echo "No package-lock.json => using npm install"
+            echo "No package-lock.json => npm install"
             npm install --no-audit --no-fund
           fi
 
-      # Ensure runtime web deps (no-op if already present)
+      # Ensure runtime web deps (no-op if they're already there)
       - name: Ensure web deps (Expo Web + Router)
-        working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
-      # Sanity check: pdf-lib must resolve (prevents Metro 'cannot find module pdf-lib')
-      - name: Verify pdf-lib is installed
-        working-directory: apps/mobile
-        run: node -e "console.log('pdf-lib ->', require.resolve('pdf-lib'))"
+      # ✅ If pdf-lib isn't installed (or not in package.json), install it on-the-fly
+      # so Metro can resolve the dynamic import in exportPdf.web.ts.
+      - name: Ensure pdf-lib (install if missing)
+        run: |
+          node -e "try{require.resolve('pdf-lib');process.exit(0)}catch{process.exit(1)}" \
+          || npm install pdf-lib --no-audit --no-fund
 
       - name: Export static web build
-        working-directory: apps/mobile
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
