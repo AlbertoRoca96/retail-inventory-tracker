@@ -149,7 +149,8 @@ export default function NewFormScreen() {
   useEffect(() => {
     if (!hydrated || loaded.current) return;
     loaded.current = true;
-    const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>>();
+    // ✅ fixed extra ">" that broke the build
+    const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>();
     if (draft) {
       const merged: FormValues = { ...getDefaultValues(), ...draft };
       formRef.current = merged;
