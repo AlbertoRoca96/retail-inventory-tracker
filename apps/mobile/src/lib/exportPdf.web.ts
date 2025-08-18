@@ -15,67 +15,111 @@ export type SubmissionPdf = {
 };
 
 export async function downloadSubmissionPdf(data: SubmissionPdf) {
-  const [img1, img2] = (data.photo_urls || []).slice(0, 2);
+  // Lazy-load to keep the main bundle smaller
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib'); // pdf-lib works in browsers & RN JS runtimes
+  // Letter page: 8.5 x 11 inches in points (72 dpi)
+  const PAGE_W = 612, PAGE_H = 792;
+  const M = 36; // 0.5" margins
 
-  const esc = (s: string) =>
-    (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Submission</title>
-  <style>
-    @page { size: Letter portrait; margin: 0.5in; }
-    * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; }
-    .wrapper { width: 7.5in; margin: 0 auto; }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { border: 1px solid #777; padding: 6px; font-size: 12px; vertical-align: middle; }
-    th.label { width: 38%; text-align: left; font-weight: 700; }
-    td.value { width: 62%; }
-    .title { font-weight: 700; }
-    .photos h3 { margin: 10px 0 6px; font-size: 12px; }
-    .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .photo-box { border: 1px solid #777; height: 3.4in; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .photo-box img { max-width: 100%; max-height: 100%; display: block; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <table>
-      <tr><th colspan="2" class="title">${esc((data.store_site || '').toUpperCase())}</th></tr>
-      <tr><th class="label">DATE</th><td class="value">${esc(data.date)}</td></tr>
-      <tr><th class="label">BRAND</th><td class="value">${esc(data.brand)}</td></tr>
-      <tr><th class="label">STORE LOCATION</th><td class="value">${esc(data.store_location)}</td></tr>
-      <tr><th class="label">LOCATIONS</th><td class="value">${esc(data.location)}</td></tr>
-      <tr><th class="label">CONDITIONS</th><td class="value">${esc(data.conditions)}</td></tr>
-      <tr><th class="label">PRICE PER UNIT</th><td class="value">${esc(data.price_per_unit)}</td></tr>
-      <tr><th class="label">SHELF SPACE</th><td class="value">${esc(data.shelf_space)}</td></tr>
-      <tr><th class="label">ON SHELF</th><td class="value">${esc(data.on_shelf)}</td></tr>
-      <tr><th class="label">TAGS</th><td class="value">${esc(data.tags)}</td></tr>
-      <tr><th class="label">NOTES</th><td class="value">${esc(data.notes)}</td></tr>
-    </table>
+  const drawText = (txt: string, x: number, y: number, size = 10, f = font) =>
+    page.drawText(txt ?? '', { x, y, size, font: f, color: rgb(0, 0, 0) });
 
-    <div class="photos">
-      <h3>PHOTOS</h3>
-      <div class="photo-grid">
-        <div class="photo-box">${img1 ? `<img src="${img1}"/>` : ''}</div>
-        <div class="photo-box">${img2 ? `<img src="${img2}"/>` : ''}</div>
-      </div>
-    </div>
-  </div>
-  <script>
-    window.addEventListener('load', () => {
-      setTimeout(() => window.print(), 50);
+  const drawRect = (x: number, y: number, w: number, h: number) =>
+    page.drawRectangle({ x, y, width: w, height: h, borderWidth: 1, color: rgb(1,1,1), borderColor: rgb(0.46,0.46,0.46) });
+
+  // Title (STORE SITE)
+  let cursorY = PAGE_H - M;
+  const TITLE_H = 22;
+  drawRect(M, cursorY - TITLE_H, PAGE_W - 2*M, TITLE_H);
+  drawText((data.store_site || '').toUpperCase(), M + 6, cursorY - 15, 12, bold);
+  cursorY -= TITLE_H;
+
+  // Table rows
+  const rows: Array<[string, string]> = [
+    ['DATE', data.date],
+    ['BRAND', data.brand],
+    ['STORE LOCATION', data.store_location],
+    ['LOCATIONS', data.location],
+    ['CONDITIONS', data.conditions],
+    ['PRICE PER UNIT', data.price_per_unit],
+    ['SHELF SPACE', data.shelf_space],
+    ['ON SHELF', data.on_shelf],
+    ['TAGS', data.tags],
+    ['NOTES', data.notes],
+  ];
+
+  const ROW_H = 20;
+  const LBL_W = Math.round((PAGE_W - 2*M) * 0.38);
+  const VAL_W = (PAGE_W - 2*M) - LBL_W;
+  for (const [label, value] of rows) {
+    drawRect(M, cursorY - ROW_H, LBL_W, ROW_H);
+    drawRect(M + LBL_W, cursorY - ROW_H, VAL_W, ROW_H);
+    drawText(label.toUpperCase(), M + 6, cursorY - 14, 10, bold);
+    drawText(value || '', M + LBL_W + 6, cursorY - 14, 10, font);
+    cursorY -= ROW_H;
+  }
+
+  // Photos header
+  const HDR_H = 20;
+  drawRect(M, cursorY - HDR_H, PAGE_W - 2*M, HDR_H);
+  drawText('PHOTOS', M + 6, cursorY - 14, 10, bold);
+  cursorY -= HDR_H;
+
+  // Two photo boxes side by side
+  const GAP = 12;
+  const BOX_W = Math.floor((PAGE_W - 2*M - GAP) / 2);
+  const BOX_H = 250;
+
+  const boxes = [
+    { x: M, y: cursorY - BOX_H, w: BOX_W, h: BOX_H, url: (data.photo_urls || [])[0] },
+    { x: M + BOX_W + GAP, y: cursorY - BOX_H, w: BOX_W, h: BOX_H, url: (data.photo_urls || [])[1] },
+  ];
+
+  const fetchBytes = async (url?: string) => {
+    if (!url) return null;
+    // Works for http(s), data:, and blob: URLs (if same-origin/CORS enabled)
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return await res.arrayBuffer();
+    } catch {
+      return null;
+    }
+  };
+
+  for (const b of boxes) {
+    drawRect(b.x, b.y, b.w, b.h);
+    const bytes = await fetchBytes(b.url);
+    if (!bytes) continue;
+    let img: any = null;
+    try {
+      img = await pdfDoc.embedJpg(bytes);
+    } catch {
+      try { img = await pdfDoc.embedPng(bytes); } catch { img = null; }
+    }
+    if (!img) continue;
+    const dims = img.scale(Math.min(b.w / img.width, b.h / img.height));
+    page.drawImage(img, {
+      x: b.x + (b.w - dims.width) / 2,
+      y: b.y + (b.h - dims.height) / 2,
+      width: dims.width,
+      height: dims.height,
     });
-  </script>
-</body>
-</html>`;
+  }
 
-  const w = window.open('', '_blank');
-  if (!w) return;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  const pdfBytes = await pdfDoc.save();
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const name = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
 }
