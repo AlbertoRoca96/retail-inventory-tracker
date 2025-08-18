@@ -254,20 +254,24 @@ export default function NewFormScreen() {
     setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
   };
 
-  // Web-only: user-gesture PDF download
   const onDownloadPdf = async () => {
     if (!pdfReady) return;
     try {
       const mod = await import('../../src/lib/exportPdf');
-      if (mod?.downloadSubmissionPdf) {
-        await mod.downloadSubmissionPdf(pdfReady);
+      const fn = (mod as any)?.downloadSubmissionPdf ?? (mod as any)?.default?.downloadSubmissionPdf;
+      if (typeof fn !== 'function') {
+        throw new Error('PDF export function not found.');
       }
+      await fn(pdfReady);
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message || 'PDF export failed' });
+      return;
     } finally {
-      setPdfReady(null);
+    // Hide the button only after we’ve tried.
+    setPdfReady(null);
     }
   };
+
 
   // Submit: upload → DB insert (optional) → ALWAYS export (Excel) → PDF
   const onSubmit = async () => {
