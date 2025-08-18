@@ -23,15 +23,24 @@ jobs:
         with:
           node-version: 20
 
+      # Clean, deterministic install (uses package-lock)
       - name: Install deps
         working-directory: apps/mobile
-        run: npm i --no-audit --no-fund
+        run: |
+          rm -rf node_modules
+          npm ci --no-audit --no-fund
 
+      # Ensure the runtime-only web deps are installed (no-op if already present)
       - name: Ensure web deps (Expo Web + Router)
         working-directory: apps/mobile
         env:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
+
+      # 🔎 New: fail fast if pdf-lib isn't resolvable (prevents Metro "cannot find module pdf-lib")
+      - name: Verify pdf-lib is installed
+        working-directory: apps/mobile
+        run: node -e "console.log('pdf-lib ->', require.resolve('pdf-lib'))"
 
       - name: Export static web build
         working-directory: apps/mobile
