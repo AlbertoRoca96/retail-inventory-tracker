@@ -8,7 +8,7 @@ import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
-// PDF export is loaded dynamically inside onSubmit to avoid hard coupling.
+// PDF export is loaded dynamically inside onSubmit / onDownloadPdf to avoid hard coupling.
 
 type Banner =
   | { kind: 'info'; text: string }
@@ -39,6 +39,22 @@ type FormValues = {
   onShelf: string;
   tags: string;
   notes: string;
+};
+
+// Local type for the PDF call so we don't statically import the module on web
+type PdfPayload = {
+  store_site: string;
+  date: string;
+  brand: string;
+  store_location: string;
+  location: string;
+  conditions: string;
+  price_per_unit: string;
+  shelf_space: string;
+  on_shelf: string;
+  tags: string;
+  notes: string;
+  photo_urls: string[];
 };
 
 const isWeb = Platform.OS === 'web';
@@ -105,6 +121,9 @@ export default function NewFormScreen() {
 
   // When we need web inputs to re-mount with new defaultValue (after Clear/Load), bump this key.
   const [formKey, setFormKey] = useState(0);
+
+  // NEW: when set on web, shows a one-tap PDF download button (to satisfy user gesture)
+  const [pdfReady, setPdfReady] = useState<PdfPayload | null>(null);
 
   // ---- web camera/library fallbacks ----
   const camInputRef = useRef<HTMLInputElement | null>(null);
@@ -225,6 +244,8 @@ export default function NewFormScreen() {
     setPhotos([]);
     setFormKey((k) => k + 1);
     if (clearDraft) clearDraftLocal();
+    // Note: intentionally do NOT clear pdfReady here so the user can still tap "Download PDF"
+    // after a successful submission/reset if needed.
   };
 
   const onClearAll = () => {
@@ -233,7 +254,22 @@ export default function NewFormScreen() {
     setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
   };
 
-  // Submit: upload → DB insert (optional) → ALWAYS export
+  // Web-only: user-gesture PDF download
+  const onDownloadPdf = async () => {
+    if (!pdfReady) return;
+    try {
+      const mod = await import('../../src/lib/exportPdf');
+      if (mod?.downloadSubmissionPdf) {
+        await mod.downloadSubmissionPdf(pdfReady);
+      }
+    } catch (e: any) {
+      setBanner({ kind: 'error', text: e?.message || 'PDF export failed' });
+    } finally {
+      setPdfReady(null);
+    }
+  };
+
+  // Submit: upload → DB insert (optional) → ALWAYS export (Excel) → PDF
   const onSubmit = async () => {
     try {
       if (busy) return;
@@ -291,10 +327,8 @@ export default function NewFormScreen() {
         photo_urls: excelPhotoUrls.filter(Boolean),
       });
 
-      // 3b) PDF export (centered)
-      // Minimal addition: on web, stagger the PDF kick-off slightly so the browser
-      // treats it as a separate user action (prevents “second download” blocks).
-      const pdfPayload = {
+      // 3b) PDF export setup
+      const pdfPayload: PdfPayload = {
         store_site: v.storeSite || '',
         date: v.date || '',
         brand: v.brand || '',
@@ -310,12 +344,15 @@ export default function NewFormScreen() {
       };
 
       if (isWeb) {
-        setTimeout(() => {
-          import('../../src/lib/exportPdf')
-            .then((mod) => mod?.downloadSubmissionPdf?.(pdfPayload))
-            .catch(() => {});
-        }, 600);
+        // 👉 Web: show a user-gesture button to avoid multiple auto-downloads being blocked.
+        setPdfReady(pdfPayload);
+        setBanner((b) =>
+          b?.kind === 'error'
+            ? b
+            : { kind: 'info', text: 'Excel downloaded. Tap "Download PDF" below to save the PDF.' }
+        );
       } else {
+        // 👉 Native: keep auto-export via dynamic import
         try {
           const mod = await import('../../src/lib/exportPdf');
           if (mod?.downloadSubmissionPdf) {
@@ -329,7 +366,7 @@ export default function NewFormScreen() {
         return;
       }
 
-      // 4) Clean reset after success
+      // 4) Clean reset after success (pdfReady is intentionally preserved)
       resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
@@ -586,10 +623,40 @@ export default function NewFormScreen() {
         </Pressable>
       </View>
 
+      {/* Web-only: one-tap PDF download (satisfies user gesture) */}
+      {isWeb && pdfReady ? (
+        <View style={{ marginTop: 12, gap: 8 as any }}>
+          <Pressable
+            onPress={onDownloadPdf}
+            style={{
+              backgroundColor: '#2563eb',
+              paddingVertical: 12,
+              borderRadius: 10,
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: '#1d4ed8',
+            }}
+          >
+            <Text style={{ color: 'white', fontWeight: '700' }}>Download PDF</Text>
+          </Pressable>
+          <Text style={{ fontSize: 12, color: '#334155', textAlign: 'center' }}>
+            Some mobile browsers only allow one automatic download per tap. If the PDF didn’t auto-download, tap this button.
+          </Text>
+        </View>
+      ) : null}
+
       <View style={{ marginTop: 12, flexDirection: 'row', gap: 12 }}>
         <Pressable
           onPress={onClearAll}
-          style={{ flex: 1, backgroundColor: '#f3f4f6', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' }}
+          style={{
+            flex: 1,
+            backgroundColor: '#f3f4f6',
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: '#d1d5db',
+          }}
         >
           <Text style={{ fontWeight: '700' }}>Clear (wipe saved fields & photos)</Text>
         </Pressable>
