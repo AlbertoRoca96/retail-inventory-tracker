@@ -291,27 +291,37 @@ export default function NewFormScreen() {
         photo_urls: excelPhotoUrls.filter(Boolean),
       });
 
-      // 3b) PDF export (centered) — loaded dynamically; if the file isn’t present yet, silently skip
-      try {
-        const mod = await import('../../src/lib/exportPdf');
-        if (mod?.downloadSubmissionPdf) {
-          await mod.downloadSubmissionPdf({
-            store_site: v.storeSite || '',
-            date: v.date || '',
-            brand: v.brand || '',
-            store_location: v.storeLocation || '',
-            location: v.location || '',
-            conditions: v.conditions || '',
-            price_per_unit: v.pricePerUnit || '',
-            shelf_space: v.shelfSpace || '',
-            on_shelf: v.onShelf || '',
-            tags: v.tags || '',
-            notes: v.notes || '',
-            photo_urls: excelPhotoUrls.filter(Boolean),
-          });
-        }
-      } catch {
-        // no-op: PDF helper not installed yet
+      // 3b) PDF export (centered)
+      // Minimal addition: on web, stagger the PDF kick-off slightly so the browser
+      // treats it as a separate user action (prevents “second download” blocks).
+      const pdfPayload = {
+        store_site: v.storeSite || '',
+        date: v.date || '',
+        brand: v.brand || '',
+        store_location: v.storeLocation || '',
+        location: v.location || '',
+        conditions: v.conditions || '',
+        price_per_unit: v.pricePerUnit || '',
+        shelf_space: v.shelfSpace || '',
+        on_shelf: v.onShelf || '',
+        tags: v.tags || '',
+        notes: v.notes || '',
+        photo_urls: excelPhotoUrls.filter(Boolean),
+      };
+
+      if (isWeb) {
+        setTimeout(() => {
+          import('../../src/lib/exportPdf')
+            .then((mod) => mod?.downloadSubmissionPdf?.(pdfPayload))
+            .catch(() => {});
+        }, 600);
+      } else {
+        try {
+          const mod = await import('../../src/lib/exportPdf');
+          if (mod?.downloadSubmissionPdf) {
+            await mod.downloadSubmissionPdf(pdfPayload);
+          }
+        } catch {}
       }
 
       if (insertError) {
