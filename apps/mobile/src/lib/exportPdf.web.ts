@@ -1,4 +1,7 @@
-// Web-only PDF generator (Safari/Metro-web friendly)
+// apps/mobile/src/lib/exportPdf.web.ts
+// Web-only PDF generator that:
+//  - rasterizes images via <canvas> (like the Excel export) so EXIF orientation is normalized,
+//  - uses a Safari-friendly download fallback when programmatic <a> clicks are ignored.
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
@@ -14,7 +17,7 @@ export type SubmissionPdf = {
   on_shelf: string;
   tags: string;
   notes: string;
-  photo_urls: string[];
+  photo_urls: string[]; // up to 2
 };
 
 // Page constants
@@ -33,27 +36,102 @@ function drawRect(page: any, x: number, y: number, w: number, h: number) {
   });
 }
 
-async function bytesFromUrl(url?: string | null): Promise<ArrayBuffer | null> {
+// ---- Image helpers (mirror Excel's behavior) ----
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const len = bin.length;
+  const out = new Uint8Array(len);
+  for (let i = 0; i < len; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Fetch any URL → Blob → decode with browser (respecting EXIF when possible) → draw to canvas → JPEG bytes. */
+async function rasterizeToJPEGBytes(url?: string | null): Promise<Uint8Array | null> {
   if (!url) return null;
 
-  if (url.startsWith('data:')) {
-    try {
-      const base64 = url.split(',')[1] ?? '';
-      const bin = atob(base64);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      return arr.buffer;
-    } catch {
-      return null;
-    }
-  }
-
+  // Always get a Blob first so we can feed an object URL to <img> or createImageBitmap safely.
+  let blob: Blob;
   try {
+    // fetch() also works for blob: and data: URLs in modern browsers.
     const res = await fetch(url);
     if (!res.ok) return null;
-    return await res.arrayBuffer();
+    blob = await res.blob();
   } catch {
     return null;
+  }
+
+  // Try createImageBitmap with EXIF orientation hint (supported in most evergreen browsers).
+  let bitmap: ImageBitmap | null = null;
+  try {
+    // @ts-expect-error - imageOrientation is not in older TS lib dom typings everywhere.
+    bitmap = (await createImageBitmap(blob, { imageOrientation: 'from-image' })) as ImageBitmap;
+  } catch {
+    bitmap = null;
+  }
+
+  let canvas = document.createElement('canvas');
+  let ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  if (bitmap) {
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    ctx.drawImage(bitmap, 0, 0);
+    // bitmap.close(); // optional
+  } else {
+    // Fallback: HTMLImageElement path (browsers generally decode respecting EXIF when rendering)
+    const src = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = src;
+      });
+      canvas.width = img.naturalWidth || (img.width as number);
+      canvas.height = img.naturalHeight || (img.height as number);
+      ctx.drawImage(img, 0, 0);
+    } catch {
+      URL.revokeObjectURL(src);
+      return null;
+    }
+    URL.revokeObjectURL(src);
+  }
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  const b64 = dataUrl.split(',')[1] || '';
+  return b64 ? base64ToBytes(b64) : null;
+}
+
+// A safer, multi-strategy downloader for mobile Safari.
+function downloadBlobWithFallback(blob: Blob, name: string) {
+  try {
+    // Primary: invisible <a download> click.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    // Keep it in DOM briefly — some Safari builds require it to exist.
+    document.body.appendChild(a);
+    a.click();
+    // If the click is ignored, fallback below will still run on next tick.
+    setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 1500);
+  } catch {
+    // no-op, fall through to the window.open fallback below
+  }
+
+  // Fallback: open in a new tab (often works on iOS Safari when programmatic clicks are blocked).
+  // If the primary path succeeded, this will just open an already-revoked URL (no effect).
+  try {
+    const altUrl = URL.createObjectURL(blob);
+    const w = window.open(altUrl, '_blank');
+    // If window.open is blocked, there isn't a better pure-web fallback here.
+    setTimeout(() => URL.revokeObjectURL(altUrl), 3000);
+  } catch {
+    // swallow
   }
 }
 
@@ -119,32 +197,22 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
     const b = boxes[i];
     drawRect(page, b.x, b.y, b.w, b.h);
 
-    const bytes = await bytesFromUrl(b.url);
-    if (!bytes) continue;
+    // Rasterize to oriented JPEG bytes before embedding (matches Excel export).
+    const jpegBytes = await rasterizeToJPEGBytes(b.url);
+    if (!jpegBytes) continue;
 
-    let img: any = null;
-    try { img = await pdfDoc.embedJpg(bytes); } catch {}
-    if (!img) { try { img = await pdfDoc.embedPng(bytes); } catch {} }
-    if (!img) continue;
-
+    const img = await pdfDoc.embedJpg(jpegBytes);
     const scale = Math.min(b.w / img.width, b.h / img.height);
     const w = img.width * scale;
     const h = img.height * scale;
     page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
   }
 
-  // Save + Download
+  // Save + Download (with Safari-friendly fallback)
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const name = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
-
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  downloadBlobWithFallback(blob, name);
 }
 
 export default { downloadSubmissionPdf };
