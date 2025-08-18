@@ -14,7 +14,7 @@
     "node": ">=20.19.4"
   },
   "dependencies": {
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
     "@expo/metro-runtime": "~5.0.4",
     "@supabase/supabase-js": "^2.44.4",
     "expo": "53.0.20",
