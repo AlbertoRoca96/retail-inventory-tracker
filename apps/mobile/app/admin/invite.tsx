@@ -1,38 +1,103 @@
-import { useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+// apps/mobile/app/admin/invite.tsx
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import { Link } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
+import { useAuth } from '../../src/hooks/useAuth';
 import { theme } from '../../src/theme';
 
-export default function AdminInvite() {
-  const [email, setEmail] = useState(''); const [teamId, setTeamId] = useState(''); const [busy, setBusy] = useState(false);
+export default function InviteUserRoute() {
+  const { session, ready } = useAuth();
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const boot = async () => {
+      if (!session?.user) return;
+      const { data: vt, error } = await supabase
+        .from('v_user_teams')
+        .select('team_id,is_admin')
+        .eq('user_id', session.user.id)
+        .eq('is_admin', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) Alert.alert('Error', error.message);
+      setTeamId(vt?.team_id ?? null);
+      setLoading(false);
+    };
+    if (ready && session?.user) boot();
+  }, [ready, session?.user?.id]);
+
   const sendInvite = async () => {
-    if (!email) return Alert.alert('Email required');
-    setBusy(true);
+    if (!teamId) { Alert.alert('Not allowed', 'You are not an admin.'); return; }
+    if (!email) { Alert.alert('Missing email', 'Enter an email to invite.'); return; }
+
+    setSending(true);
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      const url = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/invite-user`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ email: email.trim(), team_id: teamId || undefined }),
+      // The supabase-js client attaches the user’s JWT automatically.
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { email: email.trim(), team_id: teamId },
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Invite failed');
-      Alert.alert('Invite sent', `Email sent to ${email.trim()}`); setEmail('');
-    } catch (e: any) { Alert.alert('Error', e?.message || 'Invite failed'); } finally { setBusy(false); }
+
+      if (error) throw error;
+      Alert.alert('Invite sent', `An invite was sent to ${email}.`);
+      setEmail('');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? String(e));
+    } finally {
+      setSending(false);
+    }
   };
 
+  if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
+  if (!session?.user) return <View style={S.center}><Text>Signed out.</Text></View>;
+
+  if (loading) return <View style={S.center}><ActivityIndicator /></View>;
+  if (!teamId) {
+    return (
+      <View style={S.center}>
+        <Text>You are not an admin on any team.</Text>
+        <Link href="/admin" asChild>
+          <Pressable style={[theme.button, { marginTop: 12 }]}>
+            <Text style={theme.buttonText}>Back</Text>
+          </Pressable>
+        </Link>
+      </View>
+    );
+  }
+
   return (
-    <View style={{ flex:1, padding:16, gap:12 }}>
-      <Text style={{ fontSize:20, fontWeight:'700' }}>Invite user</Text>
-      <Text>Email</Text>
-      <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" style={theme.input} />
-      <Text style={{ marginTop: 8 }}>Team (optional)</Text>
-      <TextInput value={teamId} onChangeText={setTeamId} autoCapitalize="none" style={theme.input} placeholder="team uuid" />
-      <Pressable onPress={sendInvite} disabled={busy} style={[theme.button, { marginTop: 12, opacity: busy ? 0.7 : 1 }]}>
-        <Text style={theme.buttonText}>{busy ? 'Sending…' : 'Send invite'}</Text>
+    <View style={S.container}>
+      <Text style={S.title}>Invite a member</Text>
+      <Text style={{ color: '#4b5563', marginBottom: 12 }}>Team: {teamId}</Text>
+
+      <TextInput
+        placeholder="person@example.com"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+        style={theme.input}
+      />
+
+      <Pressable onPress={sendInvite} disabled={sending} style={[theme.button, { marginTop: 12, opacity: sending ? 0.7 : 1 }]}>
+        <Text style={theme.buttonText}>{sending ? 'Sending…' : 'Send invite'}</Text>
       </Pressable>
+
+      <Link href="/admin" asChild>
+        <Pressable style={[theme.button, { marginTop: 8, backgroundColor: '#6b7280' }]}>
+          <Text style={theme.buttonText}>Back</Text>
+        </Pressable>
+      </Link>
     </View>
   );
 }
+
+const S = StyleSheet.create({
+  container: { flex: 1, padding: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
+});
