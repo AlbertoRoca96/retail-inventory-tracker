@@ -104,6 +104,11 @@ export default function AdminRoute() {
             <Text style={theme.buttonText}>Invite a member</Text>
           </Pressable>
 
+          <Pressable onPress={() => router.push('/admin/metrics')}
+            style={{ ...theme.button, marginTop: 8 }}>
+            <Text style={theme.buttonText}>Metrics</Text>
+          </Pressable>
+
           <Pressable onPress={() => router.replace('/home')}
             style={{ ...theme.button, marginTop: 8, backgroundColor: '#6b7280' }}>
             <Text style={theme.buttonText}>Back</Text>
