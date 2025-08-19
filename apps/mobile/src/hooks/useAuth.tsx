@@ -8,7 +8,8 @@ type Session = { user: any } | null;
 
 type AuthValue = {
   session: Session;
-  demo: boolean; // dev-bypass indicator (anonymous auth)
+  ready: boolean;        // <-- NEW: true after first bootstrap completes
+  demo: boolean;         // dev-bypass indicator (anonymous auth)
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signInWithOtp: (email: string) => Promise<void>;
@@ -16,18 +17,13 @@ type AuthValue = {
   signOut: () => Promise<void>;
 };
 
-// Build-time flag (set to "false" in web.yml for production web)
 const BYPASS = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
 
-// Helper: detect anonymous Supabase users (covers SDK variants)
+// Detect anonymous Supabase users (covers SDK variants)
 const isAnonymousUser = (u: any): boolean =>
   !!(u?.is_anonymous || u?.app_metadata?.provider === 'anonymous');
 
 // Build a redirect URL for email flows that returns to our app on web.
-// Examples:
-//   - GitHub Pages: https://<user>.github.io/retail-inventory-tracker/auth/callback
-//   - Local dev:    http://localhost:8081/auth/callback (or whatever dev host)
-// Make sure this exact path is added in Supabase → Authentication → URL Configuration → Redirect URLs.
 function emailRedirectTo(): string | undefined {
   if (typeof window === 'undefined') return undefined;
   const base = `${window.location.origin}${webBasePath()}`;
@@ -36,6 +32,7 @@ function emailRedirectTo(): string | undefined {
 
 const AuthCtx = createContext<AuthValue>({
   session: null,
+  ready: false,
   demo: BYPASS,
   signIn: async () => {},
   signUp: async () => {},
@@ -46,61 +43,64 @@ const AuthCtx = createContext<AuthValue>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    const bootstrap = async () => {
-      // 1) Pick up any persisted session
-      const { data: s0 } = await supabase.auth.getSession();
-      const current = (s0.session as any) ?? null;
+    (async () => {
+      try {
+        // 1) Pick up any persisted session
+        const { data: s0 } = await supabase.auth.getSession();
+        const current = (s0.session as any) ?? null;
 
-      // 2) If BYPASS is OFF but an anonymous session is present → force logout
-      if (!BYPASS && current?.user && isAnonymousUser(current.user)) {
-        await supabase.auth.signOut();
-        if (!cancelled) setSession(null);
-      } else if (BYPASS && !current) {
-        // 3) Optional dev bypass: create an anonymous session once
-        try {
-          await supabase.auth.signInAnonymously();
-          const fresh = (await supabase.auth.getSession()).data.session;
-          if (!cancelled) setSession((fresh as any) ?? null);
-        } catch {
-          if (!cancelled) setSession(null);
-        }
-      } else {
-        if (!cancelled) setSession(current);
-      }
-
-      // 4) React to future auth changes
-      const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, s1) => {
-        if (!BYPASS && s1?.user && isAnonymousUser(s1.user)) {
+        // 2) If BYPASS is OFF but an anonymous session is present → force logout
+        if (!BYPASS && current?.user && isAnonymousUser(current.user)) {
           await supabase.auth.signOut();
           if (!cancelled) setSession(null);
-          return;
+        } else if (BYPASS && !current) {
+          // 3) Optional dev bypass: create an anonymous session once
+          try {
+            await supabase.auth.signInAnonymously();
+            const fresh = (await supabase.auth.getSession()).data.session;
+            if (!cancelled) setSession((fresh as any) ?? null);
+          } catch {
+            if (!cancelled) setSession(null);
+          }
+        } else {
+          if (!cancelled) setSession(current);
         }
-        if (!cancelled) setSession((s1 as any) ?? null);
-      });
 
-      return () => sub.subscription.unsubscribe();
-    };
+        // 4) React to future auth changes
+        const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, s1) => {
+          if (!BYPASS && s1?.user && isAnonymousUser(s1.user)) {
+            await supabase.auth.signOut();
+            if (!cancelled) setSession(null);
+            return;
+          }
+          if (!cancelled) setSession((s1 as any) ?? null);
+        });
 
-    bootstrap();
+        // cleanup
+        return () => sub.subscription.unsubscribe();
+      } finally {
+        if (!cancelled) setReady(true); // <-- declare boot finished
+      }
+    })();
+
     return () => { cancelled = true; };
   }, []);
 
   const value = useMemo<AuthValue>(() => ({
     session,
+    ready,
     demo: BYPASS,
 
-    // Standard email/password sign-in
     async signIn(email, password) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
     },
 
-    // Email/password sign-up
-    // If “Confirm email” is enabled in Supabase, user must click the email first.
     async signUp(email, password) {
       const { error } = await supabase.auth.signUp({
         email,
@@ -110,7 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
     },
 
-    // Passwordless magic link
     async signInWithOtp(email) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -119,7 +118,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
     },
 
-    // Password reset email
     async resetPassword(email) {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: emailRedirectTo(),
@@ -130,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async signOut() {
       await supabase.auth.signOut();
     },
-  }), [session]);
+  }), [session, ready]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
