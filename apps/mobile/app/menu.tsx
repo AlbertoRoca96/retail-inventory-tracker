@@ -44,14 +44,13 @@ export default function Menu() {
       <Btn label="Create New Form" onPress={() => router.push('/form/new')} />
       <Btn label="View Submissions" onPress={() => router.push('/submissions')} />
 
-      {/* While we check admin status, show a tiny spinner space-holder */}
+      {/* Admin-only actions */}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 10 }} />
       ) : isAdmin ? (
         <>
           <Btn label="Admin" onPress={() => router.push('/admin')} />
-          {/* If you add metrics later, just uncomment: */}
-          {/* <Btn label="Metrics" onPress={() => router.push('/admin/metrics')} /> */}
+          <Btn label="Metrics" onPress={() => router.push('/admin/metrics')} />
         </>
       ) : null}
 
@@ -59,7 +58,7 @@ export default function Menu() {
         label="Log Out"
         onPress={async () => {
           await supabase.auth.signOut().catch(() => {});
-          router.replace('/'); // back to login
+          router.replace('/'); // Gate will send unauth users to /login
         }}
         bg={colors.gray}
         fg={colors.black}
