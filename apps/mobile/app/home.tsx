@@ -1,4 +1,3 @@
-// apps/mobile/app/home.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Link } from 'expo-router';
@@ -28,7 +27,6 @@ export default function HomeRoute() {
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
       <Text style={{ fontSize: 22, fontWeight: '700' }}>You’re in ✅</Text>
       <Text style={{ color: '#6b7280' }}>Placeholder “home” screen.</Text>
-
       {isAdmin && (
         <Link href="/admin" asChild>
           <Pressable style={[theme.button, { marginTop: 8 }]}>
