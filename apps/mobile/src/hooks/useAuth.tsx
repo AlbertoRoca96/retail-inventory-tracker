@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 // Public shape
-type Session = { user: { id: string; email?: string | null } } | null;
+type Session = { user: any } | null;
 
 type AuthValue = {
   session: Session;
@@ -16,8 +16,11 @@ type AuthValue = {
 };
 
 // Toggle ON only in local/dev to keep the “skip login” behavior.
-// In production, set this to false or remove it.
 const BYPASS = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
+
+// Helper: detect anonymous Supabase user across SDK versions
+const isAnonymousUser = (u: any): boolean =>
+  !!(u?.is_anonymous || u?.app_metadata?.provider === 'anonymous');
 
 const AuthCtx = createContext<AuthValue>({
   session: null,
@@ -36,24 +39,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const bootstrap = async () => {
-      // 1) pick up existing session
-      const { data: s0 } = await supabase.auth.getSession(); // ref: getSession
-      if (!cancelled) setSession((s0.session as any) ?? null);
+      // Pick up existing session (persisted in localStorage/SecureStore)
+      const { data: s0 } = await supabase.auth.getSession(); // supabase-js reference: getSession
+      const current = (s0.session as any) ?? null;
 
-      // 2) subscribe to auth changes
-      const { data: sub } = supabase.auth.onAuthStateChange((_evt, s1) => {
-        if (!cancelled) setSession((s1 as any) ?? null);
-      }); // ref: onAuthStateChange
-
-      // 3) Optional dev-bypass: sign in anonymously once
-      if (BYPASS) {
-        const cur = (await supabase.auth.getSession()).data.session;
-        if (!cur) {
-          await supabase.auth.signInAnonymously(); // ref: signInAnonymously
-          const fresh = (await supabase.auth.getSession()).data.session;
-          if (!cancelled) setSession((fresh as any) ?? null);
-        }
+      // If BYPASS is OFF but we find an anonymous session => force logout
+      if (!BYPASS && current?.user && isAnonymousUser(current.user)) {
+        await supabase.auth.signOut();
+        if (!cancelled) setSession(null);
+      } else {
+        if (!cancelled) setSession(current);
       }
+
+      // Subscribe to auth changes
+      const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, s1) => {
+        // Guard against anonymous sessions slipping in
+        if (!BYPASS && s1?.user && isAnonymousUser(s1.user)) {
+          await supabase.auth.signOut();
+          if (!cancelled) setSession(null);
+          return;
+        }
+        if (!cancelled) setSession((s1 as any) ?? null);
+      }); // supabase-js reference: onAuthStateChange
 
       return () => sub.subscription.unsubscribe();
     };
@@ -66,28 +73,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     demo: BYPASS,
 
-    // Email + password login (standard)
     async signIn(email, password) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password }); // ref: signInWithPassword
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
     },
 
-    // Create an account (email + password)
     async signUp(email, password) {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
-      // If “Confirm email” is enabled in your project, user must confirm before first login.
+      // If "Confirm email" is enabled, the user must confirm before first login.
     },
 
-    // Passwordless email (magic link)
     async signInWithOtp(email) {
-      const { error } = await supabase.auth.signInWithOtp({ email }); // ref: signInWithOtp
+      const { error } = await supabase.auth.signInWithOtp({ email });
       if (error) throw error;
     },
 
-    // Send password reset email
     async resetPassword(email) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email); // ref: resetPasswordForEmail
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
       if (error) throw error;
     },
 
