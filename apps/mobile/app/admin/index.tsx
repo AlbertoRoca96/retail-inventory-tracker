@@ -1,7 +1,7 @@
 // apps/mobile/app/admin/index.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'react-native';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme } from '../../src/theme';
@@ -14,58 +14,45 @@ export default function AdminRoute() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [lastError, setLastError] = useState<string | null>(null);
 
-  const load = async () => {
-    if (!session?.user) return;
-    setLoading(true);
-    setLastError(null);
+  useEffect(() => {
+    const load = async () => {
+      if (!session?.user) return;
+      setLoading(true);
 
-    try {
-      // Prefer a direct read from team_members (simplest RLS surface)
-      const { data: memRow, error: memErr } = await supabase
-        .from('team_members')
+      const { data: vt, error: vtErr } = await supabase
+        .from('v_user_teams')
         .select('team_id,is_admin')
         .eq('user_id', session.user.id)
-        .order('is_admin', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (memErr) {
-        console.error('team_members read error:', memErr);
-        setLastError(memErr.message);
+      if (vtErr) {
+        Alert.alert('Error', vtErr.message);
+        setLoading(false);
+        return;
       }
 
-      if (memRow?.team_id) {
-        setTeamId(memRow.team_id);
-        setIsAdmin(!!memRow.is_admin);
+      setTeamId(vt?.team_id ?? null);
+      const admin = !!vt?.is_admin;
+      setIsAdmin(admin);
 
-        // Load members of that team for display
-        const { data: mems, error: listErr } = await supabase
+      if (vt?.team_id) {
+        const { data: mem, error: mErr } = await supabase
           .from('team_members')
           .select('user_id,is_admin')
-          .eq('team_id', memRow.team_id)
+          .eq('team_id', vt.team_id)
           .order('is_admin', { ascending: false });
 
-        if (listErr) {
-          console.error('team member list error:', listErr);
-          setLastError(listErr.message);
-        } else {
-          setMembers(mems || []);
-        }
-      } else {
-        setTeamId(null);
-        setIsAdmin(false);
+        if (mErr) Alert.alert('Error', mErr.message);
+        else setMembers(mem || []);
       }
-    } catch (e: any) {
-      console.error('admin load unexpected error:', e);
-      setLastError(e?.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => { if (ready && session?.user) load(); }, [ready, session?.user?.id]);
+      setLoading(false);
+    };
+
+    if (ready && session?.user) load();
+  }, [ready, session?.user?.id]);
 
   if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
 
@@ -73,28 +60,12 @@ export default function AdminRoute() {
     return (
       <View style={S.center}>
         <Text>You’re signed out.</Text>
-        <Link href="/login" asChild>
-          <Pressable style={[theme.button, { marginTop: 12 }]}>
-            <Text style={theme.buttonText}>Go to Login</Text>
-          </Pressable>
-        </Link>
-      </View>
-    );
-  }
-
-  // If there was a backend error, show it so we know exactly what RLS/policy is blocking you
-  if (lastError) {
-    return (
-      <View style={S.center}>
-        <Text style={S.title}>Admin</Text>
-        <Text style={{ color: '#b91c1c', textAlign: 'center' }}>
-          Error: {lastError}
-        </Text>
-        <Link href="/home" asChild>
-          <Pressable style={[theme.button, { marginTop: 16 }]}>
-            <Text style={theme.buttonText}>Back to Home</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.replace('/login')}
+          style={{ ...theme.button, marginTop: 12 }}
+        >
+          <Text style={theme.buttonText}>Go to Login</Text>
+        </Pressable>
       </View>
     );
   }
@@ -106,11 +77,12 @@ export default function AdminRoute() {
         <Text style={{ textAlign: 'center', marginTop: 8 }}>
           You’re not an admin on any team.
         </Text>
-        <Link href="/home" asChild>
-          <Pressable style={[theme.button, { marginTop: 16 }]}>
-            <Text style={theme.buttonText}>Back to Home</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.replace('/home')}
+          style={{ ...theme.button, marginTop: 16 }}
+        >
+          <Text style={theme.buttonText}>Back to Home</Text>
+        </Pressable>
       </View>
     );
   }
@@ -118,6 +90,7 @@ export default function AdminRoute() {
   return (
     <View style={S.container}>
       <Text style={S.title}>Admin</Text>
+
       {loading ? (
         <ActivityIndicator />
       ) : (
@@ -133,17 +106,19 @@ export default function AdminRoute() {
             </View>
           ))}
 
-          <Link href="/admin/invite" asChild>
-            <Pressable style={[theme.button, { marginTop: 16 }]}>
-              <Text style={theme.buttonText}>Invite a member</Text>
-            </Pressable>
-          </Link>
+          <Pressable
+            onPress={() => router.push('/admin/invite')}
+            style={{ ...theme.button, marginTop: 16 }}
+          >
+            <Text style={theme.buttonText}>Invite a member</Text>
+          </Pressable>
 
-          <Link href="/home" asChild>
-            <Pressable style={[theme.button, { marginTop: 8, backgroundColor: '#6b7280' }]}>
-              <Text style={theme.buttonText}>Back</Text>
-            </Pressable>
-          </Link>
+          <Pressable
+            onPress={() => router.replace('/home')}
+            style={{ ...theme.button, marginTop: 8, backgroundColor: '#6b7280' }}
+          >
+            <Text style={theme.buttonText}>Back</Text>
+          </Pressable>
         </>
       )}
     </View>
