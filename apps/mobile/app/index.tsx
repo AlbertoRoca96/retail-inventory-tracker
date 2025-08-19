@@ -1,139 +1,45 @@
-// apps/mobile/app/admin/index.tsx
-import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import { supabase } from '../../src/lib/supabase';
-import { useAuth } from '../../src/hooks/useAuth';
-import { theme } from '../../src/theme';
+import { colors } from '../src/theme';
 
-type Member = { user_id: string; is_admin: boolean };
+const BYPASS = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
 
-export default function AdminRoute() {
-  const { session, ready } = useAuth();
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+export default function LoginScreen() {
+  const [email, setEmail] = useState(''), [password, setPassword] = useState('');
+  useEffect(() => { if (BYPASS) router.replace('/menu'); }, []);
+  const canSubmit = useMemo(() => true, []);
 
-  useEffect(() => {
-    const load = async () => {
-      if (!session?.user) return;
-      setLoading(true);
-
-      const { data: vt, error: vtErr } = await supabase
-        .from('v_user_teams')
-        .select('team_id,is_admin')
-        .eq('user_id', session.user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (vtErr) {
-        Alert.alert('Error', vtErr.message);
-        setLoading(false);
-        return;
-      }
-
-      setTeamId(vt?.team_id ?? null);
-      const admin = !!vt?.is_admin;
-      setIsAdmin(admin);
-
-      if (vt?.team_id) {
-        const { data: mem, error: mErr } = await supabase
-          .from('team_members')
-          .select('user_id,is_admin')
-          .eq('team_id', vt.team_id)
-          .order('is_admin', { ascending: false });
-
-        if (mErr) Alert.alert('Error', mErr.message);
-        else setMembers(mem || []);
-      }
-
-      setLoading(false);
-    };
-
-    if (ready && session?.user) load();
-  }, [ready, session?.user?.id]);
-
-  if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
-
-  if (!session?.user) {
-    return (
-      <View style={S.center}>
-        <Text>You’re signed out.</Text>
-        <Pressable
-          onPress={() => router.replace('/login')}
-          style={{ ...theme.button, marginTop: 12 }}
-        >
-          <Text style={theme.buttonText}>Go to Login</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <View style={S.center}>
-        <Text style={S.title}>Admin</Text>
-        <Text style={{ textAlign: 'center', marginTop: 8 }}>
-          You’re not an admin on any team.
-        </Text>
-        <Pressable
-          onPress={() => router.replace('/home')}
-          style={{ ...theme.button, marginTop: 16 }}
-        >
-          <Text style={theme.buttonText}>Back to Home</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const go = () => router.replace('/menu');
 
   return (
-    <View style={S.container}>
-      <Text style={S.title}>Admin</Text>
+    <View style={{ flex: 1, alignItems: 'center', padding: 16, justifyContent: 'center' }}>
+      <View style={{ width: 360, backgroundColor: 'rgba(221,221,221,0.6)', borderRadius: 12, padding: 16, gap: 12 }}>
+        <View style={{ height: 60, backgroundColor: 'rgba(200,200,200,0.6)', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+          <Text style={{ fontSize: 28, color: '#374151' }}>Logo</Text>
+        </View>
 
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <>
-          <Text style={{ marginBottom: 12, color: '#4b5563' }}>
-            Team: <Text style={{ fontWeight: '700' }}>{teamId}</Text>
+        <TextInput placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none"
+          keyboardType="email-address" returnKeyType="next"
+          onSubmitEditing={() => (document.getElementById('password') as HTMLInputElement|undefined)?.focus?.()}
+          style={{ backgroundColor: colors.white, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.black }}
+        />
+        <TextInput id="password" placeholder="Password" value={password} onChangeText={setPassword}
+          secureTextEntry returnKeyType="go" onSubmitEditing={go} blurOnSubmit
+          style={{ backgroundColor: colors.white, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.black }}
+        />
+
+        <Pressable onPress={go} disabled={!canSubmit} accessibilityRole="button"
+          style={{ marginTop: 8, backgroundColor: colors.gold, paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}>
+          <Text style={{ color: colors.black, fontSize: 16, fontWeight: '700' }}>Enter</Text>
+        </Pressable>
+
+        {BYPASS ? (
+          <Text style={{ textAlign: 'center', marginTop: 6, color: '#6b7280' }}>
+            Dev bypass is ON (EXPO_PUBLIC_DEV_BYPASS_LOGIN=true)
           </Text>
-
-          {members.map((m) => (
-            <View key={m.user_id} style={S.row}>
-              <Text style={{ flex: 1 }}>{m.user_id}</Text>
-              <Text style={{ fontWeight: '700' }}>{m.is_admin ? 'admin' : 'member'}</Text>
-            </View>
-          ))}
-
-          <Pressable
-            onPress={() => router.push('/admin/invite')}
-            style={{ ...theme.button, marginTop: 16 }}
-          >
-            <Text style={theme.buttonText}>Invite a member</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => router.replace('/home')}
-            style={{ ...theme.button, marginTop: 8, backgroundColor: '#6b7280' }}
-          >
-            <Text style={theme.buttonText}>Back</Text>
-          </Pressable>
-        </>
-      )}
+        ) : null}
+      </View>
     </View>
   );
 }
-
-const S = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
-    paddingVertical: 8,
-  },
-});
