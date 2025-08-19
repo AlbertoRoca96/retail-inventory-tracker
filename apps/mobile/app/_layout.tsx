@@ -2,23 +2,25 @@
 import React from 'react';
 import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
-import { webBasePath } from '../src/lib/webBasePath';
+
+/** Treat both plain and GH Pages paths as unauth-allowed */
+function isUnauthPath(p: string | null) {
+  if (!p) return false;
+  // Works whether pathname is "/login" or "/retail-inventory-tracker/login"
+  return p.endsWith('/login') || p.endsWith('/auth/callback');
+}
 
 function Gate({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
-  let pathname = usePathname();
+  const { session, ready } = useAuth();
+  const pathname = usePathname();
 
-  // Normalize: remove the GH Pages base path if present.
-  const base = webBasePath(); // e.g. "/retail-inventory-tracker" on Pages
-  if (base && pathname.startsWith(base)) {
-    pathname = pathname.slice(base.length) || '/';
-  }
+  // 🚦 Do nothing until Supabase finishes initial session check
+  if (!ready) return <>{children}</>;
 
-  const isLogin = pathname === '/login';
-  const isCallback = pathname.startsWith('/auth/callback');
+  const onUnauth = isUnauthPath(pathname);
 
-  if (!session && !(isLogin || isCallback)) return <Redirect href="/login" />;
-  if (session && isLogin) return <Redirect href="/home" />;
+  if (!session && !onUnauth) return <Redirect href="/login" />;
+  if (session && pathname?.endsWith('/login')) return <Redirect href="/home" />;
 
   return <>{children}</>;
 }
