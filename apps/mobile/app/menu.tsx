@@ -58,7 +58,7 @@ export default function Menu() {
         label="Log Out"
         onPress={async () => {
           await supabase.auth.signOut().catch(() => {});
-          router.replace('/'); // Gate will send unauth users to /login
+          router.replace('/'); // Gate will route unauth users to /login
         }}
         bg={colors.gray}
         fg={colors.black}
