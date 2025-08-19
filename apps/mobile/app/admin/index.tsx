@@ -1,7 +1,6 @@
-// apps/mobile/app/admin/index.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { Link } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme } from '../../src/theme';
@@ -15,57 +14,48 @@ export default function AdminRoute() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      if (!session?.user) return;
-      setLoading(true);
+  const load = async () => {
+    if (!session?.user) return;
+    setLoading(true);
 
-      const { data: vt, error: vtErr } = await supabase
-        .from('v_user_teams')
-        .select('team_id,is_admin')
-        .eq('user_id', session.user.id)
-        .limit(1)
-        .maybeSingle();
+    // ✅ Read admin membership straight from team_members
+    const { data: tm, error: tmErr } = await supabase
+      .from('team_members')
+      .select('team_id,is_admin')
+      .eq('user_id', session.user.id)
+      .eq('is_admin', true)
+      .limit(1)
+      .maybeSingle();
 
-      if (vtErr) {
-        Alert.alert('Error', vtErr.message);
-        setLoading(false);
-        return;
-      }
+    if (tmErr) { Alert.alert('Error', tmErr.message); setLoading(false); return; }
 
-      setTeamId(vt?.team_id ?? null);
-      const admin = !!vt?.is_admin;
-      setIsAdmin(admin);
+    const tid = tm?.team_id ?? null;
+    setTeamId(tid);
+    setIsAdmin(!!tm?.is_admin);
 
-      if (vt?.team_id) {
-        const { data: mem, error: mErr } = await supabase
-          .from('team_members')
-          .select('user_id,is_admin')
-          .eq('team_id', vt.team_id)
-          .order('is_admin', { ascending: false });
+    if (tid) {
+      const { data: mem, error: mErr } = await supabase
+        .from('team_members')
+        .select('user_id,is_admin')
+        .eq('team_id', tid)
+        .order('is_admin', { ascending: false });
+      if (mErr) Alert.alert('Error', mErr.message);
+      setMembers(mem || []);
+    }
 
-        if (mErr) Alert.alert('Error', mErr.message);
-        else setMembers(mem || []);
-      }
+    setLoading(false);
+  };
 
-      setLoading(false);
-    };
-
-    if (ready && session?.user) load();
-  }, [ready, session?.user?.id]);
+  useEffect(() => { if (ready && session?.user) load(); }, [ready, session?.user?.id]);
 
   if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
-
   if (!session?.user) {
     return (
       <View style={S.center}>
         <Text>You’re signed out.</Text>
-        <Pressable
-          onPress={() => router.replace('/login')}
-          style={{ ...theme.button, marginTop: 12 }}
-        >
-          <Text style={theme.buttonText}>Go to Login</Text>
-        </Pressable>
+        <Link href="/login" asChild>
+          <Pressable style={[theme.button, { marginTop: 12 }]}><Text style={theme.buttonText}>Go to Login</Text></Pressable>
+        </Link>
       </View>
     );
   }
@@ -74,15 +64,10 @@ export default function AdminRoute() {
     return (
       <View style={S.center}>
         <Text style={S.title}>Admin</Text>
-        <Text style={{ textAlign: 'center', marginTop: 8 }}>
-          You’re not an admin on any team.
-        </Text>
-        <Pressable
-          onPress={() => router.replace('/home')}
-          style={{ ...theme.button, marginTop: 16 }}
-        >
-          <Text style={theme.buttonText}>Back to Home</Text>
-        </Pressable>
+        <Text style={{ textAlign: 'center', marginTop: 8 }}>You’re not an admin on any team.</Text>
+        <Link href="/home" asChild>
+          <Pressable style={[theme.button, { marginTop: 16 }]}><Text style={theme.buttonText}>Back to Home</Text></Pressable>
+        </Link>
       </View>
     );
   }
@@ -90,35 +75,26 @@ export default function AdminRoute() {
   return (
     <View style={S.container}>
       <Text style={S.title}>Admin</Text>
-
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
+      {loading ? <ActivityIndicator /> : (
         <>
           <Text style={{ marginBottom: 12, color: '#4b5563' }}>
             Team: <Text style={{ fontWeight: '700' }}>{teamId}</Text>
           </Text>
 
-          {members.map((m) => (
+          {members.map(m => (
             <View key={m.user_id} style={S.row}>
               <Text style={{ flex: 1 }}>{m.user_id}</Text>
               <Text style={{ fontWeight: '700' }}>{m.is_admin ? 'admin' : 'member'}</Text>
             </View>
           ))}
 
-          <Pressable
-            onPress={() => router.push('/admin/invite')}
-            style={{ ...theme.button, marginTop: 16 }}
-          >
-            <Text style={theme.buttonText}>Invite a member</Text>
-          </Pressable>
+          <Link href="/admin/invite" asChild>
+            <Pressable style={[theme.button, { marginTop: 16 }]}><Text style={theme.buttonText}>Invite a member</Text></Pressable>
+          </Link>
 
-          <Pressable
-            onPress={() => router.replace('/home')}
-            style={{ ...theme.button, marginTop: 8, backgroundColor: '#6b7280' }}
-          >
-            <Text style={theme.buttonText}>Back</Text>
-          </Pressable>
+          <Link href="/home" asChild>
+            <Pressable style={[theme.button, { marginTop: 8, backgroundColor: '#6b7280' }]}><Text style={theme.buttonText}>Back</Text></Pressable>
+          </Link>
         </>
       )}
     </View>
@@ -129,11 +105,5 @@ const S = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
-    paddingVertical: 8,
-  },
+  row: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#e5e7eb', paddingVertical: 8 },
 });
