@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, Pressable, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { getMonthlyCounts, getDailyCounts, getYTDTotal } from '../../src/lib/analytics';
 
 type MonthRow = { month_start: string; submitted: number; cumulative: number };
-type DayRow = { day: string; submitted: number };
+type DayRow   = { day: string; submitted: number };
 
 const isWeb = Platform.OS === 'web';
 
@@ -48,13 +48,13 @@ export default function AdminMetrics() {
 
   // Date range (UI)
   const [rangeStart, setRangeStart] = useState<string | null>(null);
-  const [rangeEnd, setRangeEnd] = useState<string | null>(null);
+  const [rangeEnd,   setRangeEnd]   = useState<string | null>(null);
 
   // Data
   const [loading, setLoading] = useState(true);
   const [monthly, setMonthly] = useState<MonthRow[]>([]);
-  const [daily, setDaily] = useState<DayRow[]>([]);
-  const [ytd, setYtd] = useState<number>(0);
+  const [daily,   setDaily]   = useState<DayRow[]>([]);
+  const [ytd,     setYtd]     = useState<number>(0);
 
   // Bootstrap: find an admin team and its contract_start_date, then seed the default range.
   useEffect(() => {
@@ -103,9 +103,11 @@ export default function AdminMetrics() {
         .select('user_id')
         .eq('team_id', teamId);
       if (!error && data) {
-        setTeamUsers([{ id: '', label: 'All users' }].concat(
-          data.map((r) => ({ id: r.user_id, label: r.user_id }))
-        ));
+        setTeamUsers(
+          [{ id: '', label: 'All users' }].concat(
+            data.map((r) => ({ id: r.user_id, label: r.user_id }))
+          )
+        );
       }
     })();
   }, [teamId]);
@@ -172,162 +174,169 @@ export default function AdminMetrics() {
   };
 
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Metrics</Text>
+    <View style={{ flex: 1 }}>
+      {/* SCROLLABLE content so long lists don’t overflow */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Metrics</Text>
 
-      {/* Controls */}
-      <View style={{ gap: 10 as any, marginBottom: 12 }}>
-        {/* Date range */}
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <Text>Start:</Text>
-          {isWeb ? (
-            <input
-              type="date"
-              value={rangeStart ?? ''}
-              onChange={(e) => setRangeStart(e.currentTarget.value)}
-            />
-          ) : (
-            <Text>{rangeStart}</Text>
-          )}
-          <Text>End:</Text>
-          {isWeb ? (
-            <input
-              type="date"
-              value={rangeEnd ?? ''}
-              onChange={(e) => setRangeEnd(e.currentTarget.value)}
-            />
-          ) : (
-            <Text>{rangeEnd}</Text>
-          )}
-        </View>
-
-        {/* User filter */}
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <Text>User:</Text>
-          {isWeb ? (
-            <select
-              value={userFilter ?? ''}
-              onChange={(e) => setUserFilter(e.currentTarget.value || null)}
-            >
-              {teamUsers.map((u) => (
-                <option key={u.id || 'all'} value={u.id}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <Text>{userFilter ? userFilter : 'All users'}</Text>
-          )}
-        </View>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <View style={{ gap: 12 as any }}>
-          {/* 1) YTD */}
-          <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-            <Text style={{ fontWeight: '700' }}>YTD total (as of today)</Text>
-            <Text style={{ fontSize: 18 }}>{ytd} submissions</Text>
+        {/* Controls */}
+        <View style={{ gap: 10 as any, marginBottom: 12 }}>
+          {/* Date range */}
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <Text>Start:</Text>
+            {isWeb ? (
+              <input
+                type="date"
+                value={rangeStart ?? ''}
+                onChange={(e) => setRangeStart(e.currentTarget.value)}
+              />
+            ) : (
+              <Text>{rangeStart}</Text>
+            )}
+            <Text>End:</Text>
+            {isWeb ? (
+              <input
+                type="date"
+                value={rangeEnd ?? ''}
+                onChange={(e) => setRangeEnd(e.currentTarget.value)}
+              />
+            ) : (
+              <Text>{rangeEnd}</Text>
+            )}
           </View>
 
-          {/* 2) Monthly buckets + cumulative */}
-          <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-            <Text style={{ fontWeight: '700', marginBottom: 6 }}>Monthly</Text>
-            {monthly.length === 0 ? (
-              <Text>No data in range.</Text>
+          {/* User filter */}
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <Text>User:</Text>
+            {isWeb ? (
+              <select
+                value={userFilter ?? ''}
+                onChange={(e) => setUserFilter(e.currentTarget.value || null)}
+              >
+                {teamUsers.map((u) => (
+                  <option key={u.id || 'all'} value={u.id}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
             ) : (
-              monthly.map((r) => {
-                const idx = monthIndex(r.month_start);
-                const label =
-                  idx != null
-                    ? `Month ${idx}`
-                    : new Date(r.month_start).toLocaleDateString(undefined, {
-                        month: 'short',
-                        year: 'numeric',
-                      });
-                return (
-                  <View
-                    key={r.month_start}
-                    style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}
-                  >
-                    <Text>
-                      {label} ({r.month_start})
-                    </Text>
-                    <Text>
-                      {r.submitted} (cumulative {r.cumulative})
-                    </Text>
-                  </View>
-                );
-              })
+              <Text>{userFilter ? userFilter : 'All users'}</Text>
             )}
+          </View>
+        </View>
 
-            {/* CSV export (web) */}
-            {isWeb && monthly.length ? (
-              <Pressable
-                onPress={() =>
-                  downloadCSV(
-                    'monthly.csv',
-                    [['month_start', 'submitted', 'cumulative']].concat(
-                      monthly.map((r) => [r.month_start, String(r.submitted), String(r.cumulative)])
+        {loading ? (
+          <ActivityIndicator />
+        ) : (
+          <View style={{ gap: 12 as any }}>
+            {/* 1) YTD */}
+            <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
+              <Text style={{ fontWeight: '700' }}>YTD total (as of today)</Text>
+              <Text style={{ fontSize: 18 }}>{ytd} submissions</Text>
+            </View>
+
+            {/* 2) Monthly buckets + cumulative */}
+            <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
+              <Text style={{ fontWeight: '700', marginBottom: 6 }}>Monthly</Text>
+              {monthly.length === 0 ? (
+                <Text>No data in range.</Text>
+              ) : (
+                monthly.map((r) => {
+                  const idx = monthIndex(r.month_start);
+                  const label =
+                    idx != null
+                      ? `Month ${idx}`
+                      : new Date(r.month_start).toLocaleDateString(undefined, {
+                          month: 'short',
+                          year: 'numeric',
+                        });
+                  return (
+                    <View
+                      key={r.month_start}
+                      style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}
+                    >
+                      <Text>
+                        {label} ({r.month_start})
+                      </Text>
+                      <Text>
+                        {r.submitted} (cumulative {r.cumulative})
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
+
+              {/* CSV export (web) */}
+              {isWeb && monthly.length ? (
+                <Pressable
+                  onPress={() =>
+                    downloadCSV(
+                      'monthly.csv',
+                      [['month_start', 'submitted', 'cumulative']].concat(
+                        monthly.map((r) => [r.month_start, String(r.submitted), String(r.cumulative)])
+                      )
                     )
-                  )
-                }
-                style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
-              >
-                <Text>Download Monthly CSV</Text>
-              </Pressable>
-            ) : null}
-          </View>
-
-          {/* 3) Current month daily (real-time) */}
-          <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-            <Text style={{ fontWeight: '700', marginBottom: 6 }}>This month (by day)</Text>
-            {daily.length === 0 ? (
-              <Text>No submissions yet this month.</Text>
-            ) : (
-              daily.map((r) => (
-                <View
-                  key={r.day}
-                  style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}
+                  }
+                  style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
                 >
-                  <Text>{r.day}</Text>
-                  <Text>{r.submitted}</Text>
-                </View>
-              ))
-            )}
+                  <Text>Download Monthly CSV</Text>
+                </Pressable>
+              ) : null}
+            </View>
 
-            {/* CSV export (web) */}
-            {isWeb && daily.length ? (
-              <Pressable
-                onPress={() =>
-                  downloadCSV(
-                    'daily.csv',
-                    [['day', 'submitted']].concat(daily.map((r) => [r.day, String(r.submitted)]))
-                  )
-                }
-                style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
-              >
-                <Text>Download Daily CSV</Text>
-              </Pressable>
-            ) : null}
+            {/* 3) Current month daily (real-time) */}
+            <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
+              <Text style={{ fontWeight: '700', marginBottom: 6 }}>This month (by day)</Text>
+              {daily.length === 0 ? (
+                <Text>No submissions yet this month.</Text>
+              ) : (
+                daily.map((r) => (
+                  <View
+                    key={r.day}
+                    style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}
+                  >
+                    <Text>{r.day}</Text>
+                    <Text>{r.submitted}</Text>
+                  </View>
+                ))
+              )}
+
+              {/* CSV export (web) */}
+              {isWeb && daily.length ? (
+                <Pressable
+                  onPress={() =>
+                    downloadCSV(
+                      'daily.csv',
+                      [['day', 'submitted']].concat(daily.map((r) => [r.day, String(r.submitted)]))
+                    )
+                  }
+                  style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
+                >
+                  <Text>Download Daily CSV</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={() => router.replace('/admin')}
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: 4,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                backgroundColor: '#6b7280',
+                borderRadius: 10,
+              }}
+            >
+              <Text style={{ color: 'white', fontWeight: '700' }}>Back</Text>
+            </Pressable>
           </View>
-
-          <Pressable
-            onPress={() => router.replace('/admin')}
-            style={{
-              alignSelf: 'flex-start',
-              marginTop: 4,
-              paddingVertical: 10,
-              paddingHorizontal: 14,
-              backgroundColor: '#6b7280',
-              borderRadius: 10,
-            }}
-          >
-            <Text style={{ color: 'white', fontWeight: '700' }}>Back</Text>
-          </Pressable>
-        </View>
-      )}
+        )}
+      </ScrollView>
     </View>
   );
 }
