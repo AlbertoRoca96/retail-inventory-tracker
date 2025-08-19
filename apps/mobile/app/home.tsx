@@ -1,4 +1,4 @@
-// apps/mobile/app/home.tsx  (tiny enhancement)
+// apps/mobile/app/home.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Link } from 'expo-router';
