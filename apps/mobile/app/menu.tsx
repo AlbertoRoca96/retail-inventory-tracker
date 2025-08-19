@@ -1,32 +1,70 @@
-import { View, Text, Pressable } from 'react-native';
+// apps/mobile/app/menu.tsx
+import React from 'react';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { colors } from '../src/theme';
 import { supabase } from '../src/lib/supabase';
+import { useIsAdmin } from '../src/hooks/useIsAdmin';
 
 export default function Menu() {
+  const { isAdmin, loading } = useIsAdmin();
+
+  const Btn = ({
+    label,
+    onPress,
+    bg = colors.blue,
+    fg = 'white',
+    mt = 6,
+  }: {
+    label: string;
+    onPress: () => void;
+    bg?: string;
+    fg?: string;
+    mt?: number;
+  }) => (
+    <Pressable
+      onPress={onPress}
+      style={{
+        width: 260,
+        backgroundColor: bg,
+        padding: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginTop: mt,
+      }}
+    >
+      <Text style={{ color: fg, fontWeight: '700' }}>{label}</Text>
+    </Pressable>
+  );
+
   return (
-    <View style={{ flex:1, justifyContent:'center', alignItems:'center', padding:16, gap:12 }}>
-      <Text style={{ fontSize:24, fontWeight:'700', marginBottom:8 }}>Menu</Text>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 12 }}>Menu</Text>
 
-      <Pressable onPress={() => router.push('/form/new')}
-        style={{ width:260, backgroundColor: colors.blue, padding:14, borderRadius:12, alignItems:'center' }}>
-        <Text style={{ color: 'white', fontWeight: '700' }}>Create New Form</Text>
-      </Pressable>
+      <Btn label="Create New Form" onPress={() => router.push('/form/new')} />
+      <Btn label="View Submissions" onPress={() => router.push('/submissions')} />
 
-      <Pressable onPress={() => router.push('/submissions')}
-        style={{ width:260, backgroundColor: colors.blue, padding:14, borderRadius:12, alignItems:'center' }}>
-        <Text style={{ color: 'white', fontWeight: '700' }}>View Submissions</Text>
-      </Pressable>
+      {/* While we check admin status, show a tiny spinner space-holder */}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 10 }} />
+      ) : isAdmin ? (
+        <>
+          <Btn label="Admin" onPress={() => router.push('/admin')} />
+          {/* If you add metrics later, just uncomment: */}
+          {/* <Btn label="Metrics" onPress={() => router.push('/admin/metrics')} /> */}
+        </>
+      ) : null}
 
-      <Pressable onPress={async () => { await supabase.auth.signOut().catch(()=>{}); router.replace('/'); }}
-        style={{ width:260, backgroundColor: colors.gray, padding:14, borderRadius:12, alignItems:'center', marginTop:8 }}>
-        <Text style={{ color: colors.black, fontWeight: '600' }}>Log Out</Text>
-      </Pressable>
-
-      <Pressable onPress={() => router.push('/admin')}
-        style={{ marginTop:18, opacity:.7 }}>
-        <Text>Admin</Text>
-      </Pressable>
+      <Btn
+        label="Log Out"
+        onPress={async () => {
+          await supabase.auth.signOut().catch(() => {});
+          router.replace('/'); // back to login
+        }}
+        bg={colors.gray}
+        fg={colors.black}
+        mt={14}
+      />
     </View>
   );
 }
