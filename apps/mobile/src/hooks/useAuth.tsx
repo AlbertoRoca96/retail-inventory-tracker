@@ -8,8 +8,8 @@ type Session = { user: any } | null;
 
 type AuthValue = {
   session: Session;
-  ready: boolean;        // <-- NEW: true after first bootstrap completes
-  demo: boolean;         // dev-bypass indicator (anonymous auth)
+  ready: boolean;                 // <-- added
+  demo: boolean;                  // dev-bypass indicator (anonymous auth)
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signInWithOtp: (email: string) => Promise<void>;
@@ -17,9 +17,10 @@ type AuthValue = {
   signOut: () => Promise<void>;
 };
 
+// Build-time flag (set to "false" in web.yml for production web)
 const BYPASS = String(process.env.EXPO_PUBLIC_DEV_BYPASS_LOGIN || '').toLowerCase() === 'true';
 
-// Detect anonymous Supabase users (covers SDK variants)
+// Helper: detect anonymous Supabase users (covers SDK variants)
 const isAnonymousUser = (u: any): boolean =>
   !!(u?.is_anonymous || u?.app_metadata?.provider === 'anonymous');
 
@@ -48,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    const bootstrap = async () => {
       try {
         // 1) Pick up any persisted session
         const { data: s0 } = await supabase.auth.getSession();
@@ -81,14 +82,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (!cancelled) setSession((s1 as any) ?? null);
         });
 
-        // cleanup
         return () => sub.subscription.unsubscribe();
       } finally {
-        if (!cancelled) setReady(true); // <-- declare boot finished
+        if (!cancelled) setReady(true); // <-- mark provider as ready
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
+    const cleanup = bootstrap();
+    return () => {
+      cancelled = true;
+      // if bootstrap returned an unsubscribe, call it
+      Promise.resolve(cleanup).catch(() => {});
+    };
   }, []);
 
   const value = useMemo<AuthValue>(() => ({
@@ -96,11 +101,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ready,
     demo: BYPASS,
 
+    // Standard email/password sign-in
     async signIn(email, password) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
     },
 
+    // Email/password sign-up
+    // If “Confirm email” is enabled in Supabase, user must click the email first.
     async signUp(email, password) {
       const { error } = await supabase.auth.signUp({
         email,
@@ -110,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
     },
 
+    // Passwordless magic link
     async signInWithOtp(email) {
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -118,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
     },
 
+    // Password reset email
     async resetPassword(email) {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: emailRedirectTo(),
