@@ -1,59 +1,110 @@
 // apps/mobile/app/admin/invite.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 
+type AdminTeam = { team_id: string } | null;
+
 export default function InviteUser() {
   const { session, ready } = useAuth();
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const [adminTeam, setAdminTeam] = useState<AdminTeam>(null);
+  const [booting, setBooting] = useState(true);
 
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
+  const canSend = !!adminTeam?.team_id && !!normalizedEmail && !busy;
+
+  // Load a team where the current user is admin
   useEffect(() => {
-    const boot = async () => {
+    let cancelled = false;
+
+    const load = async () => {
       if (!session?.user) return;
-      const { data: vt, error } = await supabase
-        .from('v_user_teams')
+      setBooting(true);
+      setMsg(null);
+
+      const { data, error } = await supabase
+        .from('team_members')
         .select('team_id,is_admin')
         .eq('user_id', session.user.id)
         .eq('is_admin', true)
         .limit(1)
         .maybeSingle();
 
-      if (error) setErr(error.message);
-      setTeamId(vt?.team_id ?? null);
-      setLoading(false);
+      if (!cancelled) {
+        if (error) {
+          setMsg({ kind: 'err', text: error.message });
+          setAdminTeam(null);
+        } else {
+          setAdminTeam(data ? { team_id: data.team_id } : null);
+        }
+        setBooting(false);
+      }
     };
-    if (ready && session?.user) boot();
+
+    if (ready && session?.user) load();
+    return () => { cancelled = true; };
   }, [ready, session?.user?.id]);
 
   const sendInvite = async () => {
-    setErr(null); setOk(null);
-    if (!teamId) { setErr('You are not an admin.'); return; }
-    if (!email) { setErr('Enter an email to invite.'); return; }
+    setMsg(null);
 
-    setSending(true);
-    const { error } = await supabase.functions.invoke('invite-user', {
-      body: { email: email.trim(), team_id: teamId },
-    });
-    setSending(false);
+    if (!adminTeam?.team_id) {
+      setMsg({ kind: 'err', text: 'You are not an admin on any team.' });
+      return;
+    }
+    if (!normalizedEmail) {
+      setMsg({ kind: 'err', text: 'Enter an email to invite.' });
+      return;
+    }
 
-    if (error) setErr(error.message);
-    else { setOk(`Invite sent to ${email}.`); setEmail(''); }
+    setBusy(true);
+    try {
+      const { error } = await supabase.functions.invoke('invite-user', {
+        body: { email: normalizedEmail, team_id: adminTeam.team_id },
+      });
+      if (error) throw error;
+      setMsg({ kind: 'ok', text: `Invite sent to ${normalizedEmail}.` });
+      setEmail('');
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.message ?? 'Failed to send invite.' });
+    } finally {
+      setBusy(false);
+    }
   };
 
-  if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
-  if (!session?.user) return <View style={S.center}><Text>Signed out.</Text></View>;
-  if (loading) return <View style={S.center}><ActivityIndicator /></View>;
-  if (!teamId) {
+  // ----- Render states -----
+
+  if (!ready) {
+    return <View style={S.center}><ActivityIndicator /></View>;
+  }
+
+  if (!session?.user) {
     return (
       <View style={S.center}>
+        <Text>Signed out.</Text>
+        <Pressable onPress={() => router.replace('/login')} style={S.btnGray}>
+          <Text style={S.btnText}>Go to Login</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (booting) {
+    return <View style={S.center}><ActivityIndicator /></View>;
+  }
+
+  if (!adminTeam?.team_id) {
+    return (
+      <View style={S.center}>
+        <Text style={S.title}>Invite a member</Text>
         <Text>You are not an admin on any team.</Text>
+        {msg?.kind === 'err' && <Text style={S.err}>{msg.text}</Text>}
         <Pressable onPress={() => router.push('/admin')} style={S.btnGray}>
           <Text style={S.btnText}>Back</Text>
         </Pressable>
@@ -64,7 +115,7 @@ export default function InviteUser() {
   return (
     <View style={S.container}>
       <Text style={S.title}>Invite a member</Text>
-      <Text style={{ color: '#4b5563', marginBottom: 12 }}>Team: {teamId}</Text>
+      <Text style={{ color: '#4b5563', marginBottom: 12 }}>Team: {adminTeam.team_id}</Text>
 
       <TextInput
         placeholder="person@example.com"
@@ -75,11 +126,18 @@ export default function InviteUser() {
         style={S.input}
       />
 
-      {!!err && <Text style={{ color: 'crimson', marginTop: 8 }}>{err}</Text>}
-      {!!ok && <Text style={{ color: '#059669', marginTop: 8 }}>{ok}</Text>}
+      {msg && (
+        <Text style={msg.kind === 'ok' ? S.ok : S.err}>
+          {msg.text}
+        </Text>
+      )}
 
-      <Pressable onPress={sendInvite} disabled={sending} style={[S.btn, sending && { opacity: 0.7 }]}>
-        <Text style={S.btnText}>{sending ? 'Sending…' : 'Send invite'}</Text>
+      <Pressable
+        onPress={sendInvite}
+        disabled={!canSend}
+        style={[S.btn, (!canSend || busy) && { opacity: 0.7 }]}
+      >
+        <Text style={S.btnText}>{busy ? 'Sending…' : 'Send invite'}</Text>
       </Pressable>
 
       <Pressable onPress={() => router.push('/admin')} style={S.btnGray}>
@@ -100,11 +158,13 @@ const S = StyleSheet.create({
   },
   btn: {
     marginTop: 12, backgroundColor: '#2563eb',
-    paddingVertical: 10, borderRadius: 8, alignItems: 'center'
+    paddingVertical: 10, borderRadius: 8, alignItems: 'center',
   },
   btnGray: {
     marginTop: 8, backgroundColor: '#6b7280',
-    paddingVertical: 10, borderRadius: 8, alignItems: 'center'
+    paddingVertical: 10, borderRadius: 8, alignItems: 'center',
   },
   btnText: { color: '#fff', fontWeight: '600' },
+  ok: { color: '#059669', marginTop: 8 },
+  err: { color: 'crimson', marginTop: 8 },
 });
