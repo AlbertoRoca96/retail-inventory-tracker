@@ -1,7 +1,6 @@
-// apps/mobile/app/admin/invite.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { Link } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme } from '../../src/theme';
@@ -16,16 +15,15 @@ export default function InviteUserRoute() {
   useEffect(() => {
     const boot = async () => {
       if (!session?.user) return;
-      const { data: vt, error } = await supabase
-        .from('v_user_teams')
-        .select('team_id,is_admin')
+      const { data: tm, error } = await supabase
+        .from('team_members')
+        .select('team_id')
         .eq('user_id', session.user.id)
         .eq('is_admin', true)
         .limit(1)
         .maybeSingle();
-
       if (error) Alert.alert('Error', error.message);
-      setTeamId(vt?.team_id ?? null);
+      setTeamId(tm?.team_id ?? null);
       setLoading(false);
     };
     if (ready && session?.user) boot();
@@ -58,9 +56,9 @@ export default function InviteUserRoute() {
     return (
       <View style={S.center}>
         <Text>You are not an admin on any team.</Text>
-        <Pressable onPress={() => router.replace('/admin')} style={{ ...theme.button, marginTop: 12 }}>
-          <Text style={theme.buttonText}>Back</Text>
-        </Pressable>
+        <Link href="/admin" asChild>
+          <Pressable style={[theme.button, { marginTop: 12 }]}><Text style={theme.buttonText}>Back</Text></Pressable>
+        </Link>
       </View>
     );
   }
@@ -70,29 +68,19 @@ export default function InviteUserRoute() {
       <Text style={S.title}>Invite a member</Text>
       <Text style={{ color: '#4b5563', marginBottom: 12 }}>Team: {teamId}</Text>
 
-      <TextInput
-        placeholder="person@example.com"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        style={theme.input}
-      />
+      <TextInput placeholder="person@example.com" autoCapitalize="none" keyboardType="email-address"
+        value={email} onChangeText={setEmail} style={theme.input} />
 
-      <Pressable
-        onPress={sendInvite}
-        disabled={sending}
-        style={{ ...theme.button, marginTop: 12, opacity: sending ? 0.7 : 1 }}
-      >
+      <Pressable onPress={sendInvite} disabled={sending}
+        style={[theme.button, { marginTop: 12, opacity: sending ? 0.7 : 1 }]}>
         <Text style={theme.buttonText}>{sending ? 'Sending…' : 'Send invite'}</Text>
       </Pressable>
 
-      <Pressable
-        onPress={() => router.replace('/admin')}
-        style={{ ...theme.button, marginTop: 8, backgroundColor: '#6b7280' }}
-      >
-        <Text style={theme.buttonText}>Back</Text>
-      </Pressable>
+      <Link href="/admin" asChild>
+        <Pressable style={[theme.button, { marginTop: 8, backgroundColor: '#6b7280' }]}>
+          <Text style={theme.buttonText}>Back</Text>
+        </Pressable>
+      </Link>
     </View>
   );
 }
