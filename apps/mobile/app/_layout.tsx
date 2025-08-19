@@ -2,15 +2,24 @@
 import React from 'react';
 import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
+import { webBasePath } from '../src/lib/webBasePath';
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
-  const pathname = usePathname();
-  const unauth = new Set<string>(['/login', '/auth/callback']);
-  const isOnUnauth = unauth.has(pathname);
+  let pathname = usePathname();
 
-  if (!session && !isOnUnauth) return <Redirect href="/login" />;
-  if (session && pathname === '/login') return <Redirect href="/home" />;
+  // Normalize: remove the GH Pages base path if present.
+  const base = webBasePath(); // e.g. "/retail-inventory-tracker" on Pages
+  if (base && pathname.startsWith(base)) {
+    pathname = pathname.slice(base.length) || '/';
+  }
+
+  const isLogin = pathname === '/login';
+  const isCallback = pathname.startsWith('/auth/callback');
+
+  if (!session && !(isLogin || isCallback)) return <Redirect href="/login" />;
+  if (session && isLogin) return <Redirect href="/home" />;
+
   return <>{children}</>;
 }
 
