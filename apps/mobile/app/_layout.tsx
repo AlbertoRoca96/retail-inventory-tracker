@@ -1,27 +1,34 @@
 // apps/mobile/app/_layout.tsx
 import React from 'react';
 import { Stack, Redirect, usePathname } from 'expo-router';
-import { useAuth } from '../src/hooks/useAuth';
+import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 
 /**
- * Auth gate:
- * - If no session → only allow /login and /auth/callback
- * - If session  → keep users out of /login
+ * We mount AuthProvider at the top and keep the auth gate in a child
+ * component so the hook can read a real context instead of the default.
  */
-function Gate() {
+
+function AuthGate() {
   const { session } = useAuth();
   const pathname = usePathname();
 
-  const unauth = new Set<string>(['/login', '/auth/callback', '/debug-auth']);
-  const isOnUnauth = unauth.has(pathname);
+  // Allow unauth access to login and the Supabase email callback
+  const unauthRoutes = new Set<string>(['/login', '/auth/callback']);
+  const isOnUnauth = unauthRoutes.has(pathname);
 
+  // Not signed in -> force to /login (but let /login and /auth/callback through)
   if (!session && !isOnUnauth) return <Redirect href="/login" />;
+
+  // Signed in -> keep them out of /login
   if (session && pathname === '/login') return <Redirect href="/home" />;
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
 export default function RootLayout() {
-  // AuthProvider lives in App.tsx now; Gate just uses it.
-  return <Gate />;
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
 }
