@@ -1,17 +1,18 @@
 // apps/mobile/app/admin/invite.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, StyleSheet } from 'react-native';
-import { Link } from 'expo-router';
+import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
-import { theme } from '../../src/theme';
 
-export default function InviteUserRoute() {
+export default function InviteUser() {
   const { session, ready } = useAuth();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
 
   useEffect(() => {
     const boot = async () => {
@@ -24,7 +25,7 @@ export default function InviteUserRoute() {
         .limit(1)
         .maybeSingle();
 
-      if (error) Alert.alert('Error', error.message);
+      if (error) setErr(error.message);
       setTeamId(vt?.team_id ?? null);
       setLoading(false);
     };
@@ -32,39 +33,30 @@ export default function InviteUserRoute() {
   }, [ready, session?.user?.id]);
 
   const sendInvite = async () => {
-    if (!teamId) { Alert.alert('Not allowed', 'You are not an admin.'); return; }
-    if (!email) { Alert.alert('Missing email', 'Enter an email to invite.'); return; }
+    setErr(null); setOk(null);
+    if (!teamId) { setErr('You are not an admin.'); return; }
+    if (!email) { setErr('Enter an email to invite.'); return; }
 
     setSending(true);
-    try {
-      // The supabase-js client attaches the user’s JWT automatically.
-      const { data, error } = await supabase.functions.invoke('invite-user', {
-        body: { email: email.trim(), team_id: teamId },
-      });
+    const { error } = await supabase.functions.invoke('invite-user', {
+      body: { email: email.trim(), team_id: teamId },
+    });
+    setSending(false);
 
-      if (error) throw error;
-      Alert.alert('Invite sent', `An invite was sent to ${email}.`);
-      setEmail('');
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? String(e));
-    } finally {
-      setSending(false);
-    }
+    if (error) setErr(error.message);
+    else { setOk(`Invite sent to ${email}.`); setEmail(''); }
   };
 
   if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
   if (!session?.user) return <View style={S.center}><Text>Signed out.</Text></View>;
-
   if (loading) return <View style={S.center}><ActivityIndicator /></View>;
   if (!teamId) {
     return (
       <View style={S.center}>
         <Text>You are not an admin on any team.</Text>
-        <Link href="/admin" asChild>
-          <Pressable style={[theme.button, { marginTop: 12 }]}>
-            <Text style={theme.buttonText}>Back</Text>
-          </Pressable>
-        </Link>
+        <Pressable onPress={() => router.push('/admin')} style={S.btnGray}>
+          <Text style={S.btnText}>Back</Text>
+        </Pressable>
       </View>
     );
   }
@@ -80,18 +72,19 @@ export default function InviteUserRoute() {
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
-        style={theme.input}
+        style={S.input}
       />
 
-      <Pressable onPress={sendInvite} disabled={sending} style={[theme.button, { marginTop: 12, opacity: sending ? 0.7 : 1 }]}>
-        <Text style={theme.buttonText}>{sending ? 'Sending…' : 'Send invite'}</Text>
+      {!!err && <Text style={{ color: 'crimson', marginTop: 8 }}>{err}</Text>}
+      {!!ok && <Text style={{ color: '#059669', marginTop: 8 }}>{ok}</Text>}
+
+      <Pressable onPress={sendInvite} disabled={sending} style={[S.btn, sending && { opacity: 0.7 }]}>
+        <Text style={S.btnText}>{sending ? 'Sending…' : 'Send invite'}</Text>
       </Pressable>
 
-      <Link href="/admin" asChild>
-        <Pressable style={[theme.button, { marginTop: 8, backgroundColor: '#6b7280' }]}>
-          <Text style={theme.buttonText}>Back</Text>
-        </Pressable>
-      </Link>
+      <Pressable onPress={() => router.push('/admin')} style={S.btnGray}>
+        <Text style={S.btnText}>Back</Text>
+      </Pressable>
     </View>
   );
 }
@@ -100,4 +93,18 @@ const S = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  input: {
+    width: 320, maxWidth: '100%', backgroundColor: '#fff',
+    paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8,
+    borderWidth: 1, borderColor: '#e5e7eb',
+  },
+  btn: {
+    marginTop: 12, backgroundColor: '#2563eb',
+    paddingVertical: 10, borderRadius: 8, alignItems: 'center'
+  },
+  btnGray: {
+    marginTop: 8, backgroundColor: '#6b7280',
+    paddingVertical: 10, borderRadius: 8, alignItems: 'center'
+  },
+  btnText: { color: '#fff', fontWeight: '600' },
 });
