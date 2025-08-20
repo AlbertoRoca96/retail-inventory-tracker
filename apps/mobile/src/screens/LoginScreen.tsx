@@ -1,82 +1,168 @@
 // apps/mobile/src/screens/LoginScreen.tsx
-import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, TextInput, Pressable, Image, Platform } from 'react-native';
 import { useAuth } from '../hooks/useAuth';
 import { theme } from '../theme';
 
+// Statically reference your logo at apps/mobile/assets/logo.png.
+// If the file is missing, Metro will error at build time.
+import logoPng from '../../assets/logo.png';
+
+const isWeb = Platform.OS === 'web';
+
 export default function LoginScreen() {
   const { signIn, signUp, signInWithOtp, resetPassword, demo } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  const wrap = <T extends (...a: any[]) => Promise<any>>(fn: T) => async (...a: Parameters<T>) => {
-    setError(null); setInfo(null);
-    try { await fn(...a); setInfo('Check your inbox if applicable.'); } 
-    catch (e: any) { setError(e?.message ?? 'Something went wrong'); }
-  };
+  // Refs (used to move focus on Enter on web)
+  const emailRef = useRef<TextInput | null>(null);
+  const pwRef = useRef<TextInput | null>(null);
+
+  const emailTrim = useMemo(() => email.trim(), [email]);
+  const passwordTrim = useMemo(() => password, [password]);
+
+  const wrap =
+    <T extends (...a: any[]) => Promise<any>>(fn: T) =>
+    async (...a: Parameters<T>) => {
+      setError(null);
+      setInfo(null);
+      try {
+        await fn(...a);
+        setInfo('Check your inbox if applicable.');
+      } catch (e: any) {
+        setError(e?.message ?? 'Something went wrong');
+      }
+    };
 
   const onSignIn = wrap(async () => {
-    if (!email || !password) throw new Error('Email & password required');
-    await signIn(email.trim(), password);
+    if (!emailTrim || !passwordTrim) throw new Error('Email & password required');
+    await signIn(emailTrim, passwordTrim);
   });
 
   const onSignUp = wrap(async () => {
-    if (!email || !password) throw new Error('Email & password required');
-    await signUp(email.trim(), password);
+    if (!emailTrim || !passwordTrim) throw new Error('Email & password required');
+    await signUp(emailTrim, passwordTrim);
   });
 
   const onMagic = wrap(async () => {
-    if (!email) throw new Error('Email required');
-    await signInWithOtp(email.trim()); // magic link
+    if (!emailTrim) throw new Error('Email required');
+    await signInWithOtp(emailTrim); // magic link
   });
 
   const onForgot = wrap(async () => {
-    if (!email) throw new Error('Email required');
-    await resetPassword(email.trim());
+    if (!emailTrim) throw new Error('Email required');
+    await resetPassword(emailTrim);
   });
+
+  // Enter-to-submit ergonomics on web:
+  const onEmailSubmit = () => {
+    // On web, behave like native “next”: move focus to password
+    // @ts-expect-error web-only focus
+    pwRef.current?.focus?.();
+  };
+  const onPasswordSubmit = () => onSignIn();
 
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <View style={{ width: 320, backgroundColor: '#eee', padding: 20, borderRadius: 12 }}>
-        <View style={{ height: 60, backgroundColor: '#ddd', borderRadius: 8, marginBottom: 16, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 28, color: '#777' }}>Logo</Text>
+      <View
+        style={{
+          width: 320,
+          backgroundColor: '#eee',
+          padding: 20,
+          borderRadius: 12,
+          boxShadow: isWeb ? '0 4px 24px rgba(0,0,0,0.08)' : undefined,
+        } as any}
+      >
+        {/* Logo block: shows your PNG if present, falls back to the text label styling */}
+        <View
+          style={{
+            height: 60,
+            backgroundColor: '#ddd',
+            borderRadius: 8,
+            marginBottom: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          <Image
+            source={logoPng}
+            // Keep height fixed, scale width to fit; looks good across web/native
+            style={{ height: 44, width: '80%', resizeMode: 'contain' }}
+            // RN doesn't support alt text prop; accessibilityLabel is the closest analogue
+            accessibilityLabel="Company logo"
+          />
         </View>
 
+        {/* Email */}
         <TextInput
+          ref={emailRef}
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          returnKeyType={isWeb ? 'next' : 'next'}
+          onSubmitEditing={onEmailSubmit}
           style={theme.input}
         />
-        <TextInput
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={[theme.input, { marginTop: 12 }]}
-        />
+
+        {/* Password + show/hide toggle */}
+        <View style={{ marginTop: 12 }}>
+          <TextInput
+            ref={pwRef}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPw}
+            returnKeyType="go"
+            onSubmitEditing={onPasswordSubmit}
+            style={theme.input}
+          />
+          <Pressable
+            onPress={() => setShowPw((s) => !s)}
+            style={{ alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 6 }}
+            accessibilityRole="button"
+          >
+            <Text style={{ color: '#2563eb', fontWeight: '600' }}>
+              {showPw ? 'Hide password' : 'Show password'}
+            </Text>
+          </Pressable>
+        </View>
 
         {!!error && <Text style={{ color: 'red', marginTop: 8 }}>{error}</Text>}
         {!!info && <Text style={{ color: '#0a7', marginTop: 8 }}>{info}</Text>}
         {demo && <Text style={{ color: '#555', marginTop: 8 }}>Demo bypass is enabled</Text>}
 
-        <Pressable onPress={onSignIn} style={[theme.button, { marginTop: 16 }]}>
+        {/* Primary actions */}
+        <Pressable onPress={onSignIn} style={[theme.button, { marginTop: 8 }]}>
           <Text style={theme.buttonText}>Sign in</Text>
         </Pressable>
 
-        <Pressable onPress={onSignUp} style={[theme.button, { marginTop: 8, backgroundColor: '#475569' }]}>
+        <Pressable
+          onPress={onSignUp}
+          style={[theme.button, { marginTop: 8, backgroundColor: '#475569' }]}
+        >
           <Text style={theme.buttonText}>Create account</Text>
         </Pressable>
 
-        <Pressable onPress={onMagic} style={[theme.button, { marginTop: 8, backgroundColor: '#334155' }]}>
+        <Pressable
+          onPress={onMagic}
+          style={[theme.button, { marginTop: 8, backgroundColor: '#334155' }]}
+        >
           <Text style={theme.buttonText}>Send magic link</Text>
         </Pressable>
 
-        <Pressable onPress={onForgot} style={[theme.button, { marginTop: 8, backgroundColor: '#64748b' }]}>
+        <Pressable
+          onPress={onForgot}
+          style={[theme.button, { marginTop: 8, backgroundColor: '#64748b' }]}
+        >
           <Text style={theme.buttonText}>Forgot password</Text>
         </Pressable>
       </View>
