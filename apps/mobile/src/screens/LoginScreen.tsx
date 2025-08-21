@@ -10,6 +10,14 @@ import logoPng from '../../assets/logo.png';
 
 const isWeb = Platform.OS === 'web';
 
+/**
+ * Full-featured login screen:
+ * - Same auth actions you already had (password, sign-up, magic link, reset)
+ * - Keeps your show/hide password, busy state and messaging
+ * - NEW: Logo fills the banner (no white halo) by using resizeMode="cover" and absolute fill.
+ *   If your PNG was exported with extra transparent/white padding, the container crops it.
+ *   If you ever *still* see a halo, the remaining white is baked inside the PNG—trim and re-export.
+ */
 export default function LoginScreen() {
   const { signIn, signUp, signInWithOtp, resetPassword, demo } = useAuth();
 
@@ -20,10 +28,10 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  // NEW: avoid double-submits across actions
+  // Prevent double taps
   const [busy, setBusy] = useState(false);
 
-  // Fallback if the logo fails to load (keeps banner from looking odd)
+  // Fallback if logo fails to load (keeps layout steady)
   const [logoOk, setLogoOk] = useState(true);
 
   // Refs (used to move focus on Enter on web)
@@ -36,7 +44,7 @@ export default function LoginScreen() {
   const wrap =
     <T extends (...a: any[]) => Promise<any>>(fn: T) =>
     async (...a: Parameters<T>) => {
-      if (busy) return; // prevent spamming buttons
+      if (busy) return;
       setBusy(true);
       setError(null);
       setInfo(null);
@@ -78,6 +86,9 @@ export default function LoginScreen() {
   };
   const onPasswordSubmit = () => onSignIn();
 
+  // Slightly taller banner so the logo reads nicely when cropped to the edges.
+  const LOGO_BANNER_HEIGHT = 64;
+
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <View
@@ -86,33 +97,41 @@ export default function LoginScreen() {
           backgroundColor: '#eee',
           padding: 20,
           borderRadius: 12,
-          boxShadow: isWeb ? ('0 4px 24px rgba(0,0,0,0.08)' as any) : undefined,
-        } as any}
+          // RN Web accepts string shadows; native ignores it safely
+          boxShadow: (isWeb ? '0 4px 24px rgba(0,0,0,0.08)' : undefined) as any,
+        }}
       >
-        {/* Logo block: now scales the image to fill the banner height cleanly */}
+        {/* Logo banner — now *touches* the edges (no white halo) */}
         <View
           style={{
-            height: 64,                // slightly taller banner so logos breathe
+            height: LOGO_BANNER_HEIGHT,
             backgroundColor: '#ddd',
             borderRadius: 8,
             marginBottom: 16,
+            overflow: 'hidden',      // crops any outer whitespace baked into the PNG
             alignItems: 'center',
             justifyContent: 'center',
-            overflow: 'hidden',        // ensures no spillover on odd ratios
-            paddingHorizontal: 12,     // keeps edges tidy
           }}
         >
           {logoOk ? (
             <Image
               source={logoPng}
-              // Fill the banner's height while maintaining aspect ratio
-              style={{ width: '100%', height: '100%' }}
-              resizeMode="contain"
+              // Absolute fill + cover => image touches top/bottom/left/right of the banner
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+              }}
+              resizeMode="cover"
               accessibilityLabel="Company logo"
               onError={() => setLogoOk(false)}
             />
           ) : (
-            // Fallback if the image fails to resolve: keeps layout looking intentional
+            // Fallback keeps a clean look if the asset fails to load for any reason
             <Text style={{ fontSize: 20, color: '#777', fontWeight: '700' }}>Logo</Text>
           )}
         </View>
@@ -125,7 +144,7 @@ export default function LoginScreen() {
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
-          // Web-only nicety to help browsers autofill
+          // RN web nicety for autofill
           // @ts-expect-error RN web prop
           autoComplete={isWeb ? 'email' : undefined}
           textContentType="emailAddress"
@@ -142,6 +161,7 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPw}
+            // RN web nicety for autofill
             // @ts-expect-error RN web prop
             autoComplete={isWeb ? 'current-password' : undefined}
             textContentType="password"
