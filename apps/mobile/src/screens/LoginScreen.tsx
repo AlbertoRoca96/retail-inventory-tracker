@@ -20,6 +20,12 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  // NEW: avoid double-submits across actions
+  const [busy, setBusy] = useState(false);
+
+  // Fallback if the logo fails to load (keeps banner from looking odd)
+  const [logoOk, setLogoOk] = useState(true);
+
   // Refs (used to move focus on Enter on web)
   const emailRef = useRef<TextInput | null>(null);
   const pwRef = useRef<TextInput | null>(null);
@@ -30,6 +36,8 @@ export default function LoginScreen() {
   const wrap =
     <T extends (...a: any[]) => Promise<any>>(fn: T) =>
     async (...a: Parameters<T>) => {
+      if (busy) return; // prevent spamming buttons
+      setBusy(true);
       setError(null);
       setInfo(null);
       try {
@@ -37,6 +45,8 @@ export default function LoginScreen() {
         setInfo('Check your inbox if applicable.');
       } catch (e: any) {
         setError(e?.message ?? 'Something went wrong');
+      } finally {
+        setBusy(false);
       }
     };
 
@@ -76,28 +86,35 @@ export default function LoginScreen() {
           backgroundColor: '#eee',
           padding: 20,
           borderRadius: 12,
-          boxShadow: isWeb ? '0 4px 24px rgba(0,0,0,0.08)' : undefined,
+          boxShadow: isWeb ? ('0 4px 24px rgba(0,0,0,0.08)' as any) : undefined,
         } as any}
       >
-        {/* Logo block: shows your PNG if present, falls back to the text label styling */}
+        {/* Logo block: now scales the image to fill the banner height cleanly */}
         <View
           style={{
-            height: 60,
+            height: 64,                // slightly taller banner so logos breathe
             backgroundColor: '#ddd',
             borderRadius: 8,
             marginBottom: 16,
             alignItems: 'center',
             justifyContent: 'center',
-            overflow: 'hidden',
+            overflow: 'hidden',        // ensures no spillover on odd ratios
+            paddingHorizontal: 12,     // keeps edges tidy
           }}
         >
-          <Image
-            source={logoPng}
-            // Keep height fixed, scale width to fit; looks good across web/native
-            style={{ height: 44, width: '80%', resizeMode: 'contain' }}
-            // RN doesn't support alt text prop; accessibilityLabel is the closest analogue
-            accessibilityLabel="Company logo"
-          />
+          {logoOk ? (
+            <Image
+              source={logoPng}
+              // Fill the banner's height while maintaining aspect ratio
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+              accessibilityLabel="Company logo"
+              onError={() => setLogoOk(false)}
+            />
+          ) : (
+            // Fallback if the image fails to resolve: keeps layout looking intentional
+            <Text style={{ fontSize: 20, color: '#777', fontWeight: '700' }}>Logo</Text>
+          )}
         </View>
 
         {/* Email */}
@@ -108,7 +125,11 @@ export default function LoginScreen() {
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
-          returnKeyType={isWeb ? 'next' : 'next'}
+          // Web-only nicety to help browsers autofill
+          // @ts-expect-error RN web prop
+          autoComplete={isWeb ? 'email' : undefined}
+          textContentType="emailAddress"
+          returnKeyType="next"
           onSubmitEditing={onEmailSubmit}
           style={theme.input}
         />
@@ -121,6 +142,9 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPw}
+            // @ts-expect-error RN web prop
+            autoComplete={isWeb ? 'current-password' : undefined}
+            textContentType="password"
             returnKeyType="go"
             onSubmitEditing={onPasswordSubmit}
             style={theme.input}
@@ -141,27 +165,46 @@ export default function LoginScreen() {
         {demo && <Text style={{ color: '#555', marginTop: 8 }}>Demo bypass is enabled</Text>}
 
         {/* Primary actions */}
-        <Pressable onPress={onSignIn} style={[theme.button, { marginTop: 8 }]}>
-          <Text style={theme.buttonText}>Sign in</Text>
+        <Pressable
+          onPress={onSignIn}
+          disabled={busy}
+          style={[
+            theme.button,
+            { marginTop: 8, opacity: busy ? 0.8 : 1 },
+          ]}
+        >
+          <Text style={theme.buttonText}>{busy ? 'Working…' : 'Sign in'}</Text>
         </Pressable>
 
         <Pressable
           onPress={onSignUp}
-          style={[theme.button, { marginTop: 8, backgroundColor: '#475569' }]}
+          disabled={busy}
+          style={[
+            theme.button,
+            { marginTop: 8, backgroundColor: '#475569', opacity: busy ? 0.8 : 1 },
+          ]}
         >
           <Text style={theme.buttonText}>Create account</Text>
         </Pressable>
 
         <Pressable
           onPress={onMagic}
-          style={[theme.button, { marginTop: 8, backgroundColor: '#334155' }]}
+          disabled={busy}
+          style={[
+            theme.button,
+            { marginTop: 8, backgroundColor: '#334155', opacity: busy ? 0.8 : 1 },
+          ]}
         >
           <Text style={theme.buttonText}>Send magic link</Text>
         </Pressable>
 
         <Pressable
           onPress={onForgot}
-          style={[theme.button, { marginTop: 8, backgroundColor: '#64748b' }]}
+          disabled={busy}
+          style={[
+            theme.button,
+            { marginTop: 8, backgroundColor: '#64748b', opacity: busy ? 0.8 : 1 },
+          ]}
         >
           <Text style={theme.buttonText}>Forgot password</Text>
         </Pressable>
