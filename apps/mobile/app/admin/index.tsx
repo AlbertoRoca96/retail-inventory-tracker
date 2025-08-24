@@ -73,9 +73,9 @@ export default function AdminRoute() {
         <Text style={{ textAlign: 'center', marginTop: 8 }}>
           You’re not an admin on any team.
         </Text>
-        <Pressable onPress={() => router.replace('/home')}
+        <Pressable onPress={() => router.replace('/menu')}
           style={{ ...theme.button, marginTop: 16 }}>
-          <Text style={theme.buttonText}>Back to Home</Text>
+          <Text style={theme.buttonText}>Back to Menu</Text>
         </Pressable>
       </View>
     );
@@ -109,7 +109,7 @@ export default function AdminRoute() {
             <Text style={theme.buttonText}>Metrics</Text>
           </Pressable>
 
-          <Pressable onPress={() => router.replace('/home')}
+          <Pressable onPress={() => router.replace('/menu')}
             style={{ ...theme.button, marginTop: 8, backgroundColor: '#6b7280' }}>
             <Text style={theme.buttonText}>Back</Text>
           </Pressable>
