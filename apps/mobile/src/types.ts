@@ -4,14 +4,9 @@ export type Submission = {
   created_by: string;
   team_id: string;
 
+  // base fields
   date: string;
   store_location: string;
-
-  // NEW optional fields supported by the UI & metrics
-  brand?: string | null;
-  store_site?: string | null;
-  location?: string | null;
-
   conditions?: string | null;
   price_per_unit?: number | null;
   shelf_space?: string | null;
@@ -19,12 +14,16 @@ export type Submission = {
   tags?: string[] | null;
   notes?: string | null;
 
-  // Photos (support both the new public URLs and legacy signed paths)
-  photo1_url?: string | null;
-  photo2_url?: string | null;
+  // photos (we store *paths*; detail screen signs them)
   photo1_path?: string | null;
   photo2_path?: string | null;
 
-  // Optional status (kept for forward-compat; not required)
-  status?: string | null;
+  // new optional fields (present if you added them to DB)
+  brand?: string | null;
+  store_site?: string | null;
+  location?: string | null;
+
+  // legacy compatibility (some rows may have these)
+  photo1_url?: string | null;
+  photo2_url?: string | null;
 };
