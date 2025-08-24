@@ -1,4 +1,3 @@
-// apps/mobile/app/auth/callback.tsx
 import { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { supabase } from '../../src/lib/supabase';
@@ -11,11 +10,10 @@ export default function AuthCallback() {
     (async () => {
       try {
         // Handles email confirm, magic link, and password reset redirects
-        const { error } = await supabase.auth.exchangeCodeForSession(
-          typeof window !== 'undefined' ? window.location.href : ''
-        );
+        const url = typeof window !== 'undefined' ? window.location.href : '';
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
         if (error) { setMsg(error.message); return; }
-        router.replace('/home'); // or '/' if you prefer your index route
+        router.replace('/menu'); // ✅ land on Menu, not /home
       } catch (e: any) {
         setMsg(e?.message || 'Something went wrong');
       }
