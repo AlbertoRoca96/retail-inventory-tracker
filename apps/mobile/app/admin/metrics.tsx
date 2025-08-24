@@ -10,28 +10,17 @@ type DayRow   = { day: string; submitted: number };
 
 const isWeb = Platform.OS === 'web';
 
-function toISO(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-function monthStart(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
-function nextMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth() + 1, 1);
-}
+function toISO(d: Date) { return d.toISOString().slice(0, 10); }
+function monthStart(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function nextMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 1); }
 
 // Simple CSV helper (web)
 function downloadCSV(filename: string, rows: string[][]) {
   if (!isWeb) return;
-  const csv = rows
-    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 400);
 }
 
@@ -103,11 +92,9 @@ export default function AdminMetrics() {
         .select('user_id')
         .eq('team_id', teamId);
       if (!error && data) {
-        setTeamUsers(
-          [{ id: '', label: 'All users' }].concat(
-            data.map((r) => ({ id: r.user_id, label: r.user_id }))
-          )
-        );
+        setTeamUsers([{ id: '', label: 'All users' }].concat(
+          data.map((r) => ({ id: r.user_id, label: r.user_id }))
+        ));
       }
     })();
   }, [teamId]);
