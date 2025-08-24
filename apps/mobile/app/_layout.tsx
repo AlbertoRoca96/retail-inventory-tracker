@@ -16,7 +16,7 @@ function isAdminSection(p: string | null) {
   return p.endsWith('/admin') || p.includes('/admin/');
 }
 
-/** Matches "/home" exactly (we'll steer non-admins away from it) */
+/** Matches "/home" exactly (legacy) */
 function isHomePath(p: string | null) {
   if (!p) return false;
   return p.endsWith('/home');
@@ -34,16 +34,14 @@ function Gate({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const run = async () => {
-      // Until auth bootstrap finishes, don't query
       if (!ready) return;
 
       if (!session?.user) {
-        // Not signed in -> no admin
         if (!cancelled) { setIsAdmin(false); setAdminReady(true); }
         return;
       }
 
-      // Check membership directly from team_members to avoid any view caching weirdness
+      // Check membership directly from team_members (avoid view caching)
       const { data, error } = await supabase
         .from('team_members')
         .select('is_admin')
@@ -60,11 +58,10 @@ function Gate({ children }: { children: React.ReactNode }) {
 
     setAdminReady(false);
     run();
-
     return () => { cancelled = true; };
   }, [ready, session?.user?.id]);
 
-  // 🚦 Do nothing until Supabase finishes initial session check
+  // Wait for initial session check
   if (!ready) return <>{children}</>;
 
   const onUnauth = isUnauthPath(pathname);
@@ -84,7 +81,7 @@ function Gate({ children }: { children: React.ReactNode }) {
     if (!isAdmin) return <Redirect href="/menu" />;
   }
 
-  // Signed in, non-admin on /home -> push to /menu
+  // Signed in, non-admin on legacy /home -> push to /menu
   if (session && isHomePath(pathname)) {
     if (!adminReady) return <>{children}</>;
     if (!isAdmin) return <Redirect href="/menu" />;
