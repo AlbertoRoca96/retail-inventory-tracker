@@ -1,3 +1,4 @@
+// apps/mobile/app/form/new.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -102,6 +103,10 @@ export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
 
+  // NEW: cache the user’s team once; use it on submit
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamLoading, setTeamLoading] = useState(false);
+
   // Avoid hydration quirks for static web
   const [hydrated, setHydrated] = useState(!isWeb);
   useEffect(() => {
@@ -159,6 +164,31 @@ export default function NewFormScreen() {
       setBanner({ kind: 'success', text: 'Draft loaded.' });
     }
   }, [hydrated]);
+
+  // NEW: prefetch team once user is known
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTeam = async () => {
+      if (!uid) { setTeamId(null); return; }
+      setTeamLoading(true);
+      const { data, error } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('user_id', uid)
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled) {
+        if (error) {
+          setTeamId(null);
+        } else {
+          setTeamId(data?.team_id ?? null);
+        }
+        setTeamLoading(false);
+      }
+    };
+    fetchTeam();
+    return () => { cancelled = true; };
+  }, [uid]);
 
   const getValues = useCallback((): FormValues => {
     return isWeb ? { ...formRef.current } : { ...nVals };
@@ -290,21 +320,26 @@ export default function NewFormScreen() {
       // 2) Optional DB insert
       let insertError: any = null;
       if (uid) {
-        // ✨ NEW: find the user's team_id (required by RLS) and insert created_by + team_id
-        const { data: tm, error: tmErr } = await supabase
-          .from('team_members')
-          .select('team_id')
-          .eq('user_id', uid)
-          .limit(1)
-          .maybeSingle();
+        // ✅ find or reuse the user's team_id (required by RLS) and insert created_by + team_id
+        let effectiveTeamId = teamId;
+        if (!effectiveTeamId && !teamLoading) {
+          const { data: tm, error: tmErr } = await supabase
+            .from('team_members')
+            .select('team_id')
+            .eq('user_id', uid)
+            .limit(1)
+            .maybeSingle();
+          if (tmErr) throw tmErr;
+          effectiveTeamId = tm?.team_id ?? null;
+        }
 
-        if (tmErr) throw tmErr;
-        const teamId = tm?.team_id;
-        if (!teamId) throw new Error('No team found for this user. Ask an admin to add you to a team.');
+        if (!effectiveTeamId) {
+          throw new Error('No team found for this user. Ask an admin to add you to a team.');
+        }
 
         const { error } = await supabase.from('submissions').insert({
           created_by: uid,
-          team_id: teamId,
+          team_id: effectiveTeamId,
 
           // NEW columns (these exist if you ran the add-column SQL)
           store_site: v.storeSite || null,
@@ -322,7 +357,7 @@ export default function NewFormScreen() {
           tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
           notes: v.notes || null,
 
-          // Save public URLs returned from uploads helper
+          // Save public URLs returned from uploads helper (kept behavior)
           photo1_url: uploadedUrls[0] ?? null,
           photo2_url: uploadedUrls[1] ?? null,
         });
