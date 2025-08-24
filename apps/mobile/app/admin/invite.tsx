@@ -48,9 +48,9 @@ export default function InviteUserRoute() {
     return (
       <View style={S.center}>
         <Text>You are not an admin on any team.</Text>
-        <Pressable onPress={() => router.replace('/admin')}
+        <Pressable onPress={() => router.replace('/menu')}
           style={{ ...theme.button, marginTop: 12 }}>
-          <Text style={theme.buttonText}>Back</Text>
+          <Text style={theme.buttonText}>Back to Menu</Text>
         </Pressable>
       </View>
     );
