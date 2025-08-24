@@ -1,4 +1,3 @@
-// apps/mobile/app/form/new.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -291,11 +290,23 @@ export default function NewFormScreen() {
       // 2) Optional DB insert
       let insertError: any = null;
       if (uid) {
-        const { error } = await supabase.from('submissions').insert({
-          user_id: uid,
-          status: 'submitted',
+        // ✨ NEW: find the user's team_id (required by RLS) and insert created_by + team_id
+        const { data: tm, error: tmErr } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', uid)
+          .limit(1)
+          .maybeSingle();
 
-          // NEW columns
+        if (tmErr) throw tmErr;
+        const teamId = tm?.team_id;
+        if (!teamId) throw new Error('No team found for this user. Ask an admin to add you to a team.');
+
+        const { error } = await supabase.from('submissions').insert({
+          created_by: uid,
+          team_id: teamId,
+
+          // NEW columns (these exist if you ran the add-column SQL)
           store_site: v.storeSite || null,
           location: v.location || null,
           brand: v.brand || null, // NEW
@@ -306,9 +317,12 @@ export default function NewFormScreen() {
           conditions: v.conditions || null,
           price_per_unit: v.pricePerUnit ? Number(v.pricePerUnit) : null,
           shelf_space: v.shelfSpace || null,
-          on_shelf: v.onShelf || null,
-          tags: v.tags || null,
+          on_shelf: v.onShelf ? Number(v.onShelf) : null,
+          // Store tags as array if provided
+          tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
           notes: v.notes || null,
+
+          // Save public URLs returned from uploads helper
           photo1_url: uploadedUrls[0] ?? null,
           photo2_url: uploadedUrls[1] ?? null,
         });
