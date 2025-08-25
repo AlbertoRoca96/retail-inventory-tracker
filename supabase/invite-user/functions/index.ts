@@ -1,13 +1,14 @@
-// supabase/invite-user/functions/index.ts
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Edge Function: invite-user
+// Deployed by: supabase functions deploy invite-user --no-verify-jwt
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const DEFAULT_REDIRECT = Deno.env.get("INVITE_REDIRECT_TO") || ""; 
-// e.g. https://albertoroca96.github.io/retail-inventory-tracker/auth/callback
+const DEFAULT_REDIRECT = Deno.env.get("INVITE_REDIRECT_TO") || "";
 
-// ✅ Required CORS headers for browser calls
+// CORS per Supabase guide
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -15,22 +16,28 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-serve(async (req) => {
-  // ✅ Short-circuit preflight
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+Deno.serve(async (req) => {
+  // Preflight
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: { ...corsHeaders, Allow: "POST, OPTIONS" } });
 
   try {
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    // AuthN the caller (the browser’s preflight does NOT include this header, hence the early return above)
-    const authHeader = req.headers.get("Authorization") || "";
+    // Verify caller via the bearer token they send
+    const authHeader = req.headers.get("Authorization") ?? "";
     const jwt = authHeader.replace("Bearer ", "");
-    const { data: me, error: meErr } = await admin.auth.getUser(jwt);
-    if (meErr || !me?.user) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: corsHeaders });
-    }
+    const userClient = createClient(SUPABASE_URL, ANON_KEY);
+    const { data: me, error: meErr } = await userClient.auth.getUser(jwt); // getUser accepts a JWT param
+    if (meErr || !me?.user) return json({ error: "unauthorized" }, 401);
+
+    // Admin client (service role) for DB + invite
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     // Only team admins may invite
     const { data: isAdmin } = await admin
@@ -40,34 +47,25 @@ serve(async (req) => {
       .eq("is_admin", true)
       .limit(1);
 
-    if (!isAdmin?.length) {
-      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
-    }
+    if (!isAdmin?.length) return json({ error: "forbidden" }, 403);
 
-    // Read payload
+    // Parse payload
     const body = await req.json().catch(() => ({}));
     const email: string | undefined = body?.email;
     const team_id: string | undefined = body?.team_id;
     const redirectTo: string | undefined = body?.redirectTo || DEFAULT_REDIRECT || undefined;
+    if (!email) return json({ error: "email required" }, 400);
 
-    if (!email) {
-      return new Response(JSON.stringify({ error: "email required" }), { status: 400, headers: corsHeaders });
-    }
-
-    // Send invite (note: redirectTo ensures the link lands inside your app)
+    // Send invite with optional redirect
     const { data: invite, error } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo, // 👈 important
-      data: { invited_by: me.user.id, team_id: team_id || null },
+      redirectTo, // email link redirect target
+      data: { invited_by: me.user.id, team_id: team_id ?? null },
     });
-    if (error) throw error;
+    if (error) return json({ error: error.message }, error.status ?? 400);
 
-    return new Response(JSON.stringify({ ok: true, user: invite?.user }), {
-      headers: { "content-type": "application/json", ...corsHeaders },
-    });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: String(e?.message || e) }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return json({ ok: true, user: invite?.user ?? null });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return json({ error: msg }, 500);
   }
 });
