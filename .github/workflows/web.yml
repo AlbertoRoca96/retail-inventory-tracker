@@ -66,11 +66,11 @@ jobs:
   deploy-edge:
     runs-on: ubuntu-latest
     env:
-      # REQUIRED: PAT from Supabase Account → Access Tokens
+      # REQUIRED: Supabase Personal Access Token (Account → Access Tokens)
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       # Function runtime secret (server-only)
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      # OPTIONAL redirect used by function (safe to omit)
+      # OPTIONAL redirect used by the function
       INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
       # OPTIONAL smoke-test token (user access token)
       SUPABASE_TEST_BEARER: ${{ secrets.SUPABASE_TEST_BEARER }}
@@ -113,7 +113,7 @@ jobs:
         run: |
           set -e
           # config.toml defines verify_jwt=false and the custom entrypoint.
-          # We keep --no-verify-jwt for belt-and-suspenders.
+          # Keep --no-verify-jwt for belt-and-suspenders.
           supabase functions deploy invite-user \
             --project-ref "prhhlvdoplavakbgcbes" \
             --no-verify-jwt
