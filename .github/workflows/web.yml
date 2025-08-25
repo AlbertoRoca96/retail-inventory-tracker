@@ -66,13 +66,13 @@ jobs:
   deploy-edge:
     runs-on: ubuntu-latest
     env:
-      # REQUIRED
+      # REQUIRED: PAT from Supabase Account → Access Tokens
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # Function runtime secret (server-side only)
+      # Function runtime secret (server-only)
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      # OPTIONAL redirect used by the function
+      # OPTIONAL redirect used by function (safe to omit)
       INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
-      # OPTIONAL test token for smoke test
+      # OPTIONAL smoke-test token (user access token)
       SUPABASE_TEST_BEARER: ${{ secrets.SUPABASE_TEST_BEARER }}
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +85,16 @@ jobs:
         run: |
           set -e
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "❌ SUPABASE_ACCESS_TOKEN is empty"; exit 1)
-          test -f "supabase/functions/invite-user/index.ts" || (echo "❌ Missing supabase/functions/invite-user/index.ts"; exit 1)
+          # Must have config.toml for custom entrypoint (Option B)
+          test -f "supabase/config.toml" || (echo "❌ Missing supabase/config.toml (required for custom entrypoint)"; exit 1)
+          # Accept either default path OR your custom path
+          if [ -f "supabase/functions/invite-user/index.ts" ]; then
+            echo "✅ Found default path: supabase/functions/invite-user/index.ts"
+          elif [ -f "supabase/invite-user/functions/index.ts" ]; then
+            echo "✅ Found custom path: supabase/invite-user/functions/index.ts"
+          else
+            echo "❌ Missing invite-user entrypoint (checked both paths)"; exit 1
+          fi
           echo "✅ Using project ref: prhhlvdoplavakbgcbes"
 
       - name: Set Supabase function secrets
@@ -103,6 +112,8 @@ jobs:
       - name: Deploy invite-user function
         run: |
           set -e
+          # config.toml defines verify_jwt=false and the custom entrypoint.
+          # We keep --no-verify-jwt for belt-and-suspenders.
           supabase functions deploy invite-user \
             --project-ref "prhhlvdoplavakbgcbes" \
             --no-verify-jwt
