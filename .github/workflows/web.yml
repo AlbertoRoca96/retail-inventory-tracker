@@ -68,12 +68,11 @@ jobs:
     env:
       # REQUIRED
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       # Function runtime secret (server-side only)
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       # OPTIONAL redirect used by the function
       INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
-      # OPTIONAL test token for smoke test; mapping to env lets us use it in "if:"
+      # OPTIONAL test token for smoke test
       SUPABASE_TEST_BEARER: ${{ secrets.SUPABASE_TEST_BEARER }}
     steps:
       - uses: actions/checkout@v4
@@ -86,45 +85,43 @@ jobs:
         run: |
           set -e
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "❌ SUPABASE_ACCESS_TOKEN is empty"; exit 1)
-          test -n "$SUPABASE_PROJECT_REF"  || (echo "❌ SUPABASE_PROJECT_REF is empty"; exit 1)
           test -f "supabase/functions/invite-user/index.ts" || (echo "❌ Missing supabase/functions/invite-user/index.ts"; exit 1)
-          echo "✅ Project ref: ${SUPABASE_PROJECT_REF:0:6}…"
+          echo "✅ Using project ref: prhhlvdoplavakbgcbes"
 
       - name: Set Supabase function secrets
         run: |
           set -e
           supabase secrets set \
             SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
-            --project-ref "$SUPABASE_PROJECT_REF"
+            --project-ref "prhhlvdoplavakbgcbes"
           if [ -n "$INVITE_REDIRECT_TO" ]; then
             supabase secrets set \
               INVITE_REDIRECT_TO="$INVITE_REDIRECT_TO" \
-              --project-ref "$SUPABASE_PROJECT_REF"
+              --project-ref "prhhlvdoplavakbgcbes"
           fi
 
       - name: Deploy invite-user function
         run: |
           set -e
           supabase functions deploy invite-user \
-            --project-ref "$SUPABASE_PROJECT_REF" \
+            --project-ref "prhhlvdoplavakbgcbes" \
             --no-verify-jwt
 
       - name: Smoke test preflight (OPTIONS)
         continue-on-error: true
         run: |
           curl -i -X OPTIONS \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/invite-user" \
+            "https://prhhlvdoplavakbgcbes.supabase.co/functions/v1/invite-user" \
             -H "Origin: https://albertoroca96.github.io" \
             -H "Access-Control-Request-Method: POST" \
             -H "Access-Control-Request-Headers: authorization,content-type" || true
 
-      # ✅ Use env.* in if:, not secrets.*
       - name: Smoke test POST (requires SUPABASE_TEST_BEARER)
         if: ${{ env.SUPABASE_TEST_BEARER != '' }}
         continue-on-error: true
         run: |
           curl -i -X POST \
-            "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/invite-user" \
+            "https://prhhlvdoplavakbgcbes.supabase.co/functions/v1/invite-user" \
             -H "Authorization: Bearer ${SUPABASE_TEST_BEARER}" \
             -H "Content-Type: application/json" \
             --data '{"email":"test+invite@example.com"}' || true
