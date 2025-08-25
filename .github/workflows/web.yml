@@ -68,8 +68,6 @@ jobs:
     env:
       # REQUIRED: Supabase Personal Access Token (Account → Access Tokens)
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # Function runtime secret (server-only)
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       # OPTIONAL redirect used by the function
       INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
       # OPTIONAL smoke-test token (user access token)
@@ -85,7 +83,7 @@ jobs:
         run: |
           set -e
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "❌ SUPABASE_ACCESS_TOKEN is empty"; exit 1)
-          # Must have config.toml for custom entrypoint (Option B)
+          # config.toml required for custom entrypoint (Option B)
           test -f "supabase/config.toml" || (echo "❌ Missing supabase/config.toml (required for custom entrypoint)"; exit 1)
           # Accept either default path OR your custom path
           if [ -f "supabase/functions/invite-user/index.ts" ]; then
@@ -97,23 +95,19 @@ jobs:
           fi
           echo "✅ Using project ref: prhhlvdoplavakbgcbes"
 
-      - name: Set Supabase function secrets
+      # Only set non-reserved secrets. (Do NOT push SUPABASE_* via CLI.)
+      - name: Set function secrets (non-reserved only)
+        if: ${{ env.INVITE_REDIRECT_TO != '' }}
         run: |
           set -e
           supabase secrets set \
-            SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+            INVITE_REDIRECT_TO="$INVITE_REDIRECT_TO" \
             --project-ref "prhhlvdoplavakbgcbes"
-          if [ -n "$INVITE_REDIRECT_TO" ]; then
-            supabase secrets set \
-              INVITE_REDIRECT_TO="$INVITE_REDIRECT_TO" \
-              --project-ref "prhhlvdoplavakbgcbes"
-          fi
 
       - name: Deploy invite-user function
         run: |
           set -e
           # config.toml defines verify_jwt=false and the custom entrypoint.
-          # Keep --no-verify-jwt for belt-and-suspenders.
           supabase functions deploy invite-user \
             --project-ref "prhhlvdoplavakbgcbes" \
             --no-verify-jwt
