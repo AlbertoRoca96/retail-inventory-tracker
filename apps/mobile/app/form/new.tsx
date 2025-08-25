@@ -10,6 +10,43 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 // PDF export is loaded dynamically inside onSubmit / onDownloadPdf to avoid hard coupling.
 
+// -----------------------------
+// NEW: Types & helpers (added)
+// -----------------------------
+type ValidationErrors = Partial<{
+  storeSite: string;
+  storeLocation: string;
+  location: string;
+  date: string;
+  brand: string;
+  pricePerUnit: string;
+  onShelf: string;
+}>;
+
+const isWeb = Platform.OS === 'web';
+const hasWindow = typeof window !== 'undefined';
+const nowISO = () => new Date().toISOString();
+const safeNumber = (s?: string) => {
+  if (!s) return null;
+  const n = Number(String(s).replace(/[^0-9.+-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+};
+const looksLikeISODate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+// NEW: queue storage keys
+const QUEUE_KEY = 'rit:submission-queue:v1';
+
+// NEW: queued item shape
+type QueuedSubmission = {
+  id: string; // client-side id
+  createdAt: string;
+  payload: any; // DB row payload
+};
+
+// -----------------------------
+// Original code continues
+// -----------------------------
+
 type Banner =
   | { kind: 'info'; text: string }
   | { kind: 'success'; text: string }
@@ -57,9 +94,6 @@ type PdfPayload = {
   photo_urls: string[];
 };
 
-const isWeb = Platform.OS === 'web';
-const hasWindow = typeof window !== 'undefined';
-
 /** Bump this key when the local-draft format changes to avoid loading stale drafts */
 const DRAFT_KEY = 'rit:new-form-draft:v8';
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -99,6 +133,42 @@ function clearDraftLocal() {
   } catch {}
 }
 
+// ---------- NEW: queue helpers ----------
+function readQueue(): QueuedSubmission[] {
+  try {
+    if (isWeb && hasWindow) {
+      const raw = window.localStorage.getItem(QUEUE_KEY);
+      return raw ? (JSON.parse(raw) as QueuedSubmission[]) : [];
+    }
+  } catch {}
+  return [];
+}
+function writeQueue(items: QueuedSubmission[]) {
+  try {
+    if (isWeb && hasWindow) window.localStorage.setItem(QUEUE_KEY, JSON.stringify(items));
+  } catch {}
+}
+function enqueueSubmission(payload: any) {
+  const items = readQueue();
+  items.push({ id: cryptoRandomId(), createdAt: nowISO(), payload });
+  writeQueue(items);
+}
+function dequeueSubmission(): QueuedSubmission | null {
+  const items = readQueue();
+  if (!items.length) return null;
+  const first = items.shift()!;
+  writeQueue(items);
+  return first;
+}
+function cryptoRandomId() {
+  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+    const buf = new Uint8Array(12);
+    (crypto as any).getRandomValues(buf);
+    return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return Math.random().toString(36).slice(2);
+}
+
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
@@ -106,6 +176,15 @@ export default function NewFormScreen() {
   // NEW: cache the user’s team once; use it on submit
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
+
+  // NEW: support multiple teams (picker)
+  const [teamOptions, setTeamOptions] = useState<{ team_id: string; name?: string | null }[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+
+  // NEW: online/offline & queue status
+  const [isOnline, setIsOnline] = useState(() => (isWeb && hasWindow ? navigator.onLine : true));
+  const [queuedCount, setQueuedCount] = useState<number>(() => readQueue().length);
+  const [autoQueueWhenOffline, setAutoQueueWhenOffline] = useState(true);
 
   // Avoid hydration quirks for static web
   const [hydrated, setHydrated] = useState(!isWeb);
@@ -115,6 +194,16 @@ export default function NewFormScreen() {
 
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
+
+  // NEW: validation/touched/debug
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [touched, setTouched] = useState<Record<keyof FormValues, boolean>>({
+    storeSite: false, location: false, date: false, brand: false,
+    storeLocation: false, conditions: false, pricePerUnit: false,
+    shelfSpace: false, onShelf: false, tags: false, notes: false,
+  });
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   // ---------------- Values store ----------------
   const formRef = useRef<FormValues>(getDefaultValues());
@@ -148,6 +237,34 @@ export default function NewFormScreen() {
     setTimeout(scheduleAutosave, 0);
   }, []);
 
+  // NEW: unsaved-guard on web
+  useEffect(() => {
+    if (!isWeb) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      const draft = loadDraftLocal<any>();
+      const hasDraft = !!draft && JSON.stringify(draft) !== JSON.stringify(getDefaultValues());
+      if (hasDraft) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    if (hasWindow) window.addEventListener('beforeunload', handler);
+    return () => { if (hasWindow) window.removeEventListener('beforeunload', handler); };
+  }, []);
+
+  // NEW: online/offline listeners (web)
+  useEffect(() => {
+    if (!(isWeb && hasWindow)) return;
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+    };
+  }, []);
+
   // Load draft once after hydration
   const loaded = useRef(false);
   useEffect(() => {
@@ -169,19 +286,26 @@ export default function NewFormScreen() {
   useEffect(() => {
     let cancelled = false;
     const fetchTeam = async () => {
-      if (!uid) { setTeamId(null); return; }
+      if (!uid) { setTeamId(null); setTeamOptions([]); setSelectedTeamId(null); return; }
       setTeamLoading(true);
-      const { data, error } = await supabase
+
+      // Fetch teams for user (with names)
+      const { data: rows, error } = await supabase
         .from('team_members')
-        .select('team_id')
-        .eq('user_id', uid)
-        .limit(1)
-        .maybeSingle();
+        .select('team_id, teams(name)')
+        .eq('user_id', uid);
+
+      const one = rows?.[0]?.team_id ?? null;
       if (!cancelled) {
         if (error) {
           setTeamId(null);
+          setTeamOptions([]);
+          setSelectedTeamId(null);
         } else {
-          setTeamId(data?.team_id ?? null);
+          const opts = (rows ?? []).map((r: any) => ({ team_id: r.team_id, name: r.teams?.name ?? null }));
+          setTeamOptions(opts);
+          setTeamId(one);
+          setSelectedTeamId(one);
         }
         setTeamLoading(false);
       }
@@ -194,6 +318,19 @@ export default function NewFormScreen() {
     return isWeb ? { ...formRef.current } : { ...nVals };
   }, [nVals]);
 
+  // ---------------- NEW: validation ----------------
+  const validate = useCallback((v: FormValues): ValidationErrors => {
+    const e: ValidationErrors = {};
+    if (!v.storeSite?.trim()) e.storeSite = 'Required';
+    if (!v.storeLocation?.trim()) e.storeLocation = 'Required';
+    if (!looksLikeISODate(v.date)) e.date = 'Use YYYY-MM-DD';
+    const p = safeNumber(v.pricePerUnit);
+    if (v.pricePerUnit && p === null) e.pricePerUnit = 'Invalid number';
+    const s = safeNumber(v.onShelf);
+    if (v.onShelf && s === null) e.onShelf = 'Invalid number';
+    return e;
+  }, []);
+
   // Debounced autosave
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutosave = useCallback(() => {
@@ -201,6 +338,7 @@ export default function NewFormScreen() {
     saveTimer.current = setTimeout(() => {
       const v = getValues();
       saveDraftLocal({ ...v, photos });
+      setLastSavedAt(new Date().toLocaleTimeString());
     }, 350);
   }, [getValues, photos]);
 
@@ -209,6 +347,33 @@ export default function NewFormScreen() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  // NEW: flush queue when we come online + authenticated
+  useEffect(() => {
+    const tryFlush = async () => {
+      if (!isOnline || !uid) return;
+      let popped: QueuedSubmission | null;
+      let flushed = 0;
+      while ((popped = dequeueSubmission())) {
+        const { payload } = popped;
+        const { error } = await supabase.from('submissions').insert(payload);
+        if (error) {
+          // put it back to the front
+          const remaining = readQueue();
+          writeQueue([{ ...popped }, ...remaining]);
+          break;
+        }
+        flushed += 1;
+      }
+      if (flushed > 0) {
+        setQueuedCount(readQueue().length);
+        setBanner({ kind: 'success', text: `Synced ${flushed} queued submission${flushed > 1 ? 's' : ''}.` });
+      } else {
+        setQueuedCount(readQueue().length);
+      }
+    };
+    tryFlush();
+  }, [isOnline, uid]);
 
   // ---------------- Photos ----------------
   const removePhotoAt = (idx: number) => {
@@ -304,14 +469,49 @@ export default function NewFormScreen() {
     }
   };
 
+  // NEW: central mapping to DB row (keeps insert + queue consistent)
+  const buildSubmissionRow = useCallback((v: FormValues, effectiveTeamId: string, uploadedUrls: string[]) => {
+    return {
+      // server will still enforce auth via RLS/trigger, but we send explicit values
+      created_by: uid || null,
+      team_id: effectiveTeamId,
+
+      store_site: v.storeSite || null,
+      location: v.location || null,
+      brand: v.brand || null,
+
+      date: v.date || null,
+      store_location: v.storeLocation || null,
+      conditions: v.conditions || null,
+      price_per_unit: safeNumber(v.pricePerUnit),
+      shelf_space: v.shelfSpace || null,
+      on_shelf: safeNumber(v.onShelf),
+      tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      notes: v.notes || null,
+
+      photo1_url: uploadedUrls[0] ?? null,
+      photo2_url: uploadedUrls[1] ?? null,
+    };
+  }, [uid]);
+
   // Submit: upload → DB insert (optional) → ALWAYS export (Excel) → PDF
   const onSubmit = async () => {
     try {
       if (busy) return;
       setBusy(true);
-      setBanner({ kind: 'info', text: 'Submitting…' });
 
       const v = getValues();
+
+      // Validate early (only show required errors now)
+      const e = validate(v);
+      setErrors(e);
+      if (Object.keys(e).length) {
+        setBanner({ kind: 'error', text: 'Please fix the highlighted fields.' });
+        return;
+      }
+
+      // Informative steps
+      setBanner({ kind: 'info', text: 'Uploading photos…' });
 
       // 1) Upload photos (if signed out, we'll still export with local URIs)
       const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
@@ -319,9 +519,13 @@ export default function NewFormScreen() {
 
       // 2) Optional DB insert
       let insertError: any = null;
+      let effectiveTeamId: string | null = null;
+
       if (uid) {
-        // ✅ find or reuse the user's team_id (required by RLS) and insert created_by + team_id
-        let effectiveTeamId = teamId;
+        setBanner({ kind: 'info', text: 'Preparing database insert…' });
+
+        // ✅ find or reuse the user's chosen team_id (required by RLS)
+        effectiveTeamId = selectedTeamId || teamId;
         if (!effectiveTeamId && !teamLoading) {
           const { data: tm, error: tmErr } = await supabase
             .from('team_members')
@@ -332,41 +536,37 @@ export default function NewFormScreen() {
           if (tmErr) throw tmErr;
           effectiveTeamId = tm?.team_id ?? null;
         }
-
         if (!effectiveTeamId) {
           throw new Error('No team found for this user. Ask an admin to add you to a team.');
         }
 
-        const { error } = await supabase.from('submissions').insert({
-          created_by: uid,
-          team_id: effectiveTeamId,
+        const row = buildSubmissionRow(v, effectiveTeamId, uploadedUrls);
 
-          // NEW columns (these exist if you ran the add-column SQL)
-          store_site: v.storeSite || null,
-          location: v.location || null,
-          brand: v.brand || null, // NEW
+        // If offline (web) and auto-queue is on: push to queue and skip live insert
+        if (!isOnline && autoQueueWhenOffline) {
+          enqueueSubmission(row);
+          setQueuedCount(readQueue().length);
+          insertError = null; // not an error; queued instead
+        } else {
+          setBanner({ kind: 'info', text: 'Saving to database…' });
+          const { error } = await supabase.from('submissions').insert(row);
+          insertError = error ?? null;
 
-          // Existing columns
-          date: v.date || null,
-          store_location: v.storeLocation || null,
-          conditions: v.conditions || null,
-          price_per_unit: v.pricePerUnit ? Number(v.pricePerUnit) : null,
-          shelf_space: v.shelfSpace || null,
-          on_shelf: v.onShelf ? Number(v.onShelf) : null,
-          // Store tags as array if provided
-          tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-          notes: v.notes || null,
-
-          // Save public URLs returned from uploads helper (kept behavior)
-          photo1_url: uploadedUrls[0] ?? null,
-          photo2_url: uploadedUrls[1] ?? null,
-        });
-        insertError = error ?? null;
+          // If network rejected, queue it (best-effort)
+          if (insertError && String(insertError.message || '').toLowerCase().includes('network')) {
+            enqueueSubmission(row);
+            setQueuedCount(readQueue().length);
+            insertError = null;
+            setBanner({ kind: 'info', text: 'Offline detected. Submission queued locally.' });
+          }
+        }
       } else {
+        // Not signed in => skip DB, continue exports
         insertError = { message: 'Not authenticated – saved to Excel/PDF only.' };
       }
 
       // 3) Always export Excel (now includes BRAND)
+      setBanner({ kind: 'info', text: 'Creating Excel…' });
       await downloadSubmissionExcel({
         store_site: v.storeSite || '',
         date: v.date || '',
@@ -455,7 +655,10 @@ export default function NewFormScreen() {
             formRef.current[name] = (e.currentTarget.value as any) ?? '';
             scheduleAutosave();
           }}
-          onBlur={scheduleAutosave}
+          onBlur={() => {
+            setTouched((t) => ({ ...t, [name]: true } as any));
+            scheduleAutosave();
+          }}
           placeholder={placeholder}
           style={{
             width: '100%',
@@ -476,7 +679,10 @@ export default function NewFormScreen() {
             formRef.current[name] = (e.currentTarget.value as any) ?? '';
             scheduleAutosave();
           }}
-          onBlur={scheduleAutosave}
+          onBlur={() => {
+            setTouched((t) => ({ ...t, [name]: true } as any));
+            scheduleAutosave();
+          }}
           placeholder={placeholder}
           inputMode={inputMode}
           style={{
@@ -491,6 +697,10 @@ export default function NewFormScreen() {
           } as any}
         />
       )}
+      {/* NEW: inline error for web field */}
+      {touched[name] && (errors as any)[name] ? (
+        <Text style={{ color: '#b91c1c', marginTop: 4 }}>{(errors as any)[name]}</Text>
+      ) : null}
     </View>
   );
 
@@ -517,6 +727,7 @@ export default function NewFormScreen() {
             setNVals((prev) => ({ ...prev, [prop]: s ?? '' }));
             scheduleAutosave();
           }}
+          onBlur={() => setTouched((t) => ({ ...t, [prop]: true } as any))}
           placeholder={placeholder}
           multiline={!!multiline}
           autoCorrect={false}
@@ -533,6 +744,10 @@ export default function NewFormScreen() {
             textAlignVertical: multiline ? 'top' : 'center',
           }}
         />
+        {/* NEW: inline error for native field */}
+        {touched[prop] && (errors as any)[prop] ? (
+          <Text style={{ color: '#b91c1c', marginTop: 4 }}>{(errors as any)[prop]}</Text>
+        ) : null}
       </View>
     );
   };
@@ -576,6 +791,13 @@ export default function NewFormScreen() {
         Create New Form
       </Text>
 
+      {/* NEW: status line for online/offline & queue */}
+      <View style={{ marginBottom: 8 }}>
+        <Text style={{ textAlign: 'center', fontSize: 12, color: isOnline ? '#16a34a' : '#b45309' }}>
+          {isOnline ? 'Online' : 'Offline'} • Queue: {queuedCount} • Last saved draft: {lastSavedAt ?? '—'}
+        </Text>
+      </View>
+
       {banner ? (
         <View
           style={{
@@ -587,6 +809,52 @@ export default function NewFormScreen() {
           }}
         >
           <Text style={{ color: 'white', textAlign: 'center' }}>{banner.text}</Text>
+        </View>
+      ) : null}
+
+      {/* NEW: team picker if multiple teams */}
+      {uid && teamOptions.length > 1 ? (
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ fontWeight: '700', marginBottom: 6 }}>TEAM</Text>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' as any }}>
+            {teamOptions.map((t) => {
+              const active = (selectedTeamId ?? teamId) === t.team_id;
+              return (
+                <Pressable
+                  key={t.team_id}
+                  onPress={() => setSelectedTeamId(t.team_id)}
+                  style={{
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: active ? '#1d4ed8' : '#d1d5db',
+                    backgroundColor: active ? '#e0e7ff' : '#f9fafb',
+                  }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#111827' }}>
+                    {t.name || t.team_id.slice(0, 8)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {/* NEW: offline queue toggle */}
+      {isWeb ? (
+        <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
+          <Pressable
+            onPress={() => setAutoQueueWhenOffline((x) => !x)}
+            style={{
+              width: 22, height: 22, borderRadius: 4, borderWidth: 1, borderColor: '#111',
+              alignItems: 'center', justifyContent: 'center', backgroundColor: autoQueueWhenOffline ? '#16a34a' : 'white',
+            }}
+          >
+            {autoQueueWhenOffline ? <Text style={{ color: 'white' }}>✓</Text> : null}
+          </Pressable>
+          <Text>Auto-queue when offline</Text>
         </View>
       ) : null}
 
@@ -715,6 +983,35 @@ export default function NewFormScreen() {
         >
           <Text style={{ fontWeight: '700' }}>Clear (wipe saved fields & photos)</Text>
         </Pressable>
+      </View>
+
+      {/* NEW: tiny debug panel (toggle) */}
+      <View style={{ marginTop: 16 }}>
+        <Pressable
+          onPress={() => setShowDebug((x) => !x)}
+          style={{ alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#f3f4f6' }}
+        >
+          <Text style={{ fontSize: 12, color: '#334155' }}>{showDebug ? 'Hide' : 'Show'} debug</Text>
+        </Pressable>
+        {showDebug ? (
+          <View style={{ marginTop: 8, padding: 8, backgroundColor: '#111827', borderRadius: 8 }}>
+            <Text style={{ color: '#93c5fd', fontFamily: 'monospace' as any, fontSize: 12 }}>
+              {JSON.stringify(
+                {
+                  uid,
+                  teamId,
+                  selectedTeamId,
+                  teamOptions,
+                  isOnline,
+                  queuedCount,
+                  values: getValues(),
+                },
+                null,
+                2
+              )}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Hidden web inputs for camera/library (no effect on native) */}
