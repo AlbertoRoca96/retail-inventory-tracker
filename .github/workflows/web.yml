@@ -63,34 +63,80 @@ jobs:
         with:
           path: apps/mobile/dist
 
-  # NEW: Deploy the Edge Function so /functions/v1/invite-user exists
   deploy-edge:
     runs-on: ubuntu-latest
     env:
+      # REQUIRED
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      # Function runtime secrets (server-side only)
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      # OPTIONAL redirect; omit the secret if you don't need it
       INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
     steps:
       - uses: actions/checkout@v4
 
-      # Install Supabase CLI
+      # Install Supabase CLI (official action)
       - uses: supabase/setup-cli@v1
+        with:
+          version: latest  # pin if you want reproducibility
 
-      # Set (or update) function secrets at the project level
+      - name: Sanity check inputs
+        run: |
+          set -e
+          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "❌ SUPABASE_ACCESS_TOKEN is empty"; exit 1)
+          test -n "$SUPABASE_PROJECT_REF"  || (echo "❌ SUPABASE_PROJECT_REF is empty"; exit 1)
+          # Verify function exists at expected path
+          test -f "supabase/functions/invite-user/index.ts" || (echo "❌ Missing supabase/functions/invite-user/index.ts"; exit 1)
+          echo "✅ Inputs look good. Project ref: ${SUPABASE_PROJECT_REF:0:6}…"
+
+      # Set / update runtime secrets used by the function
       - name: Set Supabase function secrets
         run: |
+          set -e
           supabase secrets set \
             SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
-            INVITE_REDIRECT_TO="$INVITE_REDIRECT_TO" \
             --project-ref "$SUPABASE_PROJECT_REF"
+          # Set INVITE_REDIRECT_TO only when provided
+          if [ -n "$INVITE_REDIRECT_TO" ]; then
+            supabase secrets set \
+              INVITE_REDIRECT_TO="$INVITE_REDIRECT_TO" \
+              --project-ref "$SUPABASE_PROJECT_REF"
+          fi
 
-      # Deploy the invite-user function and allow browser preflight (OPTIONS) without JWT
+      # Deploy the Edge Function and allow browser preflight (OPTIONS) at the platform edge
       - name: Deploy invite-user function
         run: |
+          set -e
           supabase functions deploy invite-user \
             --project-ref "$SUPABASE_PROJECT_REF" \
             --no-verify-jwt
+
+      # (Optional) smoke test preflight; does not fail the job
+      - name: Smoke test preflight (OPTIONS)
+        continue-on-error: true
+        run: |
+          curl -i -X OPTIONS \
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/invite-user" \
+            -H "Origin: https://albertoroca96.github.io" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: authorization,content-type" || true
+
+      # (Optional) POST smoke test if you provide a valid user access token as a secret
+      # Add SUPABASE_TEST_BEARER in repo secrets to enable
+      - name: Smoke test POST (requires SUPABASE_TEST_BEARER)
+        if: ${{ secrets.SUPABASE_TEST_BEARER != '' }}
+        continue-on-error: true
+        env:
+          SUPABASE_TEST_BEARER: ${{ secrets.SUPABASE_TEST_BEARER }}
+        run: |
+          curl -i -X POST \
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/invite-user" \
+            -H "Authorization: Bearer ${SUPABASE_TEST_BEARER}" \
+            -H "Content-Type: application/json" \
+            --data '{"email":"test+invite@example.com"}' || true
 
   deploy:
     needs: [build, deploy-edge]
