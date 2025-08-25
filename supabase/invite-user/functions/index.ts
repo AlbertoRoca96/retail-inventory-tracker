@@ -5,14 +5,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const DEFAULT_REDIRECT = Deno.env.get("INVITE_REDIRECT_TO") || ""; 
-// e.g. set to https://albertoroca96.github.io/retail-inventory-tracker/auth/callback
+// e.g. https://albertoroca96.github.io/retail-inventory-tracker/auth/callback
 
+// ✅ Required CORS headers for browser calls
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
 };
 
 serve(async (req) => {
+  // ✅ Short-circuit preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -20,7 +24,7 @@ serve(async (req) => {
   try {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // AuthN the caller
+    // AuthN the caller (the browser’s preflight does NOT include this header, hence the early return above)
     const authHeader = req.headers.get("Authorization") || "";
     const jwt = authHeader.replace("Bearer ", "");
     const { data: me, error: meErr } = await admin.auth.getUser(jwt);
@@ -40,6 +44,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
     }
 
+    // Read payload
     const body = await req.json().catch(() => ({}));
     const email: string | undefined = body?.email;
     const team_id: string | undefined = body?.team_id;
@@ -49,9 +54,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "email required" }), { status: 400, headers: corsHeaders });
     }
 
-    // Send invite with redirectTo so links land in your app
+    // Send invite (note: redirectTo ensures the link lands inside your app)
     const { data: invite, error } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo, // <— IMPORTANT
+      redirectTo, // 👈 important
       data: { invited_by: me.user.id, team_id: team_id || null },
     });
     if (error) throw error;
@@ -59,7 +64,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, user: invite?.user }), {
       headers: { "content-type": "application/json", ...corsHeaders },
     });
-  } catch (e) {
+  } catch (e: any) {
     return new Response(JSON.stringify({ error: String(e?.message || e) }), {
       status: 500,
       headers: corsHeaders,
