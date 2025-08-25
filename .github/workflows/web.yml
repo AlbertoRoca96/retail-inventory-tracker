@@ -19,16 +19,13 @@ jobs:
     defaults:
       run:
         working-directory: apps/mobile
-
     steps:
       - uses: actions/checkout@v4
 
-      # No cache options here (they require an existing lockfile path).
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # Use npm ci if a lockfile exists; otherwise npm install (creates one)
       - name: Install deps
         run: |
           if [ -f package-lock.json ]; then
@@ -44,7 +41,6 @@ jobs:
           CI: "true"
         run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
 
-      # Quick sanity check so Metro won't fail later
       - name: Verify pdf-lib is installed
         run: node -e "console.log('pdf-lib ->', require.resolve('pdf-lib'))"
 
@@ -67,8 +63,37 @@ jobs:
         with:
           path: apps/mobile/dist
 
+  # NEW: Deploy the Edge Function so /functions/v1/invite-user exists
+  deploy-edge:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Supabase CLI
+      - uses: supabase/setup-cli@v1
+
+      # Set (or update) function secrets at the project level
+      - name: Set Supabase function secrets
+        run: |
+          supabase secrets set \
+            SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+            INVITE_REDIRECT_TO="$INVITE_REDIRECT_TO" \
+            --project-ref "$SUPABASE_PROJECT_REF"
+
+      # Deploy the invite-user function and allow browser preflight (OPTIONS) without JWT
+      - name: Deploy invite-user function
+        run: |
+          supabase functions deploy invite-user \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt
+
   deploy:
-    needs: build
+    needs: [build, deploy-edge]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
