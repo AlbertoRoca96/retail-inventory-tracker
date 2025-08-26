@@ -1,8 +1,7 @@
-// apps/mobile/src/lib/analytics.ts
 import { supabase } from './supabase';
 
 export type MonthlyRow = { month_start: string; submitted: number; cumulative: number };
-export type DailyRow = { day: string; submitted: number };
+export type DailyRow   = { day: string; submitted: number };
 
 type Filters = { userId?: string | null; teamId?: string | null };
 
@@ -15,10 +14,10 @@ export async function getMonthlyCounts(
   filters: Filters = {}
 ): Promise<MonthlyRow[]> {
   const { data, error } = await supabase.rpc('submissions_monthly_counts', {
-    p_start: toDate(start),
-    p_end: toDate(end),
-    p_user: filters.userId ?? null,
-    p_team: filters.teamId ?? null,
+    p_start:  toDate(start),
+    p_end:    toDate(end),
+    p_team_id: filters.teamId ?? null,
+    p_user_id: filters.userId ?? null,
   });
   if (error) throw error;
   return (data || []) as MonthlyRow[];
@@ -30,10 +29,10 @@ export async function getDailyCounts(
   filters: Filters = {}
 ): Promise<DailyRow[]> {
   const { data, error } = await supabase.rpc('submissions_daily_counts', {
-    p_start: toDate(start),
-    p_end: toDate(end),
-    p_user: filters.userId ?? null,
-    p_team: filters.teamId ?? null,
+    p_start:  toDate(start),
+    p_end:    toDate(end),
+    p_team_id: filters.teamId ?? null,
+    p_user_id: filters.userId ?? null,
   });
   if (error) throw error;
   return (data || []) as DailyRow[];
@@ -44,9 +43,9 @@ export async function getYTDTotal(
   filters: Filters = {}
 ): Promise<number> {
   const { data, error } = await supabase.rpc('submissions_ytd_total', {
-    p_as_of: toDate(asOf),
-    p_user: filters.userId ?? null,
-    p_team: filters.teamId ?? null,
+    p_as_of:  toDate(asOf),
+    p_team_id: filters.teamId ?? null,
+    p_user_id: filters.userId ?? null,
   });
   if (error) throw error;
   return (data as number) ?? 0;
@@ -58,10 +57,10 @@ export async function getRangeTotal(
   filters: Filters = {}
 ): Promise<number> {
   const { data, error } = await supabase.rpc('submissions_range_total', {
-    p_start: toDate(start),
-    p_end: toDate(end),
-    p_user: filters.userId ?? null,
-    p_team: filters.teamId ?? null,
+    p_start:  toDate(start),
+    p_end:    toDate(end),
+    p_team_id: filters.teamId ?? null,
+    p_user_id: filters.userId ?? null,
   });
   if (error) throw error;
   return (data as number) ?? 0;
