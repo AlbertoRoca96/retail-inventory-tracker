@@ -473,7 +473,7 @@ export default function NewFormScreen() {
   const buildSubmissionRow = useCallback((v: FormValues, effectiveTeamId: string, uploadedUrls: string[]) => {
     return {
       // server will still enforce auth via RLS/trigger, but we send explicit values
-      user_by: uid || null,
+      user_id: uid || null,
       team_id: effectiveTeamId,
 
       store_site: v.storeSite || null,
