@@ -15,11 +15,7 @@ import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
-// PDF export is loaded dynamically inside onSubmit / onDownloadPdf to avoid hard coupling.
 
-// -----------------------------
-// NEW: Types & helpers (added)
-// -----------------------------
 type ValidationErrors = Partial<{
   storeSite: string;
   storeLocation: string;
@@ -40,19 +36,13 @@ const safeNumber = (s?: string) => {
 };
 const looksLikeISODate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-// NEW: queue storage keys
 const QUEUE_KEY = 'rit:submission-queue:v1';
 
-// NEW: queued item shape
 type QueuedSubmission = {
-  id: string; // client-side id
+  id: string;
   createdAt: string;
-  payload: any; // DB row payload
+  payload: any;
 };
-
-// -----------------------------
-// Original code continues
-// -----------------------------
 
 type Banner =
   | { kind: 'info'; text: string }
@@ -69,13 +59,10 @@ type Photo = {
 };
 
 type FormValues = {
-  // NEW fields
-  storeSite: string;     // e.g., "WHOLE FOODS"
-  location: string;      // e.g., "Middle Shelf"
-
-  // Existing fields (+ NEW brand below)
+  storeSite: string;
+  location: string;
   date: string;
-  brand?: string;        // NEW: under DATE in the sheet & PDF
+  brand?: string;
   storeLocation: string;
   conditions: string;
   pricePerUnit: string;
@@ -85,7 +72,6 @@ type FormValues = {
   notes: string;
 };
 
-// Local type for the PDF call so we don't statically import the module on web
 type PdfPayload = {
   store_site: string;
   date: string;
@@ -101,15 +87,14 @@ type PdfPayload = {
   photo_urls: string[];
 };
 
-/** Bump this key when the local-draft format changes to avoid loading stale drafts */
 const DRAFT_KEY = 'rit:new-form-draft:v8';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const getDefaultValues = (): FormValues => ({
-  storeSite: '',          // NEW
-  location: '',           // NEW
+  storeSite: '',
+  location: '',
   date: todayISO(),
-  brand: '',              // NEW
+  brand: '',
   storeLocation: '',
   conditions: '',
   pricePerUnit: '',
@@ -119,7 +104,6 @@ const getDefaultValues = (): FormValues => ({
   notes: '',
 });
 
-// ---------- localStorage helpers (no React setState inside) ----------
 function saveDraftLocal(draft: unknown) {
   try {
     if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -140,7 +124,6 @@ function clearDraftLocal() {
   } catch {}
 }
 
-// ---------- NEW: queue helpers ----------
 function readQueue(): QueuedSubmission[] {
   try {
     if (isWeb && hasWindow) {
@@ -175,10 +158,6 @@ function cryptoRandomId() {
   }
   return Math.random().toString(36).slice(2);
 }
-
-/* ----------------------------------------------------------------------
-   HOISTED + MEMOIZED FIELDS (to avoid remount/focus loss during renders)
----------------------------------------------------------------------- */
 
 type WebFieldProps = {
   name: keyof FormValues;
@@ -266,8 +245,8 @@ const WebField = memo(function WebField({
           } as any}
         />
       )}
-      {touched[name] && (touched as any)[name] ? null : null /* keep structure */}
-      {touched[name] && (/* inline errors */ false) ? null : null /* placeholder for consistency */}
+      {touched[name] && (touched as any)[name] ? null : null}
+      {touched[name] && (false) ? null : null}
     </View>
   );
 });
@@ -344,14 +323,11 @@ type FieldProps = {
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric' | 'email-address';
   inputMode?: 'text' | 'decimal';
-  // web props
   formKey: number;
   formRef: React.MutableRefObject<FormValues>;
   onEdit: () => void;
-  // native props
   nVals: FormValues;
   setNVals: React.Dispatch<React.SetStateAction<FormValues>>;
-  // shared
   errors: ValidationErrors;
   touched: Record<keyof FormValues, boolean>;
   setTouched: React.Dispatch<React.SetStateAction<Record<keyof FormValues, boolean>>>;
@@ -410,28 +386,20 @@ const Field = memo(function Field({
   );
 });
 
-/* ----------------------------------------------------------------------
-   MAIN SCREEN
----------------------------------------------------------------------- */
-
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
 
-  // NEW: cache the user’s team once; use it on submit
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
 
-  // NEW: support multiple teams (picker)
   const [teamOptions, setTeamOptions] = useState<{ team_id: string; name?: string | null }[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
-  // NEW: online/offline & queue status
   const [isOnline, setIsOnline] = useState(() => (isWeb && hasWindow ? navigator.onLine : true));
   const [queuedCount, setQueuedCount] = useState<number>(() => readQueue().length);
   const [autoQueueWhenOffline, setAutoQueueWhenOffline] = useState(true);
 
-  // Avoid hydration quirks for static web
   const [hydrated, setHydrated] = useState(!isWeb);
   useEffect(() => {
     if (isWeb) setHydrated(true);
@@ -440,7 +408,6 @@ export default function NewFormScreen() {
   const [banner, setBanner] = useState<Banner>(null);
   const [busy, setBusy] = useState(false);
 
-  // NEW: validation/touched/debug
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<keyof FormValues, boolean>>({
     storeSite: false, location: false, date: false, brand: false,
@@ -450,29 +417,22 @@ export default function NewFormScreen() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
 
-  // ---------------- Values store ----------------
   const formRef = useRef<FormValues>(getDefaultValues());
   const [photos, setPhotos] = useState<Photo[]>([]);
 
-  // Native mirrored state
   const [nVals, setNVals] = useState<FormValues>(getDefaultValues());
 
-  // When we need web inputs to re-mount with new defaultValue (after Clear/Load), bump this key.
   const [formKey, setFormKey] = useState(0);
 
-  // NEW: when set on web, shows a one-tap PDF download button (to satisfy user gesture)
   const [pdfReady, setPdfReady] = useState<PdfPayload | null>(null);
 
-  // ---- web camera/library fallbacks ----
   const camInputRef = useRef<HTMLInputElement | null>(null);
   const libInputRef = useRef<HTMLInputElement | null>(null);
 
-  // NEW: typing gate—avoid cosmetic state updates while typing (prevents focus loss)
   const isTypingRef = useRef(false);
   const typingStart = useCallback(() => { isTypingRef.current = true; }, []);
   const typingEnd = useCallback(() => {
     isTypingRef.current = false;
-    // apply "last saved" visual once user is done typing
     setLastSavedAt(new Date().toLocaleTimeString());
   }, []);
 
@@ -489,11 +449,9 @@ export default function NewFormScreen() {
         height: null,
       },
     ]);
-    // Not user text input, fine to autosave immediately
     setTimeout(() => scheduleAutosave(), 0);
   }, []);
 
-  // NEW: unsaved-guard on web
   useEffect(() => {
     if (!isWeb) return;
     const handler = (e: BeforeUnloadEvent) => {
@@ -508,7 +466,6 @@ export default function NewFormScreen() {
     return () => { if (hasWindow) window.removeEventListener('beforeunload', handler); };
   }, []);
 
-  // NEW: online/offline listeners (web)
   useEffect(() => {
     if (!(isWeb && hasWindow)) return;
     const online = () => setIsOnline(true);
@@ -521,12 +478,10 @@ export default function NewFormScreen() {
     };
   }, []);
 
-  // Load draft once after hydration
   const loaded = useRef(false);
   useEffect(() => {
     if (!hydrated || loaded.current) return;
     loaded.current = true;
-    // ✅ fixed extra ">" that broke the build
     const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>();
     if (draft) {
       const merged: FormValues = { ...getDefaultValues(), ...draft };
@@ -538,14 +493,12 @@ export default function NewFormScreen() {
     }
   }, [hydrated]);
 
-  // NEW: prefetch team once user is known
   useEffect(() => {
     let cancelled = false;
     const fetchTeam = async () => {
       if (!uid) { setTeamId(null); setTeamOptions([]); setSelectedTeamId(null); return; }
       setTeamLoading(true);
 
-      // Fetch teams for user (with names)
       const { data: rows, error } = await supabase
         .from('team_members')
         .select('team_id, teams(name)')
@@ -574,7 +527,6 @@ export default function NewFormScreen() {
     return isWeb ? { ...formRef.current } : { ...nVals };
   }, [nVals]);
 
-  // ---------------- NEW: validation ----------------
   const validate = useCallback((v: FormValues): ValidationErrors => {
     const e: ValidationErrors = {};
     if (!v.storeSite?.trim()) e.storeSite = 'Required';
@@ -587,15 +539,12 @@ export default function NewFormScreen() {
     return e;
   }, []);
 
-  // Debounced autosave (visuals gated while typing)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutosave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const v = getValues();
       saveDraftLocal({ ...v, photos });
-
-      // Avoid jostling UI while typing—only update "last saved" display when not typing.
       if (!isTypingRef.current) {
         setLastSavedAt(new Date().toLocaleTimeString());
       }
@@ -608,7 +557,6 @@ export default function NewFormScreen() {
     };
   }, []);
 
-  // NEW: flush queue when we come online + authenticated
   useEffect(() => {
     const tryFlush = async () => {
       if (!isOnline || !uid) return;
@@ -618,7 +566,6 @@ export default function NewFormScreen() {
         const { payload } = popped;
         const { error } = await supabase.from('submissions').insert(payload);
         if (error) {
-          // put it back to the front
           const remaining = readQueue();
           writeQueue([{ ...popped }, ...remaining]);
           break;
@@ -635,7 +582,6 @@ export default function NewFormScreen() {
     tryFlush();
   }, [isOnline, uid]);
 
-  // ---------------- Photos ----------------
   const removePhotoAt = (idx: number) => {
     setPhotos((prev) => {
       const next = prev.slice();
@@ -685,7 +631,6 @@ export default function NewFormScreen() {
     }
   };
 
-  // ---------------- Actions ----------------
   const onSave = () => {
     const v = getValues();
     saveDraftLocal({ ...v, photos });
@@ -702,8 +647,6 @@ export default function NewFormScreen() {
     setPhotos([]);
     setFormKey((k) => k + 1);
     if (clearDraft) clearDraftLocal();
-    // Note: intentionally do NOT clear pdfReady here so the user can still tap "Download PDF"
-    // after a successful submission/reset if needed.
   };
 
   const onClearAll = () => {
@@ -712,11 +655,9 @@ export default function NewFormScreen() {
     setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
   };
 
-  // Web-only: one-tap PDF download (satisfies user gesture)
   const onDownloadPdf = async () => {
     if (!pdfReady) return;
     try {
-      // Explicitly resolve the .web variant for GH Pages / Metro web.
       const mod = await import('../../src/lib/exportPdf.web');
       const fn = (mod as any)?.downloadSubmissionPdf ?? (mod as any)?.default?.downloadSubmissionPdf;
       if (typeof fn !== 'function') {
@@ -727,22 +668,17 @@ export default function NewFormScreen() {
       setBanner({ kind: 'error', text: e?.message || 'PDF export failed' });
       return;
     } finally {
-      // Hide the button only after we’ve tried.
       setPdfReady(null);
     }
   };
 
-  // NEW: central mapping to DB row (keeps insert + queue consistent)
   const buildSubmissionRow = useCallback((v: FormValues, effectiveTeamId: string, uploadedUrls: string[]) => {
     return {
-      // server will still enforce auth via RLS/trigger, but we send explicit values
       user_id: uid || null,
       team_id: effectiveTeamId,
-
       store_site: v.storeSite || null,
       location: v.location || null,
       brand: v.brand || null,
-
       date: v.date || null,
       store_location: v.storeLocation || null,
       conditions: v.conditions || null,
@@ -751,13 +687,11 @@ export default function NewFormScreen() {
       on_shelf: safeNumber(v.onShelf),
       tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
       notes: v.notes || null,
-
       photo1_url: uploadedUrls[0] ?? null,
       photo2_url: uploadedUrls[1] ?? null,
     };
   }, [uid]);
 
-  // Submit: upload → DB insert (optional) → ALWAYS export (Excel) → PDF
   const onSubmit = async () => {
     try {
       if (busy) return;
@@ -765,7 +699,6 @@ export default function NewFormScreen() {
 
       const v = getValues();
 
-      // Validate early (only show required errors now)
       const e = validate(v);
       setErrors(e);
       if (Object.keys(e).length) {
@@ -773,21 +706,22 @@ export default function NewFormScreen() {
         return;
       }
 
-      // Informative steps
       setBanner({ kind: 'info', text: 'Uploading photos…' });
 
-      // 1) Upload photos (if signed out, we'll still export with local URIs)
       const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
-      const excelPhotoUrls = uploadedUrls.length ? uploadedUrls : photos.map((p) => p.uri);
 
-      // 2) Optional DB insert
+      // ✅ FIX: build per-index fallback so all selected photos export,
+      // even if only some uploads return URLs.
+      const excelPhotoUrls = photos
+        .map((p, i) => (uploadedUrls?.[i] ?? p.uri))
+        .filter(Boolean);
+
       let insertError: any = null;
       let effectiveTeamId: string | null = null;
 
       if (uid) {
         setBanner({ kind: 'info', text: 'Preparing database insert…' });
 
-        // ✅ find or reuse the user's chosen team_id (required by RLS)
         effectiveTeamId = selectedTeamId || teamId;
         if (!effectiveTeamId && !teamLoading) {
           const { data: tm, error: tmErr } = await supabase
@@ -803,19 +737,17 @@ export default function NewFormScreen() {
           throw new Error('No team found for this user. Ask an admin to add you to a team.');
         }
 
-        const row = buildSubmissionRow(v, effectiveTeamId, uploadedUrls);
+        const row = buildSubmissionRow(v, effectiveTeamId, uploadedUrls || []);
 
-        // If offline (web) and auto-queue is on: push to queue and skip live insert
         if (!isOnline && autoQueueWhenOffline) {
           enqueueSubmission(row);
           setQueuedCount(readQueue().length);
-          insertError = null; // not an error; queued instead
+          insertError = null;
         } else {
           setBanner({ kind: 'info', text: 'Saving to database…' });
           const { error } = await supabase.from('submissions').insert(row);
           insertError = error ?? null;
 
-          // If network rejected, queue it (best-effort)
           if (insertError && String(insertError.message || '').toLowerCase().includes('network')) {
             enqueueSubmission(row);
             setQueuedCount(readQueue().length);
@@ -824,11 +756,9 @@ export default function NewFormScreen() {
           }
         }
       } else {
-        // Not signed in => skip DB, continue exports
         insertError = { message: 'Not authenticated – saved to Excel/PDF only.' };
       }
 
-      // 3) Always export Excel (now includes BRAND)
       setBanner({ kind: 'info', text: 'Creating Excel…' });
       await downloadSubmissionExcel({
         store_site: v.storeSite || '',
@@ -842,10 +772,9 @@ export default function NewFormScreen() {
         on_shelf: v.onShelf || '',
         tags: v.tags || '',
         notes: v.notes || '',
-        photo_urls: excelPhotoUrls.filter(Boolean),
+        photo_urls: excelPhotoUrls,
       });
 
-      // 3b) PDF export setup
       const pdfPayload: PdfPayload = {
         store_site: v.storeSite || '',
         date: v.date || '',
@@ -858,11 +787,10 @@ export default function NewFormScreen() {
         on_shelf: v.onShelf || '',
         tags: v.tags || '',
         notes: v.notes || '',
-        photo_urls: excelPhotoUrls.filter(Boolean),
+        photo_urls: excelPhotoUrls,
       };
 
       if (isWeb) {
-        // 👉 Web: show a user-gesture button to avoid multiple auto-downloads being blocked.
         setPdfReady(pdfPayload);
         setBanner((b) =>
           b?.kind === 'error'
@@ -870,7 +798,6 @@ export default function NewFormScreen() {
             : { kind: 'info', text: 'Excel downloaded. Tap "Download PDF" below to save the PDF.' }
         );
       } else {
-        // 👉 Native: keep auto-export via dynamic import
         try {
           const mod = await import('../../src/lib/exportPdf');
           if (mod?.downloadSubmissionPdf) {
@@ -884,7 +811,6 @@ export default function NewFormScreen() {
         return;
       }
 
-      // 4) Clean reset after success (pdfReady is intentionally preserved)
       resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
@@ -905,13 +831,12 @@ export default function NewFormScreen() {
   return (
     <ScrollView
       contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-      keyboardShouldPersistTaps="always" // keep keyboard open on taps inside scroll content
+      keyboardShouldPersistTaps="always"
     >
       <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
         Create New Form
       </Text>
 
-      {/* NEW: status line for online/offline & queue */}
       <View style={{ marginBottom: 8 }}>
         <Text style={{ textAlign: 'center', fontSize: 12, color: isOnline ? '#16a34a' : '#b45309' }}>
           {isOnline ? 'Online' : 'Offline'} • Queue: {queuedCount} • Last saved draft: {lastSavedAt ?? '—'}
@@ -932,7 +857,6 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      {/* NEW: team picker if multiple teams */}
       {uid && teamOptions.length > 1 ? (
         <View style={{ marginBottom: 12 }}>
           <Text style={{ fontWeight: '700', marginBottom: 6 }}>TEAM</Text>
@@ -962,7 +886,6 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      {/* NEW: offline queue toggle */}
       {isWeb ? (
         <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
           <Pressable
@@ -978,7 +901,6 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      {/* NEW fields at the top, matching the PDF */}
       <Field
         name="storeSite" label="STORE SITE"
         formKey={formKey}
@@ -1199,7 +1121,6 @@ export default function NewFormScreen() {
         </Pressable>
       </View>
 
-      {/* Web-only: one-tap PDF download (satisfies user gesture) */}
       {isWeb && pdfReady ? (
         <View style={{ marginTop: 12, gap: 8 as any }}>
           <Pressable
@@ -1238,7 +1159,6 @@ export default function NewFormScreen() {
         </Pressable>
       </View>
 
-      {/* NEW: tiny debug panel (toggle) */}
       <View style={{ marginTop: 16 }}>
         <Pressable
           onPress={() => setShowDebug((x) => !x)}
@@ -1267,7 +1187,6 @@ export default function NewFormScreen() {
         ) : null}
       </View>
 
-      {/* Hidden web inputs for camera/library (no effect on native) */}
       {isWeb ? (
         <div style={{ height: 0, overflow: 'hidden' }}>
           <input
