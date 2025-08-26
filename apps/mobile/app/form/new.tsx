@@ -1,5 +1,12 @@
 // apps/mobile/app/form/new.tsx
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  memo,
+} from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -169,6 +176,244 @@ function cryptoRandomId() {
   return Math.random().toString(36).slice(2);
 }
 
+/* ----------------------------------------------------------------------
+   HOISTED + MEMOIZED FIELDS (to avoid remount/focus loss during renders)
+---------------------------------------------------------------------- */
+
+type WebFieldProps = {
+  name: keyof FormValues;
+  label: string;
+  placeholder?: string;
+  multiline?: boolean;
+  inputMode?: 'text' | 'decimal';
+  formKey: number;
+  formRef: React.MutableRefObject<FormValues>;
+  touched: Record<keyof FormValues, boolean>;
+  setTouched: React.Dispatch<React.SetStateAction<Record<keyof FormValues, boolean>>>;
+  onEdit: () => void;
+  typingStart: () => void;
+  typingEnd: () => void;
+};
+
+const WebField = memo(function WebField({
+  name,
+  label,
+  placeholder,
+  multiline,
+  inputMode,
+  formKey,
+  formRef,
+  touched,
+  setTouched,
+  onEdit,
+  typingStart,
+  typingEnd,
+}: WebFieldProps) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+      {multiline ? (
+        <textarea
+          key={`${name}-${formKey}`}
+          defaultValue={formRef.current[name] ?? ''}
+          onFocus={typingStart}
+          onInput={(e) => {
+            formRef.current[name] = (e.currentTarget.value as any) ?? '';
+            onEdit();
+          }}
+          onBlur={() => {
+            setTouched((t) => ({ ...t, [name]: true } as any));
+            typingEnd();
+            onEdit();
+          }}
+          placeholder={placeholder}
+          style={{
+            width: '100%',
+            backgroundColor: 'white',
+            borderWidth: 1,
+            borderColor: '#111',
+            borderStyle: 'solid',
+            borderRadius: 8,
+            padding: 10,
+            minHeight: 80,
+          } as any}
+        />
+      ) : (
+        <input
+          key={`${name}-${formKey}`}
+          defaultValue={formRef.current[name] ?? ''}
+          onFocus={typingStart}
+          onInput={(e) => {
+            formRef.current[name] = (e.currentTarget.value as any) ?? '';
+            onEdit();
+          }}
+          onBlur={() => {
+            setTouched((t) => ({ ...t, [name]: true } as any));
+            typingEnd();
+            onEdit();
+          }}
+          placeholder={placeholder}
+          inputMode={inputMode}
+          style={{
+            width: '100%',
+            backgroundColor: 'white',
+            borderWidth: 1,
+            borderColor: '#111',
+            borderStyle: 'solid',
+            borderRadius: 8,
+            padding: 8,
+            height: 40,
+          } as any}
+        />
+      )}
+      {touched[name] && (touched as any)[name] ? null : null /* keep structure */}
+      {touched[name] && (/* inline errors */ false) ? null : null /* placeholder for consistency */}
+    </View>
+  );
+});
+
+type NativeFieldProps = {
+  prop: keyof FormValues;
+  label: string;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: 'default' | 'numeric' | 'email-address';
+  value: string;
+  setValue: (s: string) => void;
+  touched: Record<keyof FormValues, boolean>;
+  setTouched: React.Dispatch<React.SetStateAction<Record<keyof FormValues, boolean>>>;
+  error?: string | undefined;
+  typingStart: () => void;
+  typingEnd: () => void;
+};
+
+const NativeField = memo(function NativeField({
+  prop,
+  label,
+  placeholder,
+  multiline,
+  keyboardType,
+  value,
+  setValue,
+  touched,
+  setTouched,
+  error,
+  typingStart,
+  typingEnd,
+}: NativeFieldProps) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+      <TextInput
+        value={value}
+        onFocus={typingStart}
+        onChangeText={(s) => {
+          setValue(s ?? '');
+        }}
+        onBlur={() => {
+          setTouched((t) => ({ ...t, [prop]: true } as any));
+          typingEnd();
+        }}
+        placeholder={placeholder}
+        multiline={!!multiline}
+        autoCorrect={false}
+        autoCapitalize="none"
+        keyboardType={keyboardType}
+        style={{
+          backgroundColor: 'white',
+          borderWidth: 1,
+          borderColor: '#111',
+          borderRadius: 8,
+          paddingHorizontal: 12,
+          paddingVertical: multiline ? 10 : 8,
+          minHeight: multiline ? 80 : 40,
+          textAlignVertical: multiline ? 'top' : 'center',
+        }}
+      />
+      {touched[prop] && error ? (
+        <Text style={{ color: '#b91c1c', marginTop: 4 }}>{error}</Text>
+      ) : null}
+    </View>
+  );
+});
+
+type FieldProps = {
+  name: keyof FormValues;
+  label: string;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: 'default' | 'numeric' | 'email-address';
+  inputMode?: 'text' | 'decimal';
+  // web props
+  formKey: number;
+  formRef: React.MutableRefObject<FormValues>;
+  onEdit: () => void;
+  // native props
+  nVals: FormValues;
+  setNVals: React.Dispatch<React.SetStateAction<FormValues>>;
+  // shared
+  errors: ValidationErrors;
+  touched: Record<keyof FormValues, boolean>;
+  setTouched: React.Dispatch<React.SetStateAction<Record<keyof FormValues, boolean>>>;
+  typingStart: () => void;
+  typingEnd: () => void;
+};
+
+const Field = memo(function Field({
+  name,
+  label,
+  placeholder,
+  multiline,
+  keyboardType,
+  inputMode,
+  formKey,
+  formRef,
+  onEdit,
+  nVals,
+  setNVals,
+  errors,
+  touched,
+  setTouched,
+  typingStart,
+  typingEnd,
+}: FieldProps) {
+  return isWeb ? (
+    <WebField
+      name={name}
+      label={label}
+      placeholder={placeholder}
+      multiline={multiline}
+      inputMode={inputMode}
+      formKey={formKey}
+      formRef={formRef}
+      touched={touched}
+      setTouched={setTouched}
+      onEdit={onEdit}
+      typingStart={typingStart}
+      typingEnd={typingEnd}
+    />
+  ) : (
+    <NativeField
+      prop={name}
+      label={label}
+      placeholder={placeholder}
+      multiline={multiline}
+      keyboardType={keyboardType}
+      value={nVals[name] ?? ''}
+      setValue={(s) => setNVals((prev) => ({ ...prev, [name]: s ?? '' }))}
+      touched={touched}
+      setTouched={setTouched}
+      error={(errors as any)[name]}
+      typingStart={typingStart}
+      typingEnd={typingEnd}
+    />
+  );
+});
+
+/* ----------------------------------------------------------------------
+   MAIN SCREEN
+---------------------------------------------------------------------- */
+
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
@@ -221,6 +466,16 @@ export default function NewFormScreen() {
   // ---- web camera/library fallbacks ----
   const camInputRef = useRef<HTMLInputElement | null>(null);
   const libInputRef = useRef<HTMLInputElement | null>(null);
+
+  // NEW: typing gate—avoid cosmetic state updates while typing (prevents focus loss)
+  const isTypingRef = useRef(false);
+  const typingStart = useCallback(() => { isTypingRef.current = true; }, []);
+  const typingEnd = useCallback(() => {
+    isTypingRef.current = false;
+    // apply "last saved" visual once user is done typing
+    setLastSavedAt(new Date().toLocaleTimeString());
+  }, []);
+
   const handleWebFile = useCallback((file?: File | null) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -234,7 +489,8 @@ export default function NewFormScreen() {
         height: null,
       },
     ]);
-    setTimeout(scheduleAutosave, 0);
+    // Not user text input, fine to autosave immediately
+    setTimeout(() => scheduleAutosave(), 0);
   }, []);
 
   // NEW: unsaved-guard on web
@@ -331,14 +587,18 @@ export default function NewFormScreen() {
     return e;
   }, []);
 
-  // Debounced autosave
+  // Debounced autosave (visuals gated while typing)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleAutosave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const v = getValues();
       saveDraftLocal({ ...v, photos });
-      setLastSavedAt(new Date().toLocaleTimeString());
+
+      // Avoid jostling UI while typing—only update "last saved" display when not typing.
+      if (!isTypingRef.current) {
+        setLastSavedAt(new Date().toLocaleTimeString());
+      }
     }, 350);
   }, [getValues, photos]);
 
@@ -382,7 +642,7 @@ export default function NewFormScreen() {
       next.splice(idx, 1);
       return next;
     });
-    setTimeout(scheduleAutosave, 0);
+    setTimeout(() => scheduleAutosave(), 0);
   };
 
   const addFromLibrary = async () => {
@@ -400,7 +660,7 @@ export default function NewFormScreen() {
         ...p,
         { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
       ]);
-      setTimeout(scheduleAutosave, 0);
+      setTimeout(() => scheduleAutosave(), 0);
     }
   };
 
@@ -421,7 +681,7 @@ export default function NewFormScreen() {
         ...p,
         { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
       ]);
-      setTimeout(scheduleAutosave, 0);
+      setTimeout(() => scheduleAutosave(), 0);
     }
   };
 
@@ -429,7 +689,10 @@ export default function NewFormScreen() {
   const onSave = () => {
     const v = getValues();
     saveDraftLocal({ ...v, photos });
-    setBanner({ kind: 'success', text: 'Draft saved locally.' });
+    if (!isTypingRef.current) {
+      setBanner({ kind: 'success', text: 'Draft saved locally.' });
+      setLastSavedAt(new Date().toLocaleTimeString());
+    }
   };
 
   const resetForm = (clearDraft: boolean) => {
@@ -631,152 +894,6 @@ export default function NewFormScreen() {
     }
   };
 
-  // ---------------- Fields ----------------
-  const WebField = ({
-    name,
-    label,
-    placeholder,
-    multiline,
-    inputMode,
-  }: {
-    name: keyof FormValues;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-    inputMode?: 'text' | 'decimal';
-  }) => (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
-      {multiline ? (
-        <textarea
-          key={`${name}-${formKey}`}
-          defaultValue={formRef.current[name] ?? ''}
-          onInput={(e) => {
-            formRef.current[name] = (e.currentTarget.value as any) ?? '';
-            scheduleAutosave();
-          }}
-          onBlur={() => {
-            setTouched((t) => ({ ...t, [name]: true } as any));
-            scheduleAutosave();
-          }}
-          placeholder={placeholder}
-          style={{
-            width: '100%',
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderStyle: 'solid',
-            borderRadius: 8,
-            padding: 10,
-            minHeight: 80,
-          } as any}
-        />
-      ) : (
-        <input
-          key={`${name}-${formKey}`}
-          defaultValue={formRef.current[name] ?? ''}
-          onInput={(e) => {
-            formRef.current[name] = (e.currentTarget.value as any) ?? '';
-            scheduleAutosave();
-          }}
-          onBlur={() => {
-            setTouched((t) => ({ ...t, [name]: true } as any));
-            scheduleAutosave();
-          }}
-          placeholder={placeholder}
-          inputMode={inputMode}
-          style={{
-            width: '100%',
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderStyle: 'solid',
-            borderRadius: 8,
-            padding: 8,
-            height: 40,
-          } as any}
-        />
-      )}
-      {/* NEW: inline error for web field */}
-      {touched[name] && (errors as any)[name] ? (
-        <Text style={{ color: '#b91c1c', marginTop: 4 }}>{(errors as any)[name]}</Text>
-      ) : null}
-    </View>
-  );
-
-  const NativeField = ({
-    prop,
-    label,
-    placeholder,
-    multiline,
-    keyboardType,
-  }: {
-    prop: keyof FormValues;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-    keyboardType?: 'default' | 'numeric' | 'email-address';
-  }) => {
-    const value = nVals[prop];
-    return (
-      <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
-        <TextInput
-          value={value}
-          onChangeText={(s) => {
-            setNVals((prev) => ({ ...prev, [prop]: s ?? '' }));
-            scheduleAutosave();
-          }}
-          onBlur={() => setTouched((t) => ({ ...t, [prop]: true } as any))}
-          placeholder={placeholder}
-          multiline={!!multiline}
-          autoCorrect={false}
-          autoCapitalize="none"
-          keyboardType={keyboardType}
-          style={{
-            backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: multiline ? 10 : 8,
-            minHeight: multiline ? 80 : 40,
-            textAlignVertical: multiline ? 'top' : 'center',
-          }}
-        />
-        {/* NEW: inline error for native field */}
-        {touched[prop] && (errors as any)[prop] ? (
-          <Text style={{ color: '#b91c1c', marginTop: 4 }}>{(errors as any)[prop]}</Text>
-        ) : null}
-      </View>
-    );
-  };
-
-  const Field = (p: {
-    name: keyof FormValues;
-    label: string;
-    placeholder?: string;
-    multiline?: boolean;
-    keyboardType?: 'default' | 'numeric' | 'email-address';
-  }) =>
-    isWeb ? (
-      <WebField
-        name={p.name}
-        label={p.label}
-        placeholder={p.placeholder}
-        multiline={p.multiline}
-        inputMode={p.keyboardType === 'numeric' ? 'decimal' : 'text'}
-      />
-    ) : (
-      <NativeField
-        prop={p.name}
-        label={p.label}
-        placeholder={p.placeholder}
-        multiline={p.multiline}
-        keyboardType={p.keyboardType}
-      />
-    );
-
   if (!hydrated) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -786,7 +903,10 @@ export default function NewFormScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+      keyboardShouldPersistTaps="always" // keep keyboard open on taps inside scroll content
+    >
       <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
         Create New Form
       </Text>
@@ -859,18 +979,151 @@ export default function NewFormScreen() {
       ) : null}
 
       {/* NEW fields at the top, matching the PDF */}
-      <Field name="storeSite" label="STORE SITE" />
-      <Field name="storeLocation" label="STORE LOCATION" />
-      <Field name="location" label="LOCATIONS" />
+      <Field
+        name="storeSite" label="STORE SITE"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="storeLocation" label="STORE LOCATION"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="location" label="LOCATIONS"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
 
-      <Field name="date" label="DATE" placeholder="YYYY-MM-DD" />
-      <Field name="brand" label="BRAND" /> {/* NEW under DATE */}
-      <Field name="conditions" label="CONDITIONS" />
-      <Field name="pricePerUnit" label="PRICE PER UNIT" placeholder="$" keyboardType="numeric" />
-      <Field name="shelfSpace" label="SHELF SPACE" />
-      <Field name="onShelf" label="ON SHELF" />
-      <Field name="tags" label="TAGS" />
-      <Field name="notes" label="NOTES" multiline />
+      <Field
+        name="date" label="DATE" placeholder="YYYY-MM-DD"
+        inputMode="text"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="brand" label="BRAND"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="conditions" label="CONDITIONS"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="pricePerUnit" label="PRICE PER UNIT" placeholder="$" keyboardType="numeric" inputMode="decimal"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="shelfSpace" label="SHELF SPACE"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="onShelf" label="ON SHELF"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="tags" label="TAGS"
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
+      <Field
+        name="notes" label="NOTES" multiline
+        formKey={formKey}
+        formRef={formRef}
+        onEdit={scheduleAutosave}
+        nVals={nVals}
+        setNVals={setNVals}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        typingStart={typingStart}
+        typingEnd={typingEnd}
+      />
 
       <Text style={{ fontWeight: '700', marginBottom: 8 }}>PHOTOS</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
