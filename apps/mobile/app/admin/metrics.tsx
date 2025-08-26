@@ -1,3 +1,4 @@
+// apps/mobile/app/admin/metrics.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView } from 'react-native';
 import { router } from 'expo-router';
@@ -10,9 +11,19 @@ type DayRow   = { day: string; submitted: number };
 
 const isWeb = Platform.OS === 'web';
 
+// ---- Date helpers (unchanged + small addition) ----
 function toISO(d: Date) { return d.toISOString().slice(0, 10); }
 function monthStart(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function nextMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 1); }
+// NEW: tomorrow helper so daily counts include “today” (end is exclusive)
+function tomorrow(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); }
+
+// UTC month label formatter so YYYY-MM-01 stays that day in any timezone
+const monthFmtUTC = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
 
 // Simple CSV helper (web)
 function downloadCSV(filename: string, rows: string[][]) {
@@ -107,14 +118,18 @@ export default function AdminMetrics() {
 
       const filters = { teamId, userId: userFilter || null };
 
+      // NOTE:
+      // - Monthly uses the UI range as before.
+      // - Daily uses [first of current month, *tomorrow*) so today’s rows are included.
+      const now = new Date();
       const [m, d, totalYtd] = await Promise.all([
         getMonthlyCounts(rangeStart, rangeEnd, filters),
         getDailyCounts(
-          toISO(monthStart(new Date())), // current month only
-          toISO(new Date()),
+          monthStart(now),      // inclusive
+          tomorrow(now),        // exclusive (ensures “today” is counted)
           filters
         ),
-        getYTDTotal(new Date(), filters),
+        getYTDTotal(now, filters),
       ]);
 
       setMonthly(m);
@@ -237,10 +252,7 @@ export default function AdminMetrics() {
                   const label =
                     idx != null
                       ? `Month ${idx}`
-                      : new Date(r.month_start).toLocaleDateString(undefined, {
-                          month: 'short',
-                          year: 'numeric',
-                        });
+                      : monthFmtUTC.format(new Date(`${r.month_start}T00:00:00Z`));
                   return (
                     <View
                       key={r.month_start}
