@@ -58,8 +58,6 @@ using (
 );
 
 -- Submissions: members can insert for their team
--- Allow client to omit created_by (trigger fills it). Still enforce that the
--- final row belongs to the caller and their team.
 drop  policy if exists "members can insert for their team" on public.submissions;
 create policy     "members can insert for their team"
 on public.submissions
@@ -86,7 +84,6 @@ using (
   )
 )
 with check (
-  -- prevent privilege escalation / team hopping on update
   team_id in (select team_id from public.v_user_teams where user_id = auth.uid())
 );
 
