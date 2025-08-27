@@ -6,7 +6,7 @@ export type PhotoLike = {
   mimeType?: string | null;
 };
 
-/** (kept) – returns public URLs only */
+/** Returns public URLs for up to 2 uploaded photos */
 export async function uploadPhotosAndGetUrls(
   uid: string,
   photos: PhotoLike[],
@@ -35,7 +35,7 @@ export async function uploadPhotosAndGetUrls(
   return urls.slice(0, 2);
 }
 
-/** NEW – returns both the storage path (for DB/signing) and a public URL (for Excel/PDF) */
+/** Returns both storage path and public URL for up to 2 uploaded photos */
 export async function uploadPhotosAndGetPathsAndUrls(
   uid: string,
   photos: PhotoLike[],
@@ -62,4 +62,28 @@ export async function uploadPhotosAndGetPathsAndUrls(
     }
   }
   return out.slice(0, 2);
+}
+
+/** Upload a single avatar image and return a public URL */
+export async function uploadAvatarAndGetPublicUrl(
+  uid: string,
+  file: PhotoLike,
+  bucket = 'avatars'
+): Promise<string | null> {
+  if (!file?.uri) return null;
+
+  const ext = (file.fileName?.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${uid}/avatar.${ext}`;
+
+  const res = await fetch(file.uri);
+  const blob = await res.blob();
+
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
+    upsert: true,
+    contentType: file.mimeType || blob.type || 'image/jpeg',
+  });
+  if (error) return null;
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl || null;
 }
