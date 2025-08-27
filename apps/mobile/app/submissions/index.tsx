@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable, FlatList, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
@@ -37,33 +37,47 @@ export default function Submissions() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
+  async function fetchRows() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('submissions')
+      // RLS shows only what the signed-in user can see (team members).
+      .select('id, created_at, store_site, store_location, price_per_unit, priority_level')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) setRows(data as Row[]);
+    setLoading(false);
+  }
+
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
-      // RLS handles visibility (team members can read). No client-side OR filter needed.
-      const { data, error } = await supabase
-        .from('submissions')
-        .select('id, created_at, store_site, store_location, price_per_unit, priority_level')
-        .order('created_at', { ascending: false });
-
-      if (!cancelled) {
-        if (!error && data) setRows(data as Row[]);
-        setLoading(false);
-      }
+      if (!cancelled) await fetchRows();
     })();
+
+    // Realtime: refresh list on inserts/updates/deletes the user is allowed to see
+    const channel = supabase
+      .channel('submissions-list')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'submissions' },
+        () => fetchRows()
+      )
+      .subscribe();
 
     return () => {
       cancelled = true;
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
     };
   }, []);
 
   const renderItem = ({ item }: { item: Row }) => {
-    const subtitle = useMemo(
-      () => new Date(item.created_at).toLocaleString(),
-      [item.created_at]
-    );
+    const subtitle = new Date(item.created_at).toLocaleString();
+    const price =
+      typeof item.price_per_unit === 'number' ? `$${item.price_per_unit}` : '$-';
 
     return (
       <Pressable
@@ -83,9 +97,7 @@ export default function Submissions() {
           <PriPill n={item.priority_level ?? 3} />
         </View>
         <Text>{subtitle}</Text>
-        <Text>
-          ${item.price_per_unit ?? '-'}
-        </Text>
+        <Text>{price}</Text>
       </Pressable>
     );
   };
@@ -100,7 +112,9 @@ export default function Submissions() {
 
   return (
     <View style={{ flex: 1, padding: 16 }}>
-      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 10 }}>Submissions</Text>
+      <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 10 }}>
+        Submissions
+      </Text>
 
       <FlatList
         data={rows}
