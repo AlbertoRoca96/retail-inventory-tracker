@@ -1,14 +1,12 @@
 import ExcelJS from 'exceljs';
 
 export type SubmissionExcel = {
-  // header/title info
-  store_site: string;       // e.g., "WHOLE FOODS" shown across A:B
+  store_site: string;
 
-  // rows
   date: string;
-  brand: string;            // NEW — directly under DATE
-  store_location: string;   // e.g., "BELLINGHAM, MA"
-  location: string;         // e.g., "Middle Shelf"
+  brand: string;
+  store_location: string;
+  location: string;
   conditions: string;
   price_per_unit: string;
   shelf_space: string;
@@ -16,12 +14,11 @@ export type SubmissionExcel = {
   tags: string;
   notes: string;
 
-  // images
-  photo_urls: string[];     // up to 2
+  priority_level?: string;   // "1" | "2" | "3"
+
+  photo_urls: string[];
 };
 
-/** Load any image URL (http/https/blob/data), rasterize to strip EXIF,
- * and return raw base64 (no data: prefix). */
 async function toCanvasBase64(url: string): Promise<string> {
   let srcForImg = url;
   if (/^https?:/i.test(url)) {
@@ -62,12 +59,11 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     },
   });
 
-  // Two wide columns (A & B) + two thin spacers (C & D) to preserve borders.
   ws.columns = [
-    { key: 'label',  width: 44 }, // A — left text + left photo
-    { key: 'value',  width: 44 }, // B — right text + right photo
-    { key: 'gap',    width: 2  }, // C — spacer
-    { key: 'gap2',   width: 2  }, // D — spacer
+    { key: 'label',  width: 44 },
+    { key: 'value',  width: 44 },
+    { key: 'gap',    width: 2  },
+    { key: 'gap2',   width: 2  },
   ];
 
   const border = {
@@ -81,7 +77,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
 
   let r = 1;
 
-  // STORE SITE title across A:B
+  // Title
   ws.mergeCells(`A${r}:B${r}`);
   const siteCell = ws.getCell(`A${r}`);
   siteCell.value = (row.store_site || '').toUpperCase();
@@ -102,9 +98,8 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     r++;
   };
 
-  // Order requested
   addRow('DATE', row.date);
-  addRow('BRAND', row.brand);                 // NEW
+  addRow('BRAND', row.brand);
   addRow('STORE LOCATION', row.store_location);
   addRow('LOCATIONS', row.location);
   addRow('CONDITIONS', row.conditions);
@@ -114,7 +109,19 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // PHOTOS header (A:B)
+  // NEW: Priority row, colored
+  const priorityRow = r;
+  addRow('PRIORITY LEVEL', row.priority_level ?? '');
+  const p = Number(row.priority_level ?? '0');
+  const color = p === 1 ? 'FFEF4444' /* red-500 */
+              : p === 2 ? 'FFF59E0B' /* amber-500 */
+              : p === 3 ? 'FF22C55E' /* green-500 */
+              : undefined;
+  if (color) {
+    ws.getCell(`B${priorityRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+  }
+
+  // PHOTOS header
   ws.mergeCells(`A${r}:B${r}`);
   const hdr = ws.getCell(`A${r}`);
   hdr.value = 'PHOTOS';
@@ -125,7 +132,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Photo grid under A & B
+  // Photo grid
   const imageTopRow = r;
   const rowsForImages = 18;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
@@ -138,7 +145,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.getRow(rr).height = 18;
   }
 
-  // Add up to 2 images
+  // Exactly up to two images; per-index mapping so both export reliably
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
   const base64s = settled
@@ -154,7 +161,6 @@ export async function downloadSubmissionExcel(row: SubmissionExcel) {
     ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
   }
 
-  // Download
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
