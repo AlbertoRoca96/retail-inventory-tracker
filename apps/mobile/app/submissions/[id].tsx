@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Image, ScrollView, Pressable } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { colors } from '../../src/theme';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
@@ -18,7 +17,7 @@ function PriPill({ n }: { n: number | null }) {
   );
 }
 
-// CSV helper (kept): CSV can't embed images; we keep URLs for compatibility
+// CSV helper (CSV itself can't embed images; keep URLs for compatibility)
 function toCsv(r: Row) {
   const tags = Array.isArray(r.tags) ? r.tags.join(', ') : (r.tags ?? '');
   const cells = [
@@ -37,9 +36,7 @@ function toCsv(r: Row) {
     ['PHOTO 1', r.photo1_url ?? r.photo1_path ?? ''],
     ['PHOTO 2', r.photo2_url ?? r.photo2_path ?? ''],
   ];
-  return cells
-    .map(([k, v]) => `"${k}","${String(v).replace(/"/g, '""')}"`)
-    .join('\n');
+  return cells.map(([k, v]) => `"${k}","${String(v).replace(/"/g, '""')}"`).join('\n');
 }
 
 function download(filename: string, text: string) {
@@ -56,6 +53,7 @@ export default function Submission() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [row, setRow] = useState<Row | null>(null);
 
+  // If record only has *paths*, we’ll generate short-lived signed URLs here.
   const [photo1Url, setPhoto1Url] = useState<string | null>(null);
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
 
@@ -65,10 +63,13 @@ export default function Submission() {
       const r = data as Row;
       setRow(r);
 
+      // Prefer stored public URLs; otherwise sign the path (try legacy/new buckets).
       const resolveSigned = async (path?: string | null) => {
         if (!path) return null;
         const tryBucket = async (bucket: string) => {
-          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60, { download: true });
+          const { data, error } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(path, 60, { download: true });
           return error ? null : data?.signedUrl ?? null;
         };
         return (await tryBucket('submissions')) || (await tryBucket('photos'));
@@ -81,6 +82,7 @@ export default function Submission() {
 
   if (!row) return null;
 
+  // Download an .xlsx with embedded images (Excel/Numbers will display them)
   const downloadExcelWithPhotos = async () => {
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
@@ -108,7 +110,7 @@ export default function Submission() {
     const csv = toCsv(row);
     if (navigator.share) {
       const file = new File([csv], 'submission.csv', { type: 'text/csv' });
-      // @ts-ignore
+      // @ts-ignore - Web Share with files
       await navigator.share({ title: 'Submission', text: 'See attached CSV', files: [file] }).catch(() => {});
     } else {
       download('submission.csv', csv);
@@ -121,7 +123,7 @@ export default function Submission() {
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
       <Text style={{ fontSize: 20, fontWeight: '700' }}>Submission</Text>
 
-      {/* Header with priority */}
+      {/* Header with priority badge */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Text style={{ fontWeight: '700' }}>{row.store_location || row.store_site || ''}</Text>
         <PriPill n={row.priority_level ?? 3} />
@@ -140,8 +142,12 @@ export default function Submission() {
       <Text>Notes: {row.notes}</Text>
 
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        {photo1Url ? <Image source={{ uri: photo1Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} /> : null}
-        {photo2Url ? <Image source={{ uri: photo2Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} /> : null}
+        {photo1Url ? (
+          <Image source={{ uri: photo1Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} />
+        ) : null}
+        {photo2Url ? (
+          <Image source={{ uri: photo2Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} />
+        ) : null}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
