@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
@@ -6,11 +7,10 @@ import { supabase } from '../src/lib/supabase';
 /** Treat both plain and GH Pages paths as unauth-allowed */
 function isUnauthPath(p: string | null) {
   if (!p) return false;
-  // Works whether pathname is "/login" or "/retail-inventory-tracker/login"
   return p.endsWith('/login') || p.endsWith('/auth/callback');
 }
 
-/** Matches "/admin" or anything under it, even with a GH Pages base path */
+/** Matches "/admin" or anything under it */
 function isAdminSection(p: string | null) {
   if (!p) return false;
   return p.endsWith('/admin') || p.includes('/admin/');
@@ -26,9 +26,12 @@ function Gate({ children }: { children: React.ReactNode }) {
   const { session, ready } = useAuth();
   const pathname = usePathname();
 
-  // Admin status (queried once we know the user)
   const [adminReady, setAdminReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // NEW: global priority-1 alert
+  const me = session?.user?.id || '';
+  const [alert, setAlert] = useState<{ id: string; store?: string; who?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +44,7 @@ function Gate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Check membership directly from team_members (avoid view caching)
+      // Admin flag
       const { data, error } = await supabase
         .from('team_members')
         .select('is_admin')
@@ -61,33 +64,93 @@ function Gate({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [ready, session?.user?.id]);
 
-  // Wait for initial session check
+  // Subscribe to priority-1 inserts for all of my teams
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    let cancelled = false;
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+
+    (async () => {
+      const { data: teams } = await supabase
+        .from('team_members')
+        .select('team_id, teams(name)')
+        .eq('user_id', session.user!.id);
+
+      if (cancelled) return;
+      for (const t of (teams || [])) {
+        const teamId = t.team_id;
+        const ch = supabase
+          .channel(`pri1-${teamId}`)
+          .on('postgres_changes', {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'submissions',
+              filter: `team_id=eq.${teamId}`
+            },
+            (payload: any) => {
+              const row = payload?.new || {};
+              if (row.priority_level === 1 && row.created_by !== me) {
+                setAlert({ id: row.id, store: row.store_location || row.store_site || '', who: row.created_by });
+              }
+            }
+          )
+          .subscribe();
+        channels.push(ch);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      for (const ch of channels) {
+        try { supabase.removeChannel(ch); } catch {}
+      }
+    };
+  }, [session?.user?.id]);
+
   if (!ready) return <>{children}</>;
 
   const onUnauth = isUnauthPath(pathname);
 
-  // Not signed in => gate everything except login/callback
   if (!session && !onUnauth) return <Redirect href="/login" />;
 
-  // Signed in and currently on /login -> send to the right place (wait for admin check)
   if (session && pathname?.endsWith('/login')) {
     if (!adminReady) return <>{children}</>;
     return <Redirect href={isAdmin ? '/admin' : '/menu'} />;
   }
 
-  // Signed in, non-admin trying to visit /admin -> push to /menu (wait for admin check)
   if (session && isAdminSection(pathname)) {
     if (!adminReady) return <>{children}</>;
     if (!isAdmin) return <Redirect href="/menu" />;
   }
 
-  // Signed in, non-admin on legacy /home -> push to /menu
   if (session && isHomePath(pathname)) {
     if (!adminReady) return <>{children}</>;
     if (!isAdmin) return <Redirect href="/menu" />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {/* overlay for priority-1 alert */}
+      {alert ? (
+        <View style={{
+          position:'absolute', top: 20, left: 16, right: 16, zIndex: 9999,
+          backgroundColor: '#ef4444', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#fff'
+        }}>
+          <Text style={{ color:'#fff', fontWeight:'800', marginBottom: 4 }}>PRIORITY 1 ALERT</Text>
+          <Text style={{ color:'#fff' }}>New urgent submission{alert.store ? ` @ ${alert.store}` : ''}</Text>
+          <View style={{ flexDirection:'row', gap: 8, marginTop: 8 }}>
+            <Pressable onPress={() => setAlert(null)}
+              style={{ backgroundColor:'#111827', paddingHorizontal:10, paddingVertical:6, borderRadius:8 }}>
+              <Text style={{ color:'#fff', fontWeight:'700' }}>Dismiss</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {children}
+    </>
+  );
 }
 
 export default function RootLayout() {
