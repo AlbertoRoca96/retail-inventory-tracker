@@ -4,19 +4,14 @@ import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
 
-/** Treat both plain and GH Pages paths as unauth-allowed */
 function isUnauthPath(p: string | null) {
   if (!p) return false;
   return p.endsWith('/login') || p.endsWith('/auth/callback');
 }
-
-/** Matches "/admin" or anything under it */
 function isAdminSection(p: string | null) {
   if (!p) return false;
   return p.endsWith('/admin') || p.includes('/admin/');
 }
-
-/** Matches "/home" exactly (legacy) */
 function isHomePath(p: string | null) {
   if (!p) return false;
   return p.endsWith('/home');
@@ -29,13 +24,11 @@ function Gate({ children }: { children: React.ReactNode }) {
   const [adminReady, setAdminReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // NEW: global priority-1 alert
   const me = session?.user?.id || '';
   const [alert, setAlert] = useState<{ id: string; store?: string; who?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     const run = async () => {
       if (!ready) return;
 
@@ -44,7 +37,6 @@ function Gate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Admin flag
       const { data, error } = await supabase
         .from('team_members')
         .select('is_admin')
@@ -64,7 +56,7 @@ function Gate({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [ready, session?.user?.id]);
 
-  // Subscribe to priority-1 inserts for all of my teams
+  // Subscribe to priority-1 inserts/updates for all of my teams
   useEffect(() => {
     if (!session?.user?.id) return;
 
@@ -80,22 +72,23 @@ function Gate({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
       for (const t of (teams || [])) {
         const teamId = t.team_id;
-        const ch = supabase
-          .channel(`pri1-${teamId}`)
-          .on('postgres_changes', {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'submissions',
-              filter: `team_id=eq.${teamId}`
-            },
-            (payload: any) => {
-              const row = payload?.new || {};
-              if (row.priority_level === 1 && row.created_by !== me) {
-                setAlert({ id: row.id, store: row.store_location || row.store_site || '', who: row.created_by });
-              }
-            }
-          )
+
+        const handle = (payload: any) => {
+          const row = payload?.new || {};
+          if (row.priority_level === 1 && row.created_by !== me) {
+            setAlert({ id: row.id, store: row.store_location || row.store_site || '', who: row.created_by });
+          }
+        };
+
+        const ch = supabase.channel(`pri1-${teamId}`)
+          .on('postgres_changes',
+              { event: 'INSERT', schema: 'public', table: 'submissions', filter: `team_id=eq.${teamId}` },
+              handle)
+          .on('postgres_changes',
+              { event: 'UPDATE', schema: 'public', table: 'submissions', filter: `team_id=eq.${teamId}` },
+              handle)
           .subscribe();
+
         channels.push(ch);
       }
     })();
@@ -109,7 +102,6 @@ function Gate({ children }: { children: React.ReactNode }) {
   }, [session?.user?.id]);
 
   if (!ready) return <>{children}</>;
-
   const onUnauth = isUnauthPath(pathname);
 
   if (!session && !onUnauth) return <Redirect href="/login" />;
@@ -131,7 +123,6 @@ function Gate({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* overlay for priority-1 alert */}
       {alert ? (
         <View style={{
           position:'absolute', top: 20, left: 16, right: 16, zIndex: 9999,
@@ -147,7 +138,6 @@ function Gate({ children }: { children: React.ReactNode }) {
           </View>
         </View>
       ) : null}
-
       {children}
     </>
   );
