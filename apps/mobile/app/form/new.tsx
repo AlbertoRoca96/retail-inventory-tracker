@@ -1,4 +1,3 @@
-// apps/mobile/app/form/new.tsx
 import React, {
   useEffect,
   useMemo,
@@ -24,6 +23,7 @@ type ValidationErrors = Partial<{
   brand: string;
   pricePerUnit: string;
   onShelf: string;
+  priorityLevel: string;
 }>;
 
 const isWeb = Platform.OS === 'web';
@@ -70,6 +70,9 @@ type FormValues = {
   onShelf: string;
   tags: string;
   notes: string;
+
+  // NEW
+  priorityLevel: '1' | '2' | '3';
 };
 
 type PdfPayload = {
@@ -84,10 +87,11 @@ type PdfPayload = {
   on_shelf: string;
   tags: string;
   notes: string;
+  priority_level?: string;
   photo_urls: string[];
 };
 
-const DRAFT_KEY = 'rit:new-form-draft:v8';
+const DRAFT_KEY = 'rit:new-form-draft:v9';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const getDefaultValues = (): FormValues => ({
@@ -102,6 +106,7 @@ const getDefaultValues = (): FormValues => ({
   onShelf: '',
   tags: '',
   notes: '',
+  priorityLevel: '3',
 });
 
 function saveDraftLocal(draft: unknown) {
@@ -413,6 +418,7 @@ export default function NewFormScreen() {
     storeSite: false, location: false, date: false, brand: false,
     storeLocation: false, conditions: false, pricePerUnit: false,
     shelfSpace: false, onShelf: false, tags: false, notes: false,
+    priorityLevel: false,
   });
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -536,6 +542,7 @@ export default function NewFormScreen() {
     if (v.pricePerUnit && p === null) e.pricePerUnit = 'Invalid number';
     const s = safeNumber(v.onShelf);
     if (v.onShelf && s === null) e.onShelf = 'Invalid number';
+    if (!['1','2','3'].includes(v.priorityLevel)) e.priorityLevel = 'Choose 1, 2, or 3';
     return e;
   }, []);
 
@@ -689,6 +696,7 @@ export default function NewFormScreen() {
       notes: v.notes || null,
       photo1_url: uploadedUrls[0] ?? null,
       photo2_url: uploadedUrls[1] ?? null,
+      priority_level: Number(v.priorityLevel) || 3,
     };
   }, [uid]);
 
@@ -710,8 +718,7 @@ export default function NewFormScreen() {
 
       const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
 
-      // ✅ FIX: build per-index fallback so all selected photos export,
-      // even if only some uploads return URLs.
+      // FIX: per-index fallback so both photos always export
       const excelPhotoUrls = photos
         .map((p, i) => (uploadedUrls?.[i] ?? p.uri))
         .filter(Boolean);
@@ -772,6 +779,7 @@ export default function NewFormScreen() {
         on_shelf: v.onShelf || '',
         tags: v.tags || '',
         notes: v.notes || '',
+        priority_level: v.priorityLevel,
         photo_urls: excelPhotoUrls,
       });
 
@@ -787,6 +795,7 @@ export default function NewFormScreen() {
         on_shelf: v.onShelf || '',
         tags: v.tags || '',
         notes: v.notes || '',
+        priority_level: v.priorityLevel,
         photo_urls: excelPhotoUrls,
       };
 
@@ -827,6 +836,31 @@ export default function NewFormScreen() {
       </View>
     );
   }
+
+  const setPriority = (val: '1'|'2'|'3') => {
+    if (isWeb) {
+      formRef.current.priorityLevel = val;
+    } else {
+      setNVals((prev) => ({ ...prev, priorityLevel: val }));
+    }
+    setTouched((t) => ({ ...t, priorityLevel: true }));
+    scheduleAutosave();
+  };
+
+  const PriBtn = ({ label, active, onPress, color }: { label: string; active: boolean; onPress: () => void; color: string }) => (
+    <Pressable
+      onPress={onPress}
+      style={{
+        paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1,
+        borderColor: active ? '#111' : '#d1d5db',
+        backgroundColor: active ? color : '#f9fafb',
+      }}
+    >
+      <Text style={{ fontWeight: '700', color: active ? '#fff' : '#111' }}>{label}</Text>
+    </Pressable>
+  );
+
+  const currentPri = (isWeb ? formRef.current.priorityLevel : nVals.priorityLevel) || '3';
 
   return (
     <ScrollView
@@ -1046,6 +1080,14 @@ export default function NewFormScreen() {
         typingStart={typingStart}
         typingEnd={typingEnd}
       />
+
+      {/* NEW: PRIORITY LEVEL */}
+      <Text style={{ fontWeight: '700', marginBottom: 6 }}>PRIORITY LEVEL</Text>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+        <PriBtn label="1" active={currentPri === '1'} color="#ef4444" onPress={() => setPriority('1')} />
+        <PriBtn label="2" active={currentPri === '2'} color="#f59e0b" onPress={() => setPriority('2')} />
+        <PriBtn label="3" active={currentPri === '3'} color="#22c55e" onPress={() => setPriority('3')} />
+      </View>
 
       <Text style={{ fontWeight: '700', marginBottom: 8 }}>PHOTOS</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
