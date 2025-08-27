@@ -5,9 +5,36 @@ import { supabase } from '../../src/lib/supabase';
 import { colors } from '../../src/theme';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 
-type Row = any;
+type Row = {
+  id: string;
+  created_at: string;
+  created_by: string;
+  team_id: string;
 
-function PriPill({ n }: { n: number | null }) {
+  date: string | null;
+  store_site: string | null;
+  store_location: string | null;
+  location: string | null;
+  brand: string | null;
+  conditions: string | null;
+  price_per_unit: number | null;
+  shelf_space: string | null;
+  on_shelf: number | null;
+  tags: string[] | string | null;
+  notes: string | null;
+
+  photo1_url?: string | null;
+  photo2_url?: string | null;
+  photo1_path?: string | null; // legacy fallback signing
+  photo2_path?: string | null; // legacy fallback signing
+
+  priority_level?: number | null;
+
+  // NEW (from RPC):
+  submitter_email?: string | null;
+};
+
+function PriPill({ n }: { n: number | null | undefined }) {
   const label = String(n ?? 3);
   const bg = n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
   return (
@@ -19,7 +46,9 @@ function PriPill({ n }: { n: number | null }) {
 
 // CSV helper (CSV itself can't embed images; keep URLs for compatibility)
 function toCsv(r: Row) {
-  const tags = Array.isArray(r.tags) ? r.tags.join(', ') : (r.tags ?? '');
+  const tags =
+    Array.isArray(r.tags) ? r.tags.join(', ') :
+    (typeof r.tags === 'string' ? r.tags : '');
   const cells = [
     ['DATE', r.date ?? ''],
     ['BRAND', r.brand ?? ''],
@@ -33,6 +62,7 @@ function toCsv(r: Row) {
     ['TAGS', tags],
     ['NOTES', r.notes ?? ''],
     ['PRIORITY LEVEL', r.priority_level ?? ''],
+    ['SUBMITTED BY', r.submitter_email || r.created_by || ''],
     ['PHOTO 1', r.photo1_url ?? r.photo1_path ?? ''],
     ['PHOTO 2', r.photo2_url ?? r.photo2_path ?? ''],
   ];
@@ -58,10 +88,22 @@ export default function Submission() {
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id) return;
+
     (async () => {
-      const { data } = await supabase.from('submissions').select('*').eq('id', id).single();
-      const r = data as Row;
-      setRow(r);
+      // 1) Prefer the secure RPC (includes submitter_email; enforces team membership)
+      const rpc = await supabase.rpc('get_submission_with_submitter', { sub_id: id as any });
+      const r = Array.isArray(rpc.data) ? (rpc.data[0] as Row) : (rpc.data as Row | null);
+
+      // 2) If RPC unavailable for some reason, fall back to the raw table (you’ll still have access via RLS).
+      let dataRow: Row | null = r ?? null;
+      if (!dataRow) {
+        const { data } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
+        dataRow = (data as Row) ?? null;
+      }
+
+      if (!dataRow) return;
+      setRow(dataRow);
 
       // Prefer stored public URLs; otherwise sign the path (try legacy/new buckets).
       const resolveSigned = async (path?: string | null) => {
@@ -75,8 +117,8 @@ export default function Submission() {
         return (await tryBucket('submissions')) || (await tryBucket('photos'));
       };
 
-      setPhoto1Url(r?.photo1_url ?? (await resolveSigned(r?.photo1_path)));
-      setPhoto2Url(r?.photo2_url ?? (await resolveSigned(r?.photo2_path)));
+      setPhoto1Url(dataRow.photo1_url ?? (await resolveSigned(dataRow.photo1_path)));
+      setPhoto2Url(dataRow.photo2_url ?? (await resolveSigned(dataRow.photo2_path)));
     })();
   }, [id]);
 
@@ -100,7 +142,7 @@ export default function Submission() {
       price_per_unit: String(row.price_per_unit ?? ''),
       shelf_space: row.shelf_space || '',
       on_shelf: String(row.on_shelf ?? ''),
-      tags: Array.isArray(row.tags) ? row.tags.join(', ') : (row.tags ?? ''),
+      tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
       notes: row.notes || '',
       photo_urls: photos,
     });
@@ -117,7 +159,11 @@ export default function Submission() {
     }
   };
 
-  const tagsText = Array.isArray(row.tags) ? row.tags.join(', ') : (row.tags ?? '');
+  const tagsText =
+    Array.isArray(row.tags) ? row.tags.join(', ') :
+    (typeof row.tags === 'string' ? row.tags : '');
+
+  const submittedBy = row.submitter_email || row.created_by || '';
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
@@ -128,6 +174,9 @@ export default function Submission() {
         <Text style={{ fontWeight: '700' }}>{row.store_location || row.store_site || ''}</Text>
         <PriPill n={row.priority_level ?? 3} />
       </View>
+
+      {/* NEW: submitter identity (email preferred, else UUID) */}
+      <Text style={{ color: '#475569' }}>Submitted by: {submittedBy}</Text>
 
       {row.brand ? <Text>Brand: {row.brand}</Text> : null}
       {row.store_site ? <Text>Store site: {row.store_site}</Text> : null}
@@ -142,12 +191,8 @@ export default function Submission() {
       <Text>Notes: {row.notes}</Text>
 
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        {photo1Url ? (
-          <Image source={{ uri: photo1Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} />
-        ) : null}
-        {photo2Url ? (
-          <Image source={{ uri: photo2Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} />
-        ) : null}
+        {photo1Url ? <Image source={{ uri: photo1Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} /> : null}
+        {photo2Url ? <Image source={{ uri: photo2Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} /> : null}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
