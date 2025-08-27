@@ -18,6 +18,8 @@ export type SubmissionPdf = {
   tags: string;
   notes: string;
   photo_urls: string[]; // up to 2
+  // NEW: priority level shown below NOTES with colored background
+  priority_level?: string | null;
 };
 
 // Page constants
@@ -135,6 +137,15 @@ function downloadBlobWithFallback(blob: Blob, name: string) {
   }
 }
 
+/** Map "1|2|3" to a soft fill color (value cell background). */
+function priorityFillRgb(p?: string | null) {
+  const v = String(p ?? '').trim();
+  if (v === '1') return rgb(1, 0.89, 0.89); // red-200-ish
+  if (v === '2') return rgb(1, 0.95, 0.78); // amber-200-ish
+  if (v === '3') return rgb(0.86, 0.99, 0.91); // green-200-ish
+  return null;
+}
+
 export async function downloadSubmissionPdf(data: SubmissionPdf) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
@@ -148,7 +159,7 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   drawText(page, (data.store_site || '').toUpperCase(), M + 6, y - 15, 12, bold);
   y -= TITLE_H;
 
-  // Table rows
+  // Table rows (everything up to NOTES, as before)
   const rows: Array<[string, string]> = [
     ['DATE', data.date],
     ['BRAND', data.brand],
@@ -175,6 +186,25 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
     drawText(page, String(value), M + LBL_W + 6, y - 14, 10, font);
     y -= ROW_H;
   }
+
+  // NEW: Priority row just below NOTES
+  const pri = (data.priority_level ?? '').toString();
+  // label cell (bordered)
+  drawRect(page, M, y - ROW_H, LBL_W, ROW_H);
+  drawText(page, 'PRIORITY LEVEL', M + 6, y - 14, 10, bold);
+  // value cell with optional fill
+  const fill = priorityFillRgb(pri);
+  if (fill) {
+    page.drawRectangle({
+      x: M + LBL_W, y: y - ROW_H, width: VAL_W, height: ROW_H,
+      color: fill, borderWidth: 1, borderColor: rgb(0.46, 0.46, 0.46),
+    });
+  } else {
+    drawRect(page, M + LBL_W, y - ROW_H, VAL_W, ROW_H);
+  }
+  // value text (bold)
+  page.drawText(pri, { x: M + LBL_W + 6, y: y - 14, size: 10, font: bold, color: rgb(0, 0, 0) });
+  y -= ROW_H;
 
   // Photos header
   const HDR_H = 20;
