@@ -4,13 +4,13 @@ import { useLocalSearchParams } from 'expo-router';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { colors } from '../../src/theme';
+import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 
 type Row = any;
 
-// CSV now includes brand, store_site, and location. Tags are joined if array.
+// CSV helper (kept): still used by the Share button. Note CSV can't embed images.
 function toCsv(r: Row) {
-  const tags =
-    Array.isArray(r.tags) ? r.tags.join(', ') : (r.tags ?? '');
+  const tags = Array.isArray(r.tags) ? r.tags.join(', ') : (r.tags ?? '');
   const cells = [
     ['DATE', r.date ?? ''],
     ['BRAND', r.brand ?? ''],
@@ -23,6 +23,7 @@ function toCsv(r: Row) {
     ['ON SHELF', r.on_shelf ?? ''],
     ['TAGS', tags],
     ['NOTES', r.notes ?? ''],
+    // CSV is plain text; keep URLs here for compatibility
     ['PHOTO 1', r.photo1_url ?? r.photo1_path ?? ''],
     ['PHOTO 2', r.photo2_url ?? r.photo2_path ?? ''],
   ];
@@ -74,6 +75,30 @@ export default function Submission() {
 
   if (!row) return null;
 
+  // NEW: Download an .xlsx with embedded images (shown in Excel/Numbers)
+  const downloadExcelWithPhotos = async () => {
+    const photos: string[] = [];
+    const p1 = row.photo1_url || photo1Url || null;
+    const p2 = row.photo2_url || photo2Url || null;
+    if (p1) photos.push(p1);
+    if (p2) photos.push(p2);
+
+    await downloadSubmissionExcel({
+      store_site: row.store_site || '',
+      date: row.date || '',
+      brand: row.brand || '',
+      store_location: row.store_location || '',
+      location: row.location || '',
+      conditions: row.conditions || '',
+      price_per_unit: String(row.price_per_unit ?? ''),
+      shelf_space: row.shelf_space || '',
+      on_shelf: String(row.on_shelf ?? ''),
+      tags: Array.isArray(row.tags) ? row.tags.join(', ') : (row.tags ?? ''),
+      notes: row.notes || '',
+      photo_urls: photos,
+    });
+  };
+
   const share = async () => {
     const csv = toCsv(row);
     if (navigator.share) {
@@ -117,16 +142,16 @@ export default function Submission() {
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
         <Pressable
-          onPress={() => download('submission.csv', toCsv(row))}
+          onPress={downloadExcelWithPhotos}
           style={{ flex: 1, backgroundColor: colors.blue, padding: 12, borderRadius: 10, alignItems: 'center' }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Download</Text>
+          <Text style={{ color: 'white', fontWeight: '700' }}>Download Excel (with photos)</Text>
         </Pressable>
         <Pressable
           onPress={share}
           style={{ flex: 1, backgroundColor: colors.blue, padding: 12, borderRadius: 10, alignItems: 'center' }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Share</Text>
+          <Text style={{ color: 'white', fontWeight: '700' }}>Share CSV</Text>
         </Pressable>
       </View>
 
