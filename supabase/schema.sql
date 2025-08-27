@@ -18,15 +18,15 @@ create table if not exists public.team_members (
 create table if not exists public.submissions (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
-  created_by uuid not null,                         -- will be auto-set by trigger (below)
+  created_by uuid not null,                         -- auto-set by trigger below
   team_id uuid not null references public.teams(id) on delete restrict,
 
-  -- Domain fields (match app/form/new.tsx)
+  -- Domain fields
   date date not null,
-  store_site text,                                  -- NEW
+  store_site text,
   store_location text not null,
-  location text,                                    -- NEW
-  brand text,                                       -- NEW
+  location text,
+  brand text,
   conditions text,
   price_per_unit numeric(10,2),
   shelf_space text,
@@ -34,12 +34,14 @@ create table if not exists public.submissions (
   tags text[] not null default '{}',
   notes text,
 
-  photo1_url text,                                  -- align with app (was *_path before)
-  photo2_url text
+  photo1_url text,
+  photo2_url text,
+
+  -- NEW: priority (1 urgent, 2 soon, 3 ok)
+  priority_level integer not null default 3 check (priority_level between 1 and 3)
 );
 
 -- ====== Safe alignment for older databases (run harmlessly if already aligned) ======
--- Rename legacy columns if they exist
 do $$
 begin
   if exists (select 1 from information_schema.columns
@@ -52,19 +54,31 @@ begin
   end if;
 end$$;
 
--- Add missing NEW columns if the table pre-existed
 alter table public.submissions add column if not exists store_site text;
 alter table public.submissions add column if not exists location text;
 alter table public.submissions add column if not exists brand text;
 alter table public.submissions add column if not exists photo1_url text;
 alter table public.submissions add column if not exists photo2_url text;
+alter table public.submissions add column if not exists priority_level integer not null default 3;
+alter table public.submissions
+  alter column priority_level set default 3,
+  alter column priority_level drop not null;
+-- enforce range (works if it didn't exist yet)
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'submissions_priority_level_chk') then
+    alter table public.submissions
+      add constraint submissions_priority_level_chk check (priority_level between 1 and 3);
+  end if;
+end$$;
 
 -- Helpful indexes
 create index if not exists submissions_team_created_idx
   on public.submissions (team_id, created_at desc);
-
 create index if not exists submissions_created_by_created_idx
   on public.submissions (created_by, created_at desc);
+create index if not exists submissions_team_priority_idx
+  on public.submissions (team_id, priority_level, created_at desc);
 
 -- ========== Trigger: ensure created_by = auth.uid() when inserted via anon (RLS) ==========
 create or replace function public.set_created_by_from_auth()
