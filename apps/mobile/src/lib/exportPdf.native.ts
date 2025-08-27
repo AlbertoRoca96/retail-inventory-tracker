@@ -13,6 +13,8 @@ export type SubmissionPdf = {
   tags: string;
   notes: string;
   photo_urls: string[];
+  // NEW: priority level shown below NOTES with colored background
+  priority_level?: string | null;
 };
 
 type BuildOptions = {
@@ -57,6 +59,15 @@ async function toDataUri(url?: string | null, mime = 'image/jpeg'): Promise<stri
   }
 }
 
+/** Map "1|2|3" to a soft fill color (value cell background). */
+function priorityFill(p?: string | null): string {
+  const v = String(p ?? '').trim();
+  if (v === '1') return '#FEE2E2'; // red-200
+  if (v === '2') return '#FEF3C7'; // amber-200
+  if (v === '3') return '#DCFCE7'; // green-200
+  return ''; // no background when unset/other
+}
+
 /**
  * Build the PDF and return the **file URI**.
  * - Mirrors Excel layout & your previous HTML.
@@ -75,6 +86,13 @@ export async function createSubmissionPdf(
 
   const img1 = inline ? await toDataUri(raw1) : raw1 || '';
   const img2 = inline ? await toDataUri(raw2) : raw2 || '';
+
+  // Compute priority row bits up front (below NOTES)
+  const pri = (data.priority_level ?? '').toString();
+  const priBg = priorityFill(pri);
+  const priRow =
+    `<tr><th class="label">PRIORITY LEVEL</th>` +
+    `<td class="value" style="background:${priBg};font-weight:700;">${esc(pri)}</td></tr>`;
 
   // HTML layout (mirrors Excel)
   const html = `<!doctype html>
@@ -105,6 +123,7 @@ export async function createSubmissionPdf(
     <tr><th class="label">ON SHELF</th><td class="value">${esc(data.on_shelf)}</td></tr>
     <tr><th class="label">TAGS</th><td class="value">${esc(data.tags)}</td></tr>
     <tr><th class="label">NOTES</th><td class="value">${esc(data.notes)}</td></tr>
+    ${priRow}
   </table>
   <div class="photos">
     <h3>PHOTOS</h3>
