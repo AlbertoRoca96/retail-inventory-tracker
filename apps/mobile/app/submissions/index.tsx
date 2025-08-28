@@ -11,6 +11,9 @@ type Row = {
   store_location: string | null;
   price_per_unit: number | null;
   priority_level: number | null;
+
+  // NEW: from RPC
+  submitter_display_name: string | null;
 };
 
 function priColor(n: number | null | undefined) {
@@ -39,13 +42,11 @@ export default function Submissions() {
 
   async function fetchRows() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('submissions')
-      // RLS shows only what the signed-in user can see (team members).
-      .select('id, created_at, store_site, store_location, price_per_unit, priority_level')
-      .order('created_at', { ascending: false });
 
+    // NEW: use RPC that already joins auth.users to fetch submitter's display name
+    const { data, error } = await supabase.rpc('list_team_submissions_with_submitter');
     if (!error && data) setRows(data as Row[]);
+
     setLoading(false);
   }
 
@@ -78,6 +79,7 @@ export default function Submissions() {
     const subtitle = new Date(item.created_at).toLocaleString();
     const price =
       typeof item.price_per_unit === 'number' ? `$${item.price_per_unit}` : '$-';
+    const byline = item.submitter_display_name ? `by ${item.submitter_display_name}` : '';
 
     return (
       <Pressable
@@ -96,7 +98,9 @@ export default function Submissions() {
           </Text>
           <PriPill n={item.priority_level ?? 3} />
         </View>
+
         <Text>{subtitle}</Text>
+        {byline ? <Text style={{ color: '#475569' }}>{byline}</Text> : null}
         <Text>{price}</Text>
       </Pressable>
     );
