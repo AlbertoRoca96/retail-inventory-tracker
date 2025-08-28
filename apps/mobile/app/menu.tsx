@@ -1,5 +1,5 @@
 // apps/mobile/app/menu.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { colors } from '../src/theme';
@@ -8,6 +8,18 @@ import { useIsAdmin } from '../src/hooks/useIsAdmin';
 
 export default function Menu() {
   const { isAdmin, loading } = useIsAdmin();
+
+  // Lightweight check so we can surface a direct "Set Display Name" shortcut if needed
+  const [needsDisplayName, setNeedsDisplayName] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const name = (data.user?.user_metadata as any)?.display_name;
+      if (!cancelled) setNeedsDisplayName(!name || String(name).trim().length === 0);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const Btn = ({
     label,
@@ -43,6 +55,24 @@ export default function Menu() {
 
       <Btn label="Create New Form" onPress={() => router.push('/form/new')} />
       <Btn label="View Submissions" onPress={() => router.push('/submissions')} />
+
+      {/* Make Account easy to find */}
+      <Btn
+        label="Account"
+        onPress={() => router.push('/account/settings')}
+        bg="#e5e7eb"
+        fg={colors.text}
+      />
+
+      {/* If user hasn't set a display name yet, surface a shortcut to the capture page */}
+      {needsDisplayName ? (
+        <Btn
+          label="Set Display Name"
+          onPress={() => router.push('/account/display-name')}
+          bg="#f3f4f6"
+          fg={colors.text}
+        />
+      ) : null}
 
       {/* Admin-only actions */}
       {loading ? (
