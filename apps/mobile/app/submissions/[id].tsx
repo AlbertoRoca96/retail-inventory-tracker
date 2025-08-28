@@ -25,12 +25,11 @@ type Row = {
 
   photo1_url?: string | null;
   photo2_url?: string | null;
-  photo1_path?: string | null; // legacy fallback signing
-  photo2_path?: string | null; // legacy fallback signing
+  photo1_path?: string | null;
+  photo2_path?: string | null;
 
   priority_level?: number | null;
 
-  // NEW (from RPC):
   submitter_email?: string | null;
   submitter_display_name?: string | null;
 };
@@ -45,7 +44,6 @@ function PriPill({ n }: { n: number | null | undefined }) {
   );
 }
 
-// CSV helper (CSV itself can't embed images; keep URLs for compatibility)
 function toCsv(r: Row) {
   const tags =
     Array.isArray(r.tags) ? r.tags.join(', ') :
@@ -73,46 +71,34 @@ function toCsv(r: Row) {
 function download(filename: string, text: string) {
   const blob = new Blob([text], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
 export default function Submission() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [row, setRow] = useState<Row | null>(null);
-
-  // If record only has *paths*, we’ll generate short-lived signed URLs here.
   const [photo1Url, setPhoto1Url] = useState<string | null>(null);
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
-
     (async () => {
-      // 1) Prefer the secure RPC (includes submitter name/email; enforces team membership)
       const rpc = await supabase.rpc('get_submission_with_submitter', { sub_id: id as any });
       const r = Array.isArray(rpc.data) ? (rpc.data[0] as Row) : (rpc.data as Row | null);
 
-      // 2) Fallback to the raw table (RLS still protects access)
       let dataRow: Row | null = r ?? null;
       if (!dataRow) {
         const { data } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
         dataRow = (data as Row) ?? null;
       }
-
       if (!dataRow) return;
       setRow(dataRow);
 
-      // Prefer stored public URLs; otherwise sign the path (try legacy/new buckets).
       const resolveSigned = async (path?: string | null) => {
         if (!path) return null;
         const tryBucket = async (bucket: string) => {
-          const { data, error } = await supabase.storage
-            .from(bucket)
-            .createSignedUrl(path, 60, { download: true });
+          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60, { download: true });
           return error ? null : data?.signedUrl ?? null;
         };
         return (await tryBucket('submissions')) || (await tryBucket('photos'));
@@ -125,7 +111,6 @@ export default function Submission() {
 
   if (!row) return null;
 
-  // Download an .xlsx with embedded images (Excel/Numbers will display them)
   const downloadExcelWithPhotos = async () => {
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
@@ -153,31 +138,25 @@ export default function Submission() {
     const csv = toCsv(row);
     if (navigator.share) {
       const file = new File([csv], 'submission.csv', { type: 'text/csv' });
-      // @ts-ignore - Web Share with files
+      // @ts-ignore
       await navigator.share({ title: 'Submission', text: 'See attached CSV', files: [file] }).catch(() => {});
     } else {
       download('submission.csv', csv);
     }
   };
 
-  const tagsText =
-    Array.isArray(row.tags) ? row.tags.join(', ') :
-    (typeof row.tags === 'string' ? row.tags : '');
-
-  const submittedBy =
-    row.submitter_display_name || row.submitter_email || row.created_by || '';
+  const tagsText = Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : '');
+  const submittedBy = row.submitter_display_name || row.submitter_email || row.created_by || '';
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
       <Text style={{ fontSize: 20, fontWeight: '700' }}>Submission</Text>
 
-      {/* Header with priority badge */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Text style={{ fontWeight: '700' }}>{row.store_location || row.store_site || ''}</Text>
         <PriPill n={row.priority_level ?? 3} />
       </View>
 
-      {/* NEW: submitter identity (name preferred, then email, else UUID) */}
       <Text style={{ color: '#475569' }}>Submitted by: {submittedBy}</Text>
 
       {row.brand ? <Text>Brand: {row.brand}</Text> : null}
