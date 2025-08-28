@@ -1,5 +1,3 @@
-// apps/mobile/src/types.ts
-
 export type Submission = {
   // Identity & ownership
   id: string;
@@ -29,7 +27,7 @@ export type Submission = {
   photo1_url?: string | null;
   photo2_url?: string | null;
 
-  // Optional new fields
+  // Optional fields
   brand?: string | null;
   store_site?: string | null;
   location?: string | null;
@@ -39,9 +37,10 @@ export type Submission = {
 };
 
 /**
- * Shape returned by RPC `public.get_submission_with_submitter(sub_id uuid)`.
- * Same as Submission, plus the submitter's email when available.
+ * RPC `public.get_submission_with_submitter(sub_id uuid)` result.
+ * Same as Submission, plus the submitter's identity.
  */
 export type SubmissionWithSubmitter = Submission & {
   submitter_email?: string | null;
+  submitter_display_name?: string | null;
 };
