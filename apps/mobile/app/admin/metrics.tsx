@@ -1,5 +1,4 @@
-// apps/mobile/app/admin/metrics.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
@@ -11,11 +10,10 @@ type DayRow   = { day: string; submitted: number };
 
 const isWeb = Platform.OS === 'web';
 
-// ---- Date helpers (unchanged + small addition) ----
+// ---- Date helpers ----
 function toISO(d: Date) { return d.toISOString().slice(0, 10); }
 function monthStart(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function nextMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 1); }
-// NEW: tomorrow helper so daily counts include “today” (end is exclusive)
 function tomorrow(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); }
 
 // UTC month label formatter so YYYY-MM-01 stays that day in any timezone
@@ -35,16 +33,26 @@ function downloadCSV(filename: string, rows: string[][]) {
   setTimeout(() => URL.revokeObjectURL(url), 400);
 }
 
+type TeamOpt = { id: string; name: string; contract_start_date: string | null };
+type UserOpt = { id: string; label: string };
+
 export default function AdminMetrics() {
   const { session, ready } = useAuth();
+  const me = session?.user?.id ?? null;
 
-  // Team + contract baseline
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [contractStart, setContractStart] = useState<string | null>(null);
+  // Teams you admin
+  const [adminTeams, setAdminTeams] = useState<TeamOpt[]>([]);
+  const [teamId, setTeamId] = useState<string | null>(null); // null = all my teams
 
-  // Filters
+  // For month index labels when a single team is selected
+  const contractStart = useMemo(
+    () => adminTeams.find((t) => t.id === teamId)?.contract_start_date ?? null,
+    [teamId, adminTeams]
+  );
+
+  // User filter options for the selected team
   const [userFilter, setUserFilter] = useState<string | null>(null); // null => All users
-  const [teamUsers, setTeamUsers] = useState<{ id: string; label: string }[]>([]);
+  const [teamUsers, setTeamUsers] = useState<UserOpt[]>([]);
 
   // Date range (UI)
   const [rangeStart, setRangeStart] = useState<string | null>(null);
@@ -56,56 +64,60 @@ export default function AdminMetrics() {
   const [daily,   setDaily]   = useState<DayRow[]>([]);
   const [ytd,     setYtd]     = useState<number>(0);
 
-  // Bootstrap: find an admin team and its contract_start_date, then seed the default range.
+  // Bootstrap: load teams I admin + default date range
   useEffect(() => {
     (async () => {
-      if (!ready || !session?.user) return;
+      if (!ready || !me) return;
       setLoading(true);
 
-      const { data: tm } = await supabase
+      // All teams where I'm admin (name + contract start)
+      const { data: rows } = await supabase
         .from('team_members')
-        .select('team_id,is_admin')
-        .eq('user_id', session.user.id)
-        .eq('is_admin', true)
-        .limit(1)
-        .maybeSingle();
+        .select('team_id, is_admin, teams(name, contract_start_date)')
+        .eq('user_id', me)
+        .eq('is_admin', true);
 
-      const tid = tm?.team_id ?? null;
-      setTeamId(tid);
+      const teams: TeamOpt[] = (rows || []).map((r: any) => ({
+        id: r.team_id,
+        name: r.teams?.name ?? '(unnamed team)',
+        contract_start_date: r.teams?.contract_start_date ?? null,
+      }));
 
-      if (tid) {
-        const { data: t } = await supabase
-          .from('teams')
-          .select('contract_start_date')
-          .eq('id', tid)
-          .maybeSingle();
+      setAdminTeams(teams);
 
-        const cStart = (t?.contract_start_date as string) || null;
-        setContractStart(cStart);
+      // Default selection: if exactly one team, select it; otherwise let “All my teams”
+      const picked = teams.length === 1 ? teams[0].id : null;
+      setTeamId(picked);
 
-        const now = new Date();
-        const start = cStart ? cStart : `${now.getFullYear()}-01-01`;
-        const end = toISO(nextMonth(now));
-        setRangeStart(start);
-        setRangeEnd(end);
-      }
+      // Seed date range: contract start if a single team is selected, else current year
+      const now = new Date();
+      const cStart = picked
+        ? (teams.find(t => t.id === picked)?.contract_start_date ?? `${now.getFullYear()}-01-01`)
+        : `${now.getFullYear()}-01-01`;
+      setRangeStart(cStart);
+      setRangeEnd(toISO(nextMonth(now)));
 
       setLoading(false);
     })();
-  }, [ready, session?.user?.id]);
+  }, [ready, me]);
 
-  // Load team users (for the user filter)
+  // Load users (display names) for the selected team
   useEffect(() => {
     (async () => {
-      if (!teamId) return;
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('user_id')
-        .eq('team_id', teamId);
+      setUserFilter(null); // reset whenever team changes
+      setTeamUsers([]);
+      if (!teamId) return; // “All my teams” → no per-team user list
+
+      // Uses the security-definer RPC below
+      const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: teamId });
       if (!error && data) {
-        setTeamUsers([{ id: '', label: 'All users' }].concat(
-          data.map((r) => ({ id: r.user_id, label: r.user_id }))
-        ));
+        const opts: UserOpt[] = [{ id: '', label: 'All users' }].concat(
+          (data as any[]).map((u) => ({
+            id: u.user_id,
+            label: u.display_name || u.email || u.user_id,
+          }))
+        );
+        setTeamUsers(opts);
       }
     })();
   }, [teamId]);
@@ -113,22 +125,16 @@ export default function AdminMetrics() {
   // Load metrics whenever filters/range change
   useEffect(() => {
     (async () => {
-      if (!teamId || !rangeStart || !rangeEnd) return;
+      if (!rangeStart || !rangeEnd) return;
       setLoading(true);
 
-      const filters = { teamId, userId: userFilter || null };
+      const filters = { teamId: teamId || null, userId: userFilter || null };
 
-      // NOTE:
-      // - Monthly uses the UI range as before.
-      // - Daily uses [first of current month, *tomorrow*) so today’s rows are included.
+      // Monthly respects UI range; Daily shows current month through “tomorrow” (end-exclusive).
       const now = new Date();
       const [m, d, totalYtd] = await Promise.all([
         getMonthlyCounts(rangeStart, rangeEnd, filters),
-        getDailyCounts(
-          monthStart(now),      // inclusive
-          tomorrow(now),        // exclusive (ensures “today” is counted)
-          filters
-        ),
+        getDailyCounts(monthStart(now), tomorrow(now), filters),
         getYTDTotal(now, filters),
       ]);
 
@@ -139,31 +145,18 @@ export default function AdminMetrics() {
     })();
   }, [teamId, rangeStart, rangeEnd, userFilter]);
 
-  if (!ready)
+  if (!ready) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator />
       </View>
     );
+  }
 
-  if (!session?.user)
+  if (!me) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Text>Signed out.</Text>
-      </View>
-    );
-
-  if (!teamId) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Metrics</Text>
-        <Text>You’re not an admin on any team.</Text>
-        <Pressable
-          onPress={() => router.replace('/menu')}
-          style={{ marginTop: 12, padding: 12, borderRadius: 10, backgroundColor: '#2563eb' }}
-        >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Back to Menu</Text>
-        </Pressable>
       </View>
     );
   }
@@ -177,7 +170,6 @@ export default function AdminMetrics() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* SCROLLABLE content so long lists don’t overflow */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
@@ -187,6 +179,24 @@ export default function AdminMetrics() {
 
         {/* Controls */}
         <View style={{ gap: 10 as any, marginBottom: 12 }}>
+          {/* Team filter */}
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <Text>Team:</Text>
+            {isWeb ? (
+              <select
+                value={teamId ?? ''}
+                onChange={(e) => setTeamId(e.currentTarget.value || null)}
+              >
+                <option value="">{adminTeams.length > 1 ? 'All my teams' : (adminTeams[0]?.name ?? 'My team')}</option>
+                {adminTeams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            ) : (
+              <Text>{adminTeams.find(t => t.id === teamId)?.name ?? 'All my teams'}</Text>
+            )}
+          </View>
+
           {/* Date range */}
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             <Text>Start:</Text>
@@ -211,22 +221,21 @@ export default function AdminMetrics() {
             )}
           </View>
 
-          {/* User filter */}
+          {/* User filter (only when a single team is chosen) */}
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             <Text>User:</Text>
             {isWeb ? (
               <select
+                disabled={!teamId}
                 value={userFilter ?? ''}
                 onChange={(e) => setUserFilter(e.currentTarget.value || null)}
               >
-                {teamUsers.map((u) => (
-                  <option key={u.id || 'all'} value={u.id}>
-                    {u.label}
-                  </option>
+                {(teamUsers.length ? teamUsers : [{ id: '', label: 'All users' }]).map((u) => (
+                  <option key={u.id || 'all'} value={u.id}>{u.label}</option>
                 ))}
               </select>
             ) : (
-              <Text>{userFilter ? userFilter : 'All users'}</Text>
+              <Text>{teamId ? (teamUsers.find(u => u.id === (userFilter ?? ''))?.label ?? 'All users') : 'All users'}</Text>
             )}
           </View>
         </View>
@@ -308,11 +317,7 @@ export default function AdminMetrics() {
               {isWeb && daily.length ? (
                 <Pressable
                   onPress={() =>
-                    downloadCSV(
-                      'daily.csv',
-                      [['day', 'submitted']].concat(daily.map((r) => [r.day, String(r.submitted)]))
-                    )
-                  }
+                    downloadCSV('daily.csv', [['day', 'submitted']].concat(daily.map((r) => [r.day, String(r.submitted)])))}
                   style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
                 >
                   <Text>Download Daily CSV</Text>
@@ -322,14 +327,7 @@ export default function AdminMetrics() {
 
             <Pressable
               onPress={() => router.replace('/admin')}
-              style={{
-                alignSelf: 'flex-start',
-                marginTop: 4,
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                backgroundColor: '#6b7280',
-                borderRadius: 10,
-              }}
+              style={{ alignSelf: 'flex-start', marginTop: 4, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: '#6b7280', borderRadius: 10 }}
             >
               <Text style={{ color: 'white', fontWeight: '700' }}>Back</Text>
             </Pressable>
