@@ -50,9 +50,10 @@ export default function AdminMetrics() {
     [teamId, adminTeams]
   );
 
-  // User filter options for the selected team
+  // User options
   const [userFilter, setUserFilter] = useState<string | null>(null); // null => All users
-  const [teamUsers, setTeamUsers] = useState<UserOpt[]>([]);
+  const [teamUsers, setTeamUsers] = useState<UserOpt[]>([]);         // members of selected team
+  const [allUsers, setAllUsers] = useState<UserOpt[]>([]);           // union across all admin teams
 
   // Date range (UI)
   const [rangeStart, setRangeStart] = useState<string | null>(null);
@@ -64,13 +65,18 @@ export default function AdminMetrics() {
   const [daily,   setDaily]   = useState<DayRow[]>([]);
   const [ytd,     setYtd]     = useState<number>(0);
 
-  // Bootstrap: load teams I admin + default date range
+  // Helper to turn RPC row into a nice label
+  const labelForUser = (u: any): string => {
+    const name = u.display_name || (u.email ? u.email.split('@')[0] : u.user_id);
+    return u.email && name !== u.email ? `${name} (${u.email})` : name;
+  };
+
+  // Load all teams I admin + default date range
   useEffect(() => {
     (async () => {
       if (!ready || !me) return;
       setLoading(true);
 
-      // All teams where I'm admin (name + contract start)
       const { data: rows } = await supabase
         .from('team_members')
         .select('team_id, is_admin, teams(name, contract_start_date)')
@@ -85,11 +91,11 @@ export default function AdminMetrics() {
 
       setAdminTeams(teams);
 
-      // Default selection: if exactly one team, select it; otherwise let “All my teams”
+      // Default selection: if exactly one team, select it; else “All my teams”
       const picked = teams.length === 1 ? teams[0].id : null;
       setTeamId(picked);
 
-      // Seed date range: contract start if a single team is selected, else current year
+      // Seed date range
       const now = new Date();
       const cStart = picked
         ? (teams.find(t => t.id === picked)?.contract_start_date ?? `${now.getFullYear()}-01-01`)
@@ -101,23 +107,44 @@ export default function AdminMetrics() {
     })();
   }, [ready, me]);
 
-  // Load users (display names) for the selected team
+  // Build the "All users" list by unioning members across all admin teams
+  useEffect(() => {
+    (async () => {
+      if (!adminTeams.length) { setAllUsers([{ id: '', label: 'All users' }]); return; }
+
+      const seen = new Map<string, UserOpt>();
+      for (const t of adminTeams) {
+        const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: t.id });
+        if (error || !data) continue;
+        for (const u of data as any[]) {
+          const id = u.user_id as string;
+          if (!seen.has(id)) {
+            seen.set(id, { id, label: labelForUser(u) });
+          }
+        }
+      }
+      const list = [{ id: '', label: 'All users' }]
+        .concat(Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label)));
+      setAllUsers(list);
+    })();
+  }, [adminTeams]);
+
+  // Load users for the currently selected team (or reset when viewing "all teams")
   useEffect(() => {
     (async () => {
       setUserFilter(null); // reset whenever team changes
-      setTeamUsers([]);
-      if (!teamId) return; // “All my teams” → no per-team user list
+      if (!teamId) { setTeamUsers([]); return; }
 
-      // Uses the security-definer RPC below
       const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: teamId });
       if (!error && data) {
         const opts: UserOpt[] = [{ id: '', label: 'All users' }].concat(
-          (data as any[]).map((u) => ({
-            id: u.user_id,
-            label: u.display_name || u.email || u.user_id,
-          }))
+          (data as any[])
+            .map((u) => ({ id: u.user_id as string, label: labelForUser(u) }))
+            .sort((a, b) => a.label.localeCompare(b.label))
         );
         setTeamUsers(opts);
+      } else {
+        setTeamUsers([{ id: '', label: 'All users' }]);
       }
     })();
   }, [teamId]);
@@ -168,6 +195,9 @@ export default function AdminMetrics() {
     return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
   };
 
+  // Which list to show in the User dropdown?
+  const userOptions = teamId ? (teamUsers.length ? teamUsers : [{ id: '', label: 'All users' }]) : (allUsers.length ? allUsers : [{ id: '', label: 'All users' }]);
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -187,7 +217,9 @@ export default function AdminMetrics() {
                 value={teamId ?? ''}
                 onChange={(e) => setTeamId(e.currentTarget.value || null)}
               >
-                <option value="">{adminTeams.length > 1 ? 'All my teams' : (adminTeams[0]?.name ?? 'My team')}</option>
+                <option value="">
+                  {adminTeams.length > 1 ? 'All my teams' : (adminTeams[0]?.name ?? 'My team')}
+                </option>
                 {adminTeams.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
@@ -221,21 +253,24 @@ export default function AdminMetrics() {
             )}
           </View>
 
-          {/* User filter (only when a single team is chosen) */}
+          {/* User filter — now also works for "All my teams" */}
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             <Text>User:</Text>
             {isWeb ? (
               <select
-                disabled={!teamId}
                 value={userFilter ?? ''}
                 onChange={(e) => setUserFilter(e.currentTarget.value || null)}
               >
-                {(teamUsers.length ? teamUsers : [{ id: '', label: 'All users' }]).map((u) => (
+                {userOptions.map((u) => (
                   <option key={u.id || 'all'} value={u.id}>{u.label}</option>
                 ))}
               </select>
             ) : (
-              <Text>{teamId ? (teamUsers.find(u => u.id === (userFilter ?? ''))?.label ?? 'All users') : 'All users'}</Text>
+              <Text>
+                {userFilter
+                  ? (userOptions.find(u => u.id === userFilter)?.label ?? 'User')
+                  : 'All users'}
+              </Text>
             )}
           </View>
         </View>
