@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -25,15 +25,12 @@ export default function AccountSettings() {
 
   const pickAvatar = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9,
     });
     if (res.canceled || !res.assets?.length) return;
     const a = res.assets[0];
     const url = await uploadAvatarAndGetPublicUrl(user!.id, {
-      uri: a.uri,
-      fileName: a.fileName || 'avatar.jpg',
-      mimeType: a.mimeType || 'image/jpeg',
+      uri: a.uri, fileName: a.fileName || 'avatar.jpg', mimeType: a.mimeType || 'image/jpeg',
     }, 'avatars');
     if (url) setAvatarUrl(url);
   };
@@ -42,7 +39,7 @@ export default function AccountSettings() {
     if (!user) return;
     setBusy(true); setMsg(null);
     const { error } = await supabase.auth.updateUser({
-      data: { display_name: displayName, avatar_url: avatarUrl || null },
+      data: { display_name: displayName || null, avatar_url: avatarUrl || null },
     });
     setBusy(false);
     setMsg(error ? error.message : 'Saved');
@@ -50,7 +47,9 @@ export default function AccountSettings() {
 
   return (
     <View style={{ flex:1, padding:16, gap:12 }}>
-      <Text style={{ fontSize:20, fontWeight:'800', textAlign:'center', marginBottom:8 }}>Account Settings</Text>
+      <Text style={{ fontSize:20, fontWeight:'800', textAlign:'center', marginBottom:8 }}>
+        Account Settings
+      </Text>
 
       <View style={{ alignItems:'center', gap:8 }}>
         <Image
@@ -73,12 +72,8 @@ export default function AccountSettings() {
           autoCapitalize="words"
           style={{
             backgroundColor: 'white',
-            borderWidth: 1,
-            borderColor: '#111',
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            height: 40,
+            borderWidth: 1, borderColor: '#111', borderRadius: 8,
+            paddingHorizontal: 12, paddingVertical: 8, height: 40,
           }}
         />
       </View>
