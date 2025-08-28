@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
@@ -16,6 +16,10 @@ function isHomePath(p: string | null) {
   if (!p) return false;
   return p.endsWith('/home');
 }
+function isDisplayNamePath(p: string | null) {
+  if (!p) return false;
+  return p.endsWith('/account/display-name');
+}
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { session, ready } = useAuth();
@@ -23,8 +27,8 @@ function Gate({ children }: { children: React.ReactNode }) {
 
   const [adminReady, setAdminReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-
   const me = session?.user?.id || '';
+
   const [alert, setAlert] = useState<{ id: string; store?: string; who?: string } | null>(null);
 
   useEffect(() => {
@@ -72,14 +76,12 @@ function Gate({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
       for (const t of (teams || [])) {
         const teamId = t.team_id;
-
         const handle = (payload: any) => {
           const row = payload?.new || {};
           if (row.priority_level === 1 && row.created_by !== me) {
             setAlert({ id: row.id, store: row.store_location || row.store_site || '', who: row.created_by });
           }
         };
-
         const ch = supabase.channel(`pri1-${teamId}`)
           .on('postgres_changes',
               { event: 'INSERT', schema: 'public', table: 'submissions', filter: `team_id=eq.${teamId}` },
@@ -104,8 +106,16 @@ function Gate({ children }: { children: React.ReactNode }) {
   if (!ready) return <>{children}</>;
   const onUnauth = isUnauthPath(pathname);
 
+  // Gate: unauthenticated -> login
   if (!session && !onUnauth) return <Redirect href="/login" />;
 
+  // Gate: if logged-in user has no display name, force the simple prompt
+  const needsDisplayName = !!(session?.user && !session.user.user_metadata?.display_name);
+  if (session && needsDisplayName && !isDisplayNamePath(pathname)) {
+    return <Redirect href="/account/display-name" />;
+  }
+
+  // Prevent showing login once signed in
   if (session && pathname?.endsWith('/login')) {
     if (!adminReady) return <>{children}</>;
     return <Redirect href={isAdmin ? '/admin' : '/menu'} />;
