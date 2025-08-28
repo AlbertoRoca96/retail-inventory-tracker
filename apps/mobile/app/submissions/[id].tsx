@@ -32,6 +32,7 @@ type Row = {
 
   // NEW (from RPC):
   submitter_email?: string | null;
+  submitter_display_name?: string | null;
 };
 
 function PriPill({ n }: { n: number | null | undefined }) {
@@ -62,7 +63,7 @@ function toCsv(r: Row) {
     ['TAGS', tags],
     ['NOTES', r.notes ?? ''],
     ['PRIORITY LEVEL', r.priority_level ?? ''],
-    ['SUBMITTED BY', r.submitter_email || r.created_by || ''],
+    ['SUBMITTED BY', r.submitter_display_name || r.submitter_email || r.created_by || ''],
     ['PHOTO 1', r.photo1_url ?? r.photo1_path ?? ''],
     ['PHOTO 2', r.photo2_url ?? r.photo2_path ?? ''],
   ];
@@ -91,11 +92,11 @@ export default function Submission() {
     if (!id) return;
 
     (async () => {
-      // 1) Prefer the secure RPC (includes submitter_email; enforces team membership)
+      // 1) Prefer the secure RPC (includes submitter name/email; enforces team membership)
       const rpc = await supabase.rpc('get_submission_with_submitter', { sub_id: id as any });
       const r = Array.isArray(rpc.data) ? (rpc.data[0] as Row) : (rpc.data as Row | null);
 
-      // 2) If RPC unavailable for some reason, fall back to the raw table (you’ll still have access via RLS).
+      // 2) Fallback to the raw table (RLS still protects access)
       let dataRow: Row | null = r ?? null;
       if (!dataRow) {
         const { data } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
@@ -163,7 +164,8 @@ export default function Submission() {
     Array.isArray(row.tags) ? row.tags.join(', ') :
     (typeof row.tags === 'string' ? row.tags : '');
 
-  const submittedBy = row.submitter_email || row.created_by || '';
+  const submittedBy =
+    row.submitter_display_name || row.submitter_email || row.created_by || '';
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
@@ -175,7 +177,7 @@ export default function Submission() {
         <PriPill n={row.priority_level ?? 3} />
       </View>
 
-      {/* NEW: submitter identity (email preferred, else UUID) */}
+      {/* NEW: submitter identity (name preferred, then email, else UUID) */}
       <Text style={{ color: '#475569' }}>Submitted by: {submittedBy}</Text>
 
       {row.brand ? <Text>Brand: {row.brand}</Text> : null}
