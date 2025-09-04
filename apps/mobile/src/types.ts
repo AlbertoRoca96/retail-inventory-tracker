@@ -1,3 +1,4 @@
+// apps/mobile/src/types.ts
 export type Submission = {
   id: string;
   created_at: string;
@@ -29,4 +30,34 @@ export type Submission = {
 export type SubmissionWithSubmitter = Submission & {
   submitter_email?: string | null;
   submitter_display_name?: string | null;
+};
+
+/* ===========================
+   NEW: Templates / Last-Used
+   =========================== */
+
+/** The subset of fields we prefill via templates/last-used. */
+export type TemplateData = {
+  storeSite?: string;
+  storeLocation?: string;
+  location?: string;
+  brand?: string;
+  shelfSpace?: string;
+  pricePerUnit?: string;
+  onShelf?: string;
+  tags?: string;
+  notes?: string;
+  priorityLevel?: number; // 1..3
+};
+
+/** Row shape for submission_templates table. */
+export type Template = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  team_id: string | null;
+  name: string;
+  is_default: boolean;
+  data: TemplateData;
 };
