@@ -1,3 +1,4 @@
+// apps/mobile/src/components/Button.tsx
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme';
