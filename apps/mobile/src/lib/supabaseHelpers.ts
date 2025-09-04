@@ -1,4 +1,6 @@
+// apps/mobile/src/lib/supabaseHelpers.ts
 import { supabase } from './supabase';
+import type { Template, TemplateData } from '../types';
 
 export type PhotoLike = {
   uri: string;
@@ -86,4 +88,52 @@ export async function uploadAvatarAndGetPublicUrl(
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
   return data.publicUrl || null;
+}
+
+/* =========================================
+   NEW: Submission Templates (Supabase CRUD)
+   ========================================= */
+
+/** List the current user's templates. Optionally filter by a team. */
+export async function listSubmissionTemplates(userId: string, teamId: string | null): Promise<Template[]> {
+  const q = supabase.from('submission_templates').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  const { data, error } = teamId ? await q.eq('team_id', teamId) : await q;
+  if (error) throw error;
+  return (data || []) as Template[];
+}
+
+/** Create a new template for the user. */
+export async function createSubmissionTemplate(
+  userId: string,
+  teamId: string | null,
+  name: string,
+  data: TemplateData,
+  isDefault = false
+): Promise<Template> {
+  const payload: Omit<Template, 'id' | 'created_at' | 'updated_at'> = {
+    user_id: userId,
+    team_id: teamId,
+    name,
+    is_default: !!isDefault,
+    data,
+  } as any;
+  const { data: rows, error } = await supabase.from('submission_templates').insert(payload as any).select('*').limit(1);
+  if (error) throw error;
+  return (rows?.[0] as Template) as Template;
+}
+
+/** Delete a template (must belong to current user per RLS). */
+export async function deleteSubmissionTemplate(userId: string, templateId: string): Promise<void> {
+  const { error } = await supabase.from('submission_templates').delete().eq('id', templateId).eq('user_id', userId);
+  if (error) throw error;
+}
+
+/** Set one template as default for this user (clears others). */
+export async function setDefaultSubmissionTemplate(userId: string, templateId: string): Promise<void> {
+  // Clear current defaults
+  const { error: e1 } = await supabase.from('submission_templates').update({ is_default: false }).eq('user_id', userId);
+  if (e1) throw e1;
+  // Set new default
+  const { error: e2 } = await supabase.from('submission_templates').update({ is_default: true }).eq('id', templateId).eq('user_id', userId);
+  if (e2) throw e2;
 }
