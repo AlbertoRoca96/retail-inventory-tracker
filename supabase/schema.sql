@@ -1,3 +1,4 @@
+-- supabase/schema.sql
 -- Idempotent helpers
 create extension if not exists "pgcrypto";
 
@@ -105,3 +106,34 @@ create trigger trg_set_created_by
 before insert on public.submissions
 for each row
 execute function public.set_created_by_from_auth();
+
+-- =============================
+-- NEW: submission_templates tbl
+-- =============================
+create table if not exists public.submission_templates (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  user_id uuid not null,                     -- owner
+  team_id uuid references public.teams(id) on delete set null, -- optional scoping
+  name text not null,
+  is_default boolean not null default false,
+  data jsonb not null default '{}'
+);
+
+-- Ensure one default per (user_id) — soft via code, but index helps lookups
+create index if not exists submission_templates_user_idx on public.submission_templates(user_id, created_at desc);
+create index if not exists submission_templates_team_idx on public.submission_templates(team_id);
+
+-- Trigger to keep updated_at fresh
+create or replace function public.touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end$$;
+
+drop trigger if exists trg_touch_updated_at on public.submission_templates;
+create trigger trg_touch_updated_at
+before update on public.submission_templates
+for each row execute function public.touch_updated_at();
