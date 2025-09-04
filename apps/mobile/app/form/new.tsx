@@ -1,3 +1,4 @@
+// apps/mobile/app/form/new.tsx
 import React, {
   useEffect,
   useMemo,
@@ -10,10 +11,11 @@ import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'r
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 
-import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
+import { uploadPhotosAndGetUrls, listSubmissionTemplates, createSubmissionTemplate, setDefaultSubmissionTemplate, deleteSubmissionTemplate } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
+import type { Template, TemplateData } from '../../src/types';
 
 type ValidationErrors = Partial<{
   storeSite: string;
@@ -37,6 +39,8 @@ const safeNumber = (s?: string) => {
 const looksLikeISODate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 const QUEUE_KEY = 'rit:submission-queue:v1';
+// NEW: per-user last-used key prefix
+const LAST_USED_PREFIX = 'rit:last-used:v1:';
 
 type QueuedSubmission = {
   id: string;
@@ -109,6 +113,7 @@ const getDefaultValues = (): FormValues => ({
   priorityLevel: '3',
 });
 
+// ------- Draft helpers (existing) -------
 function saveDraftLocal(draft: unknown) {
   try {
     if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -129,6 +134,7 @@ function clearDraftLocal() {
   } catch {}
 }
 
+// ------- Queue helpers (existing) -------
 function readQueue(): QueuedSubmission[] {
   try {
     if (isWeb && hasWindow) {
@@ -162,6 +168,40 @@ function cryptoRandomId() {
     return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
   }
   return Math.random().toString(36).slice(2);
+}
+
+// ------- NEW: last-used helpers (per user) -------
+function lastUsedKeyFor(uid?: string | null) {
+  return `${LAST_USED_PREFIX}${uid || 'anon'}`;
+}
+function saveLastUsedLocal(uid: string | null | undefined, v: Partial<FormValues>) {
+  try {
+    if (isWeb && hasWindow) {
+      // Only store the fields we intend to pre-fill by default
+      const subset: TemplateData = {
+        storeSite: v.storeSite,
+        storeLocation: v.storeLocation,
+        location: v.location,
+        brand: v.brand,
+        shelfSpace: v.shelfSpace,
+        pricePerUnit: v.pricePerUnit,
+        onShelf: v.onShelf,
+        tags: v.tags,
+        notes: v.notes,
+        priorityLevel: v.priorityLevel ? Number(v.priorityLevel) : undefined,
+      };
+      window.localStorage.setItem(lastUsedKeyFor(uid), JSON.stringify(subset));
+    }
+  } catch {}
+}
+function loadLastUsedLocal(uid: string | null | undefined): TemplateData | null {
+  try {
+    if (isWeb && hasWindow) {
+      const raw = window.localStorage.getItem(lastUsedKeyFor(uid));
+      return raw ? (JSON.parse(raw) as TemplateData) : null;
+    }
+  } catch {}
+  return null;
 }
 
 type WebFieldProps = {
@@ -442,6 +482,10 @@ export default function NewFormScreen() {
     setLastSavedAt(new Date().toLocaleTimeString());
   }, []);
 
+  // NEW: templates state
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [hasLastUsed, setHasLastUsed] = useState<boolean>(false);
+
   const handleWebFile = useCallback((file?: File | null) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -498,6 +542,24 @@ export default function NewFormScreen() {
       setBanner({ kind: 'success', text: 'Draft loaded.' });
     }
   }, [hydrated]);
+
+  // NEW: load templates + last-used flags for this user
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setHasLastUsed(!!loadLastUsedLocal(uid));
+        if (!uid) return;
+        const teamForFetch = (selectedTeamId || teamId) ?? null;
+        const list = await listSubmissionTemplates(uid, teamForFetch);
+        if (!cancelled) setTemplates(list);
+      } catch {
+        if (!cancelled) setTemplates([]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // include selectedTeamId so templates refresh when user toggles team
+  }, [uid, selectedTeamId, teamId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -820,6 +882,9 @@ export default function NewFormScreen() {
         return;
       }
 
+      // NEW: store "last used" on successful submission
+      saveLastUsedLocal(uid, v);
+
       resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
     } catch (e: any) {
@@ -862,6 +927,91 @@ export default function NewFormScreen() {
 
   const currentPri = (isWeb ? formRef.current.priorityLevel : nVals.priorityLevel) || '3';
 
+  // NEW: helpers to apply data into the editable form
+  const applyTemplateData = (data: TemplateData) => {
+    const next: FormValues = {
+      ...(isWeb ? formRef.current : nVals),
+      storeSite: data.storeSite ?? (isWeb ? formRef.current.storeSite : nVals.storeSite),
+      storeLocation: data.storeLocation ?? (isWeb ? formRef.current.storeLocation : nVals.storeLocation),
+      location: data.location ?? (isWeb ? formRef.current.location : nVals.location),
+      brand: data.brand ?? (isWeb ? formRef.current.brand : nVals.brand),
+      shelfSpace: data.shelfSpace ?? (isWeb ? formRef.current.shelfSpace : nVals.shelfSpace),
+      pricePerUnit: data.pricePerUnit ?? (isWeb ? formRef.current.pricePerUnit : nVals.pricePerUnit),
+      onShelf: data.onShelf ?? (isWeb ? formRef.current.onShelf : nVals.onShelf),
+      tags: data.tags ?? (isWeb ? formRef.current.tags : nVals.tags),
+      notes: data.notes ?? (isWeb ? formRef.current.notes : nVals.notes),
+      date: (isWeb ? formRef.current.date : nVals.date),
+      priorityLevel: (data.priorityLevel ? String(data.priorityLevel) as any : (isWeb ? formRef.current.priorityLevel : nVals.priorityLevel)),
+    };
+    if (isWeb) {
+      formRef.current = next;
+      setFormKey((k) => k + 1); // refresh inputs
+    } else {
+      setNVals(next);
+    }
+    scheduleAutosave();
+    setBanner({ kind: 'success', text: 'Template applied.' });
+  };
+
+  const applyLastUsed = () => {
+    const d = loadLastUsedLocal(uid);
+    if (!d) {
+      setBanner({ kind: 'error', text: 'No last-used values found.' });
+      return;
+    }
+    applyTemplateData(d);
+  };
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId) || null,
+    [templates, selectedTemplateId]
+  );
+
+  const handleSaveAsTemplate = async () => {
+    try {
+      const v = getValues();
+      const data: TemplateData = {
+        storeSite: v.storeSite,
+        storeLocation: v.storeLocation,
+        location: v.location,
+        brand: v.brand,
+        shelfSpace: v.shelfSpace,
+        pricePerUnit: v.pricePerUnit,
+        onShelf: v.onShelf,
+        tags: v.tags,
+        notes: v.notes,
+        priorityLevel: Number(v.priorityLevel || '3'),
+      };
+
+      // quick name proposal
+      const defaultName =
+        `${v.storeSite || 'Site'}—${v.storeLocation || 'Loc'}—${v.brand || 'Brand'}`.replace(/\s+/g, ' ').trim();
+
+      let name = defaultName;
+      if (isWeb && hasWindow) {
+        const input = window.prompt('Template name', defaultName);
+        if (!input) return;
+        name = input;
+      }
+
+      const effTeamId = (selectedTeamId || teamId) ?? null;
+      const created = await createSubmissionTemplate(uid, effTeamId, name, data, false);
+      setTemplates((prev) => [created, ...prev]);
+      setBanner({ kind: 'success', text: 'Template saved.' });
+    } catch (e: any) {
+      setBanner({ kind: 'error', text: e?.message || 'Failed to save template' });
+    }
+  };
+
+  const handleApplyTemplate = () => {
+    if (!selectedTemplate) {
+      setBanner({ kind: 'error', text: 'Choose a template first.' });
+      return;
+    }
+    applyTemplateData(selectedTemplate.data || {});
+  };
+
   return (
     <ScrollView
       contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
@@ -890,6 +1040,56 @@ export default function NewFormScreen() {
           <Text style={{ color: 'white', textAlign: 'center' }}>{banner.text}</Text>
         </View>
       ) : null}
+
+      {/* NEW: templates + last-used toolbar */}
+      <View style={{ marginBottom: 12, gap: 8 as any }}>
+        <View style={{ flexDirection: 'row', gap: 8 as any, flexWrap: 'wrap' as any, alignItems: 'center' }}>
+          {hasLastUsed ? (
+            <Pressable
+              onPress={applyLastUsed}
+              style={{ backgroundColor: '#2563eb', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Use Last Used</Text>
+            </Pressable>
+          ) : null}
+
+          <View style={{ flexDirection: 'row', gap: 8 as any, alignItems: 'center' }}>
+            <Text style={{ fontWeight: '700' }}>Template:</Text>
+            {isWeb ? (
+              <select
+                value={selectedTemplateId || ''}
+                onChange={(e) => setSelectedTemplateId(e.currentTarget.value || null)}
+                style={{ padding: 8, borderRadius: 8, borderColor: '#d1d5db', borderWidth: 1 as any }}
+              >
+                <option value="">— choose —</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.is_default ? '★ ' : ''}{t.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <View style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#d1d5db' }}>
+                <Text>{selectedTemplate?.name || '— choose —'}</Text>
+              </View>
+            )}
+
+            <Pressable
+              onPress={handleApplyTemplate}
+              style={{ backgroundColor: '#2563eb', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Apply</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleSaveAsTemplate}
+              style={{ backgroundColor: '#2563eb', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Save as Template</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
 
       {uid && teamOptions.length > 1 ? (
         <View style={{ marginBottom: 12 }}>
@@ -1220,6 +1420,8 @@ export default function NewFormScreen() {
                   isOnline,
                   queuedCount,
                   values: getValues(),
+                  templates: templates.map(t => ({ id: t.id, name: t.name, is_default: t.is_default })),
+                  hasLastUsed,
                 },
                 null,
                 2
