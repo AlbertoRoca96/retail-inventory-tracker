@@ -56,21 +56,17 @@ export default function Menu() {
       <Btn label="Create New Form" onPress={() => router.push('/form/new')} />
       <Btn label="View Submissions" onPress={() => router.push('/submissions')} />
 
-      {/* Make Account easy to find */}
+      {/* Account is now blue like the others */}
       <Btn
         label="Account"
         onPress={() => router.push('/account/settings')}
-        bg="#e5e7eb"
-        fg={colors.text}
       />
 
-      {/* If user hasn't set a display name yet, surface a shortcut to the capture page */}
+      {/* If user hasn't set a display name yet, surface a shortcut to the capture page (also blue) */}
       {needsDisplayName ? (
         <Btn
           label="Set Display Name"
           onPress={() => router.push('/account/display-name')}
-          bg="#f3f4f6"
-          fg={colors.text}
         />
       ) : null}
 
@@ -84,14 +80,15 @@ export default function Menu() {
         </>
       ) : null}
 
+      {/* Logout is red */}
       <Btn
         label="Log Out"
         onPress={async () => {
           await supabase.auth.signOut().catch(() => {});
           router.replace('/'); // Gate will route unauth users to /login
         }}
-        bg={colors.gray}
-        fg={colors.black}
+        bg={colors.red}
+        fg={colors.white}
         mt={14}
       />
     </View>
