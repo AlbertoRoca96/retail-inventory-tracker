@@ -1,7 +1,11 @@
+-- supabase/policies.sql
 -- Enable RLS
 alter table public.teams        enable row level security;
 alter table public.team_members enable row level security;
 alter table public.submissions  enable row level security;
+
+-- NEW: templates table RLS
+alter table if exists public.submission_templates enable row level security;
 
 -- Lightweight view used by policies
 create or replace view public.v_user_teams as
@@ -102,3 +106,40 @@ using (
       and v.is_admin
   )
 );
+
+-- =========================
+-- NEW: submission_templates
+-- =========================
+
+-- Owner can read their templates
+drop  policy if exists "owner can read templates" on public.submission_templates;
+create policy     "owner can read templates"
+on public.submission_templates
+for select
+to authenticated
+using (user_id = auth.uid());
+
+-- Owner can insert templates
+drop  policy if exists "owner can insert templates" on public.submission_templates;
+create policy     "owner can insert templates"
+on public.submission_templates
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+-- Owner can update templates
+drop  policy if exists "owner can update templates" on public.submission_templates;
+create policy     "owner can update templates"
+on public.submission_templates
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+-- Owner can delete templates
+drop  policy if exists "owner can delete templates" on public.submission_templates;
+create policy     "owner can delete templates"
+on public.submission_templates
+for delete
+to authenticated
+using (user_id = auth.uid());
