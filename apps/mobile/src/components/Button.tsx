@@ -1,6 +1,6 @@
 // apps/mobile/src/components/Button.tsx
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { Pressable, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
 
@@ -19,9 +19,17 @@ export default function Button({
   const textSize = simplifiedMode ? 18 : 16;
 
   return (
-    <TouchableOpacity style={[styles.base, { padding: basePad }, styleMap[variant]]} onPress={onPress}>
+    <Pressable
+      style={({ hovered }) => [
+        styles.base,
+        { padding: basePad },
+        styleMap[variant],
+        hovered ? styles.hovered : null,
+      ]}
+      onPress={onPress}
+    >
       <Text style={[styles.text, { fontSize: textSize }]}>{title}</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -31,6 +39,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: theme.spacing(1)
   },
+  hovered: { opacity: 0.9 },
   primary: { backgroundColor: theme.colors.blue },
   secondary: { backgroundColor: theme.colors.black },
   success: { backgroundColor: theme.colors.green },
