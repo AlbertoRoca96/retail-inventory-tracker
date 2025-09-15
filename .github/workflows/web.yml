@@ -50,6 +50,10 @@ jobs:
       - name: Verify pdf-lib is installed
         run: node -e "console.log('pdf-lib ->', require.resolve('pdf-lib'))"
 
+      # (Optional) sanity check that AsyncStorage resolves, too
+      - name: Verify async-storage is installed
+        run: node -e "console.log('async-storage ->', require.resolve('@react-native-async-storage/async-storage'))"
+
       - name: Export static web build
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -58,8 +62,12 @@ jobs:
         run: npx expo export --platform web --output-dir dist
 
       - name: Patch index.html for GitHub Pages
-        working-directory: dist
+        # IMPORTANT: step-level working-directory is relative to the repo workspace,
+        # so we must use the full path here.
+        working-directory: apps/mobile/dist
         run: |
+          set -e
+          test -f index.html
           node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo');fs.writeFileSync('index.html',s)"
           cp index.html 404.html
           touch .nojekyll
@@ -72,11 +80,8 @@ jobs:
   deploy-edge:
     runs-on: ubuntu-latest
     env:
-      # REQUIRED: Supabase Personal Access Token (Account → Access Tokens)
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # OPTIONAL redirect used by the function
       INVITE_REDIRECT_TO: ${{ secrets.INVITE_REDIRECT_TO }}
-      # OPTIONAL smoke-test token (user access token)
       SUPABASE_TEST_BEARER: ${{ secrets.SUPABASE_TEST_BEARER }}
     steps:
       - uses: actions/checkout@v4
@@ -89,9 +94,7 @@ jobs:
         run: |
           set -e
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "❌ SUPABASE_ACCESS_TOKEN is empty"; exit 1)
-          # config.toml required for custom entrypoint (Option B)
           test -f "supabase/config.toml" || (echo "❌ Missing supabase/config.toml (required for custom entrypoint)"; exit 1)
-          # Accept either default path OR your custom path
           if [ -f "supabase/functions/invite-user/index.ts" ]; then
             echo "✅ Found default path: supabase/functions/invite-user/index.ts"
           elif [ -f "supabase/invite-user/functions/index.ts" ]; then
