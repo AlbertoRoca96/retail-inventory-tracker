@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView } from 'react-native';
+import { router, Head } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Head, router } from 'expo-router';
 import { useAuth } from '../../src/hooks/useAuth';
 import { supabase } from '../../src/lib/supabase';
 import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
@@ -19,12 +19,18 @@ export default function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // UI preferences (already wired in your project)
-  const { simplifiedMode, setSimplifiedMode, largeTextMode, setLargeTextMode, highContrast, setHighContrast } = useUISettings?.() ?? {
-    simplifiedMode: false, setSimplifiedMode: () => {},
-    largeTextMode: false, setLargeTextMode: () => {},
-    highContrast: false, setHighContrast: () => {},
-  };
+  // UI accessibility settings (all optional; fallbacks keep this file safe)
+  const {
+    simplifiedMode = false,
+    setSimplifiedMode = () => {},
+    largeText = false,
+    setLargeText = () => {},
+    highContrast = false,
+    setHighContrast = () => {},
+  } = useUISettings() || ({} as any);
+
+  // hidden <input type="file"> for web avatar selection
+  const webFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const md = (user?.user_metadata || {}) as any;
@@ -32,21 +38,53 @@ export default function AccountSettings() {
     setAvatarUrl(md.avatar_url || null);
   }, [user?.id]);
 
-  const pickAvatar = async () => {
+  const pickAvatarNative = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
     });
     if (res.canceled || !res.assets?.length) return;
     const a = res.assets[0];
-    const url = await uploadAvatarAndGetPublicUrl(user!.id, {
-      uri: a.uri, fileName: a.fileName || 'avatar.jpg', mimeType: a.mimeType || 'image/jpeg',
-    }, 'avatars');
+    const url = await uploadAvatarAndGetPublicUrl(
+      user!.id,
+      {
+        uri: a.uri,
+        fileName: a.fileName || 'avatar.jpg',
+        mimeType: a.mimeType || 'image/jpeg',
+      },
+      'avatars'
+    );
     if (url) setAvatarUrl(url);
+  };
+
+  const pickAvatarWeb = () => {
+    webFileRef.current?.click();
+  };
+
+  const handleWebFile = async (f?: File | null) => {
+    if (!user || !f) return;
+    const url = await uploadAvatarAndGetPublicUrl(
+      user.id,
+      {
+        uri: URL.createObjectURL(f),
+        fileName: f.name || 'avatar.jpg',
+        mimeType: f.type || 'image/jpeg',
+      },
+      'avatars'
+    );
+    if (url) setAvatarUrl(url);
+  };
+
+  const pickAvatar = async () => {
+    if (!user) return;
+    if (isWeb) return pickAvatarWeb();
+    return pickAvatarNative();
   };
 
   const save = async () => {
     if (!user) return;
-    setBusy(true); setMsg(null);
+    setBusy(true);
+    setMsg(null);
     const { error } = await supabase.auth.updateUser({
       data: { display_name: displayName || null, avatar_url: avatarUrl || null },
     });
@@ -54,7 +92,12 @@ export default function AccountSettings() {
     setMsg(error ? error.message : 'Saved');
   };
 
-  const labelStyle = { fontWeight: '700', marginBottom: 6 } as const;
+  // accessibility-aware sizing
+  const basePad = simplifiedMode ? theme.spacing(3) : theme.spacing(2);
+  const labelSize = (simplifiedMode || largeText) ? 16 : 14;
+  const inputHeight = (simplifiedMode || largeText) ? 52 : 44;
+  const buttonMinHeight = simplifiedMode ? 56 : 48;
+  const btnBg = highContrast ? '#1743b3' : theme.colors.blue;
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -67,16 +110,20 @@ export default function AccountSettings() {
       <View style={{ alignItems: 'center', gap: 8 }}>
         <Image
           source={{ uri: avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
-          style={{ width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: '#111' }}
+          style={{ width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: highContrast ? '#000' : '#111' }}
         />
-        <Pressable onPress={pickAvatar}
-          style={{ backgroundColor: colors.blue, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 }}>
+        <Pressable
+          onPress={pickAvatar}
+          accessibilityRole="button"
+          accessibilityLabel="Change profile photo"
+          style={{ backgroundColor: btnBg, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
           <Text style={{ color: colors.white, fontWeight: '700' }}>Change Photo</Text>
         </Pressable>
       </View>
 
       <View>
-        <Text style={labelStyle}>DISPLAY NAME</Text>
+        <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelSize }}>DISPLAY NAME</Text>
         <TextInput
           value={displayName}
           onChangeText={setDisplayName}
@@ -84,9 +131,13 @@ export default function AccountSettings() {
           autoCorrect={false}
           autoCapitalize="words"
           style={{
-            backgroundColor: 'white',
-            borderWidth: 1, borderColor: '#111', borderRadius: 8,
-            paddingHorizontal: 12, paddingVertical: 8, height: 40,
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: highContrast ? '#000' : '#111',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            height: inputHeight,
           }}
         />
       </View>
@@ -94,44 +145,73 @@ export default function AccountSettings() {
       <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
         <Text style={{ fontWeight: '800', marginBottom: 6 }}>ACCESSIBILITY</Text>
 
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={{ fontWeight:'700', marginBottom: 2 }}>Simplified mode</Text>
-            <Text style={{ color:'#374151' }}>Larger text and buttons for easier reading and tapping.</Text>
+            <Text style={{ fontWeight: '700', marginBottom: 2 }}>Simplified mode</Text>
+            <Text style={{ color: '#374151' }}>Larger text and buttons for easier reading and tapping.</Text>
           </View>
           <Switch value={simplifiedMode} onValueChange={setSimplifiedMode} />
         </View>
 
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={{ fontWeight:'700', marginBottom: 2 }}>Large text mode</Text>
-            <Text style={{ color:'#374151' }}>Bumps body & button text even more. Also honors system text size.</Text>
+            <Text style={{ fontWeight: '700', marginBottom: 2 }}>Large text mode</Text>
+            <Text style={{ color: '#374151' }}>Bumps body & button text sizes even more.</Text>
           </View>
-          <Switch value={largeTextMode} onValueChange={setLargeTextMode} />
+          <Switch value={largeText} onValueChange={setLargeText} />
         </View>
 
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={{ fontWeight:'700', marginBottom: 2 }}>High-contrast mode</Text>
-            <Text style={{ color:'#374151' }}>Uses stronger color contrast for text & UI.</Text>
+            <Text style={{ fontWeight: '700', marginBottom: 2 }}>High-contrast mode</Text>
+            <Text style={{ color: '#374151' }}>Stronger color contrast for text & UI.</Text>
           </View>
           <Switch value={highContrast} onValueChange={setHighContrast} />
         </View>
       </View>
 
-      <Pressable onPress={save} disabled={busy}
-        style={{ backgroundColor: busy ? '#94a3b8' : colors.blue, padding: 12, borderRadius: 10, alignItems:'center' }}>
-        <Text style={{ color: colors.white, fontWeight:'700' }}>{busy ? 'Saving…' : 'Save'}</Text>
+      <Pressable
+        onPress={save}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Save account settings"
+        style={{
+          backgroundColor: busy ? '#94a3b8' : btnBg,
+          paddingVertical: basePad,
+          borderRadius: 10,
+          alignItems: 'center',
+          minHeight: buttonMinHeight,
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ color: colors.white, fontWeight: '700' }}>{busy ? 'Saving…' : 'Save'}</Text>
       </Pressable>
 
-      <Pressable onPress={() => router.back()} style={{ alignSelf:'center', marginTop: 8 }}>
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Exit"
+        style={{ alignSelf: 'center', marginTop: 8, minHeight: 44, justifyContent: 'center' }}
+      >
         <Text>Exit</Text>
       </Pressable>
 
       {msg ? (
-        <View style={{ alignItems:'center', marginTop:8 }}>
-          <Text style={{ color: msg === 'Saved' ? colors.green : '#ef4444' }}>{msg}</Text>
+        <View style={{ alignItems: 'center', marginTop: 8 }}>
+          <Text style={{ color: msg === 'Saved' ? '#16a34a' : '#ef4444' }}>{msg}</Text>
         </View>
+      ) : null}
+
+      {/* Web-only hidden input for avatar */}
+      {isWeb ? (
+        <div style={{ height: 0, overflow: 'hidden' }}>
+          <input
+            ref={webFileRef as any}
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleWebFile(e.currentTarget.files?.[0] ?? null)}
+          />
+        </div>
       ) : null}
     </ScrollView>
   );
