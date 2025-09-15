@@ -1,9 +1,9 @@
-// apps/mobile/app/submissions/index.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { View, Text, Pressable, FlatList, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router';
+import { Head, router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { colors, textA11yProps, typography, theme } from '../../src/theme';
+import { useUISettings } from '../../src/lib/uiSettings';
 
 type Row = {
   id: string;
@@ -41,8 +41,21 @@ function PriPill({ n }: { n: number | null }) {
 }
 
 export default function Submissions() {
+  const { fontScale, highContrast, targetMinHeight } = useUISettings();
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const titleStyle = useMemo(() => ({
+    fontSize: Math.round(typography.title.fontSize * fontScale * 1.05),
+    lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.05),
+    fontWeight: '700' as const,
+  }), [fontScale]);
+
+  const bodyStyle = useMemo(() => ({
+    fontSize: Math.round(typography.body.fontSize * fontScale * 1.06),
+    lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.06),
+  }), [fontScale]);
 
   async function fetchRows() {
     setLoading(true);
@@ -83,23 +96,21 @@ export default function Submissions() {
           {
             backgroundColor: 'white',
             borderWidth: 1,
-            borderColor: '#111827',
+            borderColor: highContrast ? '#000000' : '#111827',
             borderRadius: 12,
             padding: 16,
-            minHeight: 56, // easier to tap
+            minHeight: targetMinHeight,
           },
           pressed && { opacity: 0.95 },
         ]}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
-          <Text {...textA11yProps} style={{ fontWeight: '700', fontSize: typography.body.fontSize }}>
-            {title}
-          </Text>
+          <Text {...textA11yProps} style={[bodyStyle, { fontWeight: '700' }]}>{title}</Text>
           <PriPill n={item.priority_level ?? 3} />
         </View>
-        <Text {...textA11yProps}>{subtitle}</Text>
-        {byline ? <Text {...textA11yProps} style={{ color: '#475569' }}>{byline}</Text> : null}
-        <Text {...textA11yProps}>{price}</Text>
+        <Text {...textA11yProps} style={bodyStyle}>{subtitle}</Text>
+        {byline ? <Text {...textA11yProps} style={[bodyStyle, { color: '#475569' }]}>{byline}</Text> : null}
+        <Text {...textA11yProps} style={bodyStyle}>{price}</Text>
       </Pressable>
     );
   };
@@ -107,19 +118,17 @@ export default function Submissions() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator />
+        {/* Give the progressbar an accessible name */}
+        <ActivityIndicator accessibilityLabel="Loading submissions" />
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: colors.gray }}>
-      <Text
-        {...textA11yProps}
-        style={{ fontSize: typography.title.fontSize, lineHeight: typography.title.lineHeight, fontWeight: '700', marginBottom: 10 }}
-      >
-        Submissions
-      </Text>
+      <Head><title>Submissions</title></Head>
+
+      <Text {...textA11yProps} style={[titleStyle, { marginBottom: 10 }]}>Submissions</Text>
       <FlatList
         data={rows}
         keyExtractor={(r) => r.id}
@@ -131,9 +140,9 @@ export default function Submissions() {
         onPress={() => router.back()}
         accessibilityRole="button"
         accessibilityLabel="Exit submissions"
-        style={{ alignSelf: 'flex-end', marginTop: 10 }}
+        style={{ alignSelf: 'flex-end', marginTop: 10, minHeight: targetMinHeight, justifyContent: 'center' }}
       >
-        <Text {...textA11yProps}>Exit</Text>
+        <Text {...textA11yProps} style={bodyStyle}>Exit</Text>
       </Pressable>
     </View>
   );
