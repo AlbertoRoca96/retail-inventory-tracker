@@ -1,82 +1,86 @@
+// apps/mobile/src/lib/uiSettings.ts
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type UIDensity = 'comfortable' | 'cozy' | 'compact';
-export type UISettings = {
+type UISettings = {
   simplifiedMode: boolean;
-  setSimplifiedMode: (v: boolean) => void;
-  density: UIDensity;
-  setDensity: (d: UIDensity) => void;
+  setSimplifiedMode: (v: boolean | ((x: boolean) => boolean)) => void;
+  largeText: boolean;
+  setLargeText: (v: boolean | ((x: boolean) => boolean)) => void;
+  highContrast: boolean;
+  setHighContrast: (v: boolean | ((x: boolean) => boolean)) => void;
+
+  // Derived helpers
+  fontScale: number;         // how much to scale base font sizes
+  targetMinHeight: number;   // recommended min tap target height
 };
 
-const UISettingsContext = createContext<UISettings | null>(null);
+const DEFAULTS: UISettings = {
+  simplifiedMode: false,
+  setSimplifiedMode: () => {},
+  largeText: false,
+  setLargeText: () => {},
+  highContrast: false,
+  setHighContrast: () => {},
+  fontScale: 1,
+  targetMinHeight: 48,
+};
 
-const isWeb = Platform.OS === 'web';
-const hasWindow = typeof window !== 'undefined';
-const KEY = 'rit:ui:v1:simplified';
-const DENSITY_KEY = 'rit:ui:v1:density';
-
-async function saveSimplified(v: boolean) {
-  const val = v ? '1' : '0';
-  if (isWeb && hasWindow) {
-    window.localStorage.setItem(KEY, val);
-  } else {
-    await SecureStore.setItemAsync(KEY, val);
-  }
-}
-
-async function loadSimplified(): Promise<boolean> {
-  let raw: string | null = null;
-  if (isWeb && hasWindow) raw = window.localStorage.getItem(KEY);
-  else raw = await SecureStore.getItemAsync(KEY);
-  return raw === '1';
-}
-
-async function saveDensity(d: UIDensity) {
-  if (isWeb && hasWindow) window.localStorage.setItem(DENSITY_KEY, d);
-  else await SecureStore.setItemAsync(DENSITY_KEY, d);
-}
-async function loadDensity(): Promise<UIDensity> {
-  let raw: string | null = null;
-  if (isWeb && hasWindow) raw = window.localStorage.getItem(DENSITY_KEY);
-  else raw = await SecureStore.getItemAsync(DENSITY_KEY);
-  if (raw === 'compact' || raw === 'cozy' || raw === 'comfortable') return raw;
-  return 'cozy';
-}
+const CTX = createContext<UISettings>(DEFAULTS);
+const STORAGE_KEY = 'display_prefs/v1';
 
 export function UISettingsProvider({ children }: { children: React.ReactNode }) {
-  const [simplifiedMode, setSimplifiedModeState] = useState(false);
-  const [density, setDensityState] = useState<UIDensity>('cozy');
+  const [simplifiedMode, setSimplifiedMode] = useState(false);
+  const [largeText, setLargeText] = useState(false);
+  const [highContrast, setHighContrast] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
+  // Load once
   useEffect(() => {
-    let cancelled = false;
     (async () => {
-      const v = await loadSimplified();
-      const d = await loadDensity();
-      if (!cancelled) {
-        setSimplifiedModeState(v);
-        setDensityState(d);
-      }
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const j = JSON.parse(raw);
+          if (typeof j.simplifiedMode === 'boolean') setSimplifiedMode(j.simplifiedMode);
+          if (typeof j.largeText === 'boolean') setLargeText(j.largeText);
+          if (typeof j.highContrast === 'boolean') setHighContrast(j.highContrast);
+        }
+      } catch {}
+      setHydrated(true);
     })();
-    return () => { cancelled = true; };
   }, []);
 
-  const setSimplifiedMode = (v: boolean) => {
-    setSimplifiedModeState(v);
-    saveSimplified(v).catch(() => {});
-  };
-  const setDensity = (d: UIDensity) => {
-    setDensityState(d);
-    saveDensity(d).catch(() => {});
-  };
+  // Persist
+  useEffect(() => {
+    if (!hydrated) return;
+    AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ simplifiedMode, largeText, highContrast })
+    ).catch(() => {});
+  }, [simplifiedMode, largeText, highContrast, hydrated]);
 
-  const value = useMemo(() => ({ simplifiedMode, setSimplifiedMode, density, setDensity }), [simplifiedMode, density]);
-  return <UISettingsContext.Provider value={value}>{children}</UISettingsContext.Provider>;
+  // Derive simple global multipliers
+  const fontScale = 1 * (simplifiedMode ? 1.10 : 1) * (largeText ? 1.18 : 1);
+  const targetMinHeight = Math.round((48) * (simplifiedMode ? 1.15 : 1)); // ≈56 when simplified
+
+  const value = useMemo<UISettings>(
+    () => ({
+      simplifiedMode,
+      setSimplifiedMode,
+      largeText,
+      setLargeText,
+      highContrast,
+      setHighContrast,
+      fontScale,
+      targetMinHeight,
+    }),
+    [simplifiedMode, largeText, highContrast, fontScale, targetMinHeight]
+  );
+
+  return <CTX.Provider value={value}>{children}</CTX.Provider>;
 }
 
 export function useUISettings() {
-  const ctx = useContext(UISettingsContext);
-  if (!ctx) throw new Error('useUISettings must be used within UISettingsProvider');
-  return ctx;
+  return useContext(CTX);
 }
