@@ -19,15 +19,16 @@ export default function Button({
   accessibilityLabel?: string;
   disabled?: boolean;
 }) {
-  const { simplifiedMode } = useUISettings();
-  const padV = simplifiedMode ? theme.spacing(2) : theme.spacing(1.5);
-  const padH = simplifiedMode ? theme.spacing(3) : theme.spacing(2.5);
-  const textSize = simplifiedMode ? 18 : 17;
+  const { simplifiedMode, largeText, highContrast, targetMinHeight, fontScale } = useUISettings();
+
+  const padV = theme.spacing(simplifiedMode ? 2 : 1.5);
+  const padH = theme.spacing(simplifiedMode ? 3 : 2.5);
+  const textSize = Math.round(18 * fontScale);
 
   const styleMap = {
-    primary: styles.primary,
-    secondary: styles.secondary,
-    success: styles.success,
+    primary: { backgroundColor: highContrast ? '#1743b3' : theme.colors.blue },
+    secondary: { backgroundColor: highContrast ? '#111111' : theme.colors.black },
+    success: { backgroundColor: highContrast ? '#0f7a35' : theme.colors.green },
   } as const;
 
   return (
@@ -40,36 +41,23 @@ export default function Button({
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,
-        { paddingVertical: padV, paddingHorizontal: padH, opacity: disabled ? 0.5 : 1 },
+        { paddingVertical: padV, paddingHorizontal: padH, minHeight: targetMinHeight, opacity: disabled ? 0.5 : 1 },
         styleMap[variant],
         pressed && styles.pressed,
       ]}
     >
-      <Text
-        {...textA11yProps}
-        style={[styles.text, { fontSize: textSize }]}
-      >
-        {title}
-      </Text>
+      <Text {...textA11yProps} style={[styles.text, { fontSize: textSize }]}>{title}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 48, // >=44pt iOS / >=48dp Android
     borderRadius: theme.radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: theme.spacing(1),
   },
   pressed: { opacity: 0.9 },
-  primary: { backgroundColor: theme.colors.blue },
-  secondary: { backgroundColor: theme.colors.black },
-  success: { backgroundColor: theme.colors.green },
-  text: {
-    color: '#fff',
-    fontWeight: '600',
-    lineHeight: 24,
-  },
+  text: { color: '#fff', fontWeight: '600', lineHeight: 24 },
 });
