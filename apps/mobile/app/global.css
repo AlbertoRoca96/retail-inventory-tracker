@@ -1,0 +1,20 @@
+/* Improve mobile text scaling compatibility */
+:root {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+html { -ms-text-size-adjust: 100%; }
+
+/* Better focus visibility on web */
+:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+/* Make pages scroll-friendly & stable */
+html, body, #root { min-height: 100%; }
+
+/* Notes:
+   - 'forced-color-adjust' isn't supported by Safari; avoid depending on it. 
+   - 'scrollbar-width' is Firefox-only; avoid it for cross-browser styling.
+*/
