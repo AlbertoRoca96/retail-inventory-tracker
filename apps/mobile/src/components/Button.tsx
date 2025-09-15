@@ -2,6 +2,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme';
+import { useUISettings } from '../lib/uiSettings';
 
 export default function Button({
   title,
@@ -13,16 +14,19 @@ export default function Button({
     secondary: styles.secondary,
     success: styles.success,
   } as const;
+  const { simplifiedMode } = useUISettings();
+  const basePad = simplifiedMode ? theme.spacing(3) : theme.spacing(2);
+  const textSize = simplifiedMode ? 18 : 16;
+
   return (
-    <TouchableOpacity style={[styles.base, styleMap[variant]]} onPress={onPress}>
-      <Text style={styles.text}>{title}</Text>
+    <TouchableOpacity style={[styles.base, { padding: basePad }, styleMap[variant]]} onPress={onPress}>
+      <Text style={[styles.text, { fontSize: textSize }]}>{title}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    padding: theme.spacing(2),
     borderRadius: theme.radius.xl,
     alignItems: 'center',
     marginVertical: theme.spacing(1)

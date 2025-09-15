@@ -3,6 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
+import { UISettingsProvider } from '../src/lib/uiSettings';
 
 function isUnauthPath(p: string | null) {
   if (!p) return false;
@@ -156,9 +157,11 @@ function Gate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <Gate>
-        <Stack screenOptions={{ headerShown: false }} />
-      </Gate>
+      <UISettingsProvider>
+        <Gate>
+          <Stack screenOptions={{ headerShown: false }} />
+        </Gate>
+      </UISettingsProvider>
     </AuthProvider>
   );
 }

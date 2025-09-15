@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Image, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Image, Platform, Switch } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../src/hooks/useAuth';
 import { supabase } from '../../src/lib/supabase';
 import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
 import { router } from 'expo-router';
+import { useUISettings } from '../../src/lib/uiSettings';
 
 const isWeb = Platform.OS === 'web';
 
@@ -16,6 +17,7 @@ export default function AccountSettings() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const { simplifiedMode, setSimplifiedMode } = useUISettings();
 
   useEffect(() => {
     const md = (user?.user_metadata || {}) as any;
@@ -76,6 +78,17 @@ export default function AccountSettings() {
             paddingHorizontal: 12, paddingVertical: 8, height: 40,
           }}
         />
+      </View>
+
+      <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
+        <Text style={{ fontWeight: '800', marginBottom: 6 }}>ACCESSIBILITY</Text>
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={{ fontWeight:'700', marginBottom: 2 }}>Simplified mode</Text>
+            <Text style={{ color:'#374151' }}>Larger text and buttons for easier reading and tapping.</Text>
+          </View>
+          <Switch value={simplifiedMode} onValueChange={setSimplifiedMode} />
+        </View>
       </View>
 
       <Pressable onPress={save} disabled={busy}
