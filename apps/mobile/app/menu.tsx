@@ -1,7 +1,8 @@
 // apps/mobile/app/menu.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
-import { Head, router } from 'expo-router';
+import { router } from 'expo-router';
+import Head from 'expo-router/head';
 import { supabase } from '../src/lib/supabase';
 import { useIsAdmin } from '../src/hooks/useIsAdmin';
 import { useUISettings } from '../src/lib/uiSettings';
