@@ -9,8 +9,7 @@ export const colors = {
   green: '#16a34a',
 };
 
-// Typography tuned for readability at larger sizes.
-// Keep scaling ON; cap extremes so layouts don't explode.
+// Readable type
 export const typography = {
   body:   { fontSize: 17, lineHeight: 24 },
   label:  { fontSize: 15, lineHeight: 20 },
@@ -18,25 +17,16 @@ export const typography = {
   button: { fontSize: 18, lineHeight: 24, fontWeight: '600' as const },
 };
 
-// Apply to <Text> / <TextInput> where you want scaling behavior consistent.
 export const textA11yProps = {
   allowFontScaling: true as const,
-  maxFontSizeMultiplier: 2.0 as const, // honors large text, but avoids catastrophic reflow
+  maxFontSizeMultiplier: 2.0 as const,
 };
 
 export const theme = {
-  // expose colors for components that expect theme.colors.*
   colors,
+  spacing: (n: number) => n * 8,
+  radius: { md: 8, lg: 10, xl: 12 },
 
-  // simple spacing/radius helpers used by some components
-  spacing: (n: number) => n * 8, // 1 -> 8px, 2 -> 16px, etc.
-  radius: {
-    md: 8,
-    lg: 10,
-    xl: 12,
-  },
-
-  // Larger, high-contrast default inputs
   input: {
     backgroundColor: colors.white,
     borderColor: '#111827',
@@ -44,15 +34,14 @@ export const theme = {
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    height: 56, // >=48–56 for fat-finger targets
+    height: 56,
   },
 
-  // Buttons with >=48dp/pt target height
   button: {
     backgroundColor: colors.blue,
     paddingVertical: 12,
     paddingHorizontal: 20,
-    minHeight: 48, // meets iOS/Android guidance
+    minHeight: 48,
     borderRadius: 12,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
