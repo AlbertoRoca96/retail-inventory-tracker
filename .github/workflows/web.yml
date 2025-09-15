@@ -36,10 +36,16 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
-      - name: Ensure web deps (Expo Web + Router)
+      - name: Ensure web deps (Expo Web + Router + AsyncStorage)
         env:
           CI: "true"
-        run: npx expo install react-dom react-native-web @expo/metro-runtime expo-router
+        run: |
+          npx expo install \
+            react-dom \
+            react-native-web \
+            @expo/metro-runtime \
+            expo-router \
+            @react-native-async-storage/async-storage
 
       - name: Verify pdf-lib is installed
         run: node -e "console.log('pdf-lib ->', require.resolve('pdf-lib'))"
@@ -52,7 +58,7 @@ jobs:
         run: npx expo export --platform web --output-dir dist
 
       - name: Patch index.html for GitHub Pages
-        working-directory: apps/mobile/dist
+        working-directory: dist
         run: |
           node -e "const fs=require('fs');let s=fs.readFileSync('index.html','utf8');s=s.replace(/(src|href)=\"\/_expo/g,'$1=\"./_expo');fs.writeFileSync('index.html',s)"
           cp index.html 404.html
@@ -95,7 +101,6 @@ jobs:
           fi
           echo "✅ Using project ref: prhhlvdoplavakbgcbes"
 
-      # Only set non-reserved secrets. (Do NOT push SUPABASE_* via CLI.)
       - name: Set function secrets (non-reserved only)
         if: ${{ env.INVITE_REDIRECT_TO != '' }}
         run: |
@@ -107,7 +112,6 @@ jobs:
       - name: Deploy invite-user function
         run: |
           set -e
-          # config.toml defines verify_jwt=false and the custom entrypoint.
           supabase functions deploy invite-user \
             --project-ref "prhhlvdoplavakbgcbes" \
             --no-verify-jwt
