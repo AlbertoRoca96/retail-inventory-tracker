@@ -1,13 +1,12 @@
-// apps/mobile/app/account/settings.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Head, router } from 'expo-router';
 import { useAuth } from '../../src/hooks/useAuth';
 import { supabase } from '../../src/lib/supabase';
 import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
-import { router } from 'expo-router';
 import { useUISettings } from '../../src/lib/uiSettings';
-import { theme, textA11yProps, typography } from '../../src/theme';
+import { theme, colors } from '../../src/theme';
 
 const isWeb = Platform.OS === 'web';
 
@@ -20,11 +19,12 @@ export default function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const {
-    simplifiedMode, setSimplifiedMode,
-    largeText, setLargeText,
-    highContrast, setHighContrast,
-  } = useUISettings();
+  // UI preferences (already wired in your project)
+  const { simplifiedMode, setSimplifiedMode, largeTextMode, setLargeTextMode, highContrast, setHighContrast } = useUISettings?.() ?? {
+    simplifiedMode: false, setSimplifiedMode: () => {},
+    largeTextMode: false, setLargeTextMode: () => {},
+    highContrast: false, setHighContrast: () => {},
+  };
 
   useEffect(() => {
     const md = (user?.user_metadata || {}) as any;
@@ -54,110 +54,85 @@ export default function AccountSettings() {
     setMsg(error ? error.message : 'Saved');
   };
 
+  const labelStyle = { fontWeight: '700', marginBottom: 6 } as const;
+
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-      <Text
-        {...textA11yProps}
-        style={{ fontSize: typography.title.fontSize, lineHeight: typography.title.lineHeight, fontWeight:'800', textAlign:'center', marginBottom:8 }}
-      >
+    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <Head><title>Account Settings</title></Head>
+
+      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
         Account Settings
       </Text>
 
-      <View style={{ alignItems:'center', gap: 8 as any }}>
+      <View style={{ alignItems: 'center', gap: 8 }}>
         <Image
           source={{ uri: avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
-          style={{ width:120, height:120, borderRadius:60, borderWidth:1, borderColor:'#111' }}
-          accessibilityIgnoresInvertColors
+          style={{ width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: '#111' }}
         />
-        <Pressable
-          onPress={pickAvatar}
-          accessibilityRole="button"
-          accessibilityLabel="Change photo"
-          style={[theme.button, { backgroundColor: theme.colors.blue }]}
-        >
-          <Text {...textA11yProps} style={theme.buttonText}>Change Photo</Text>
+        <Pressable onPress={pickAvatar}
+          style={{ backgroundColor: colors.blue, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 }}>
+          <Text style={{ color: colors.white, fontWeight: '700' }}>Change Photo</Text>
         </Pressable>
       </View>
 
-      <View style={{ marginTop: 16 }}>
-        <Text {...textA11yProps} style={{ fontWeight:'700', marginBottom:6 }}>DISPLAY NAME</Text>
+      <View>
+        <Text style={labelStyle}>DISPLAY NAME</Text>
         <TextInput
-          {...textA11yProps}
           value={displayName}
           onChangeText={setDisplayName}
           placeholder="Your name"
           autoCorrect={false}
           autoCapitalize="words"
-          accessibilityLabel="Display name"
-          style={theme.input}
+          style={{
+            backgroundColor: 'white',
+            borderWidth: 1, borderColor: '#111', borderRadius: 8,
+            paddingHorizontal: 12, paddingVertical: 8, height: 40,
+          }}
         />
       </View>
 
-      <View style={{ marginTop: 16, paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.colors.gray }}>
-        <Text {...textA11yProps} style={{ fontWeight: '800', marginBottom: 6 }}>ACCESSIBILITY</Text>
+      <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
+        <Text style={{ fontWeight: '800', marginBottom: 6 }}>ACCESSIBILITY</Text>
 
-        <SettingsRow
-          title="Simplified mode"
-          desc="Larger text and buttons for easier reading and tapping."
-          value={simplifiedMode}
-          onValueChange={setSimplifiedMode}
-        />
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={{ fontWeight:'700', marginBottom: 2 }}>Simplified mode</Text>
+            <Text style={{ color:'#374151' }}>Larger text and buttons for easier reading and tapping.</Text>
+          </View>
+          <Switch value={simplifiedMode} onValueChange={setSimplifiedMode} />
+        </View>
 
-        <SettingsRow
-          title="Large text mode"
-          desc="Bumps body & button text sizes even more. Also honors system text size."
-          value={largeText}
-          onValueChange={setLargeText}
-        />
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={{ fontWeight:'700', marginBottom: 2 }}>Large text mode</Text>
+            <Text style={{ color:'#374151' }}>Bumps body & button text even more. Also honors system text size.</Text>
+          </View>
+          <Switch value={largeTextMode} onValueChange={setLargeTextMode} />
+        </View>
 
-        <SettingsRow
-          title="High-contrast mode"
-          desc="Uses stronger color contrast for text & UI."
-          value={highContrast}
-          onValueChange={setHighContrast}
-        />
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={{ fontWeight:'700', marginBottom: 2 }}>High-contrast mode</Text>
+            <Text style={{ color:'#374151' }}>Uses stronger color contrast for text & UI.</Text>
+          </View>
+          <Switch value={highContrast} onValueChange={setHighContrast} />
+        </View>
       </View>
 
-      <Pressable
-        onPress={save}
-        disabled={busy}
-        accessibilityRole="button"
-        accessibilityLabel="Save account settings"
-        style={[
-          theme.button,
-          { backgroundColor: busy ? '#94a3b8' : theme.colors.blue }
-        ]}
-      >
-        <Text {...textA11yProps} style={theme.buttonText}>{busy ? 'Saving…' : 'Save'}</Text>
+      <Pressable onPress={save} disabled={busy}
+        style={{ backgroundColor: busy ? '#94a3b8' : colors.blue, padding: 12, borderRadius: 10, alignItems:'center' }}>
+        <Text style={{ color: colors.white, fontWeight:'700' }}>{busy ? 'Saving…' : 'Save'}</Text>
       </Pressable>
 
-      <Pressable onPress={() => router.back()} style={{ alignSelf:'center', marginTop:8 }} accessibilityRole="button" accessibilityLabel="Exit settings">
-        <Text {...textA11yProps}>Exit</Text>
+      <Pressable onPress={() => router.back()} style={{ alignSelf:'center', marginTop: 8 }}>
+        <Text>Exit</Text>
       </Pressable>
 
       {msg ? (
         <View style={{ alignItems:'center', marginTop:8 }}>
-          <Text {...textA11yProps} style={{ color: msg === 'Saved' ? '#16a34a' : '#ef4444' }}>{msg}</Text>
+          <Text style={{ color: msg === 'Saved' ? colors.green : '#ef4444' }}>{msg}</Text>
         </View>
       ) : null}
     </ScrollView>
-  );
-}
-
-function SettingsRow({
-  title, desc, value, onValueChange,
-}: {
-  title: string; desc: string; value: boolean; onValueChange: (v: boolean | ((x: boolean) => boolean)) => void;
-}) {
-  return (
-    <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical: 8 }}>
-      <View style={{ flex: 1, paddingRight: 8 }}>
-        <Text {...textA11yProps} style={typography.body}>
-          <Text style={{ fontWeight:'700' }}>{title}</Text>
-        </Text>
-        <Text {...textA11yProps} style={{ color:'#374151' }}>{desc}</Text>
-      </View>
-      <Switch value={value} onValueChange={onValueChange as any} />
-    </View>
   );
 }
