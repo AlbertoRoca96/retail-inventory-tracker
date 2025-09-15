@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+// apps/mobile/app/submissions/[id].tsx
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Image, ScrollView, Pressable } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, Head } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
-import { colors } from '../../src/theme';
+import { colors, theme, typography, textA11yProps } from '../../src/theme';
+import { useUISettings } from '../../src/lib/uiSettings';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 
 type Row = {
@@ -34,12 +36,28 @@ type Row = {
   submitter_display_name?: string | null;
 };
 
+function priColor(n: number | null | undefined) {
+  return n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
+}
+
 function PriPill({ n }: { n: number | null | undefined }) {
   const label = String(n ?? 3);
-  const bg = n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
+  const bg = priColor(n ?? 3);
   return (
-    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: bg }}>
-      <Text style={{ color: 'white', fontWeight: '800' }}>{label}</Text>
+    <View
+      accessible
+      accessibilityLabel={`Priority ${label}`}
+      style={{
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 9999,
+        backgroundColor: bg,
+        minHeight: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text {...textA11yProps} style={{ color: 'white', fontWeight: '800' }}>{label}</Text>
     </View>
   );
 }
@@ -77,9 +95,28 @@ function download(filename: string, text: string) {
 
 export default function Submission() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { fontScale, highContrast, targetMinHeight } = useUISettings();
+
   const [row, setRow] = useState<Row | null>(null);
   const [photo1Url, setPhoto1Url] = useState<string | null>(null);
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
+
+  const titleStyle = useMemo(() => ({
+    fontSize: Math.round(typography.title.fontSize * fontScale * 1.05),
+    lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.05),
+    fontWeight: '700' as const,
+  }), [fontScale]);
+
+  const labelStyle = useMemo(() => ({
+    fontWeight: '700' as const,
+    fontSize: Math.round(typography.body.fontSize * fontScale * 1.05),
+    lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.05),
+  }), [fontScale]);
+
+  const bodyStyle = useMemo(() => ({
+    fontSize: Math.round(typography.body.fontSize * fontScale * 1.06),
+    lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.06),
+  }), [fontScale]);
 
   useEffect(() => {
     if (!id) return;
@@ -148,54 +185,80 @@ export default function Submission() {
   const tagsText = Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : '');
   const submittedBy = row.submitter_display_name || row.submitter_email || row.created_by || '';
 
-  return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-      <Text style={{ fontSize: 20, fontWeight: '700' }}>Submission</Text>
+  const btnBg = highContrast ? '#1743b3' : colors.blue;
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text style={{ fontWeight: '700' }}>{row.store_location || row.store_site || ''}</Text>
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 as any }}>
+      <Head><title>Submission</title></Head>
+
+      <Text {...textA11yProps} style={titleStyle}>Submission</Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
+        <Text {...textA11yProps} style={labelStyle}>
+          {row.store_location || row.store_site || ''}
+        </Text>
         <PriPill n={row.priority_level ?? 3} />
       </View>
 
-      <Text style={{ color: '#475569' }}>Submitted by: {submittedBy}</Text>
+      <Text {...textA11yProps} style={[bodyStyle, { color: '#475569' }]}>
+        Submitted by: {submittedBy}
+      </Text>
 
-      {row.brand ? <Text>Brand: {row.brand}</Text> : null}
-      {row.store_site ? <Text>Store site: {row.store_site}</Text> : null}
-      {row.location ? <Text>Location: {row.location}</Text> : null}
-      <Text>{row.date}</Text>
+      {row.brand ? <Text {...textA11yProps} style={bodyStyle}>Brand: {row.brand}</Text> : null}
+      {row.store_site ? <Text {...textA11yProps} style={bodyStyle}>Store site: {row.store_site}</Text> : null}
+      {row.location ? <Text {...textA11yProps} style={bodyStyle}>Location: {row.location}</Text> : null}
+      <Text {...textA11yProps} style={bodyStyle}>{row.date}</Text>
 
-      <Text>Conditions: {row.conditions}</Text>
-      <Text>Price per unit: {row.price_per_unit}</Text>
-      <Text>Shelf space: {row.shelf_space}</Text>
-      <Text>On shelf: {row.on_shelf}</Text>
-      <Text>Tags: {tagsText}</Text>
-      <Text>Notes: {row.notes}</Text>
+      <Text {...textA11yProps} style={bodyStyle}>Conditions: {row.conditions}</Text>
+      <Text {...textA11yProps} style={bodyStyle}>Price per unit: {row.price_per_unit}</Text>
+      <Text {...textA11yProps} style={bodyStyle}>Shelf space: {row.shelf_space}</Text>
+      <Text {...textA11yProps} style={bodyStyle}>On shelf: {row.on_shelf}</Text>
+      <Text {...textA11yProps} style={bodyStyle}>Tags: {tagsText}</Text>
+      <Text {...textA11yProps} style={bodyStyle}>Notes: {row.notes}</Text>
 
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        {photo1Url ? <Image source={{ uri: photo1Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} /> : null}
-        {photo2Url ? <Image source={{ uri: photo2Url }} style={{ flex: 1, height: 140, borderRadius: 10 }} /> : null}
+      <View style={{ flexDirection: 'row', gap: 12 as any }}>
+        {photo1Url ? (
+          <Image
+            source={{ uri: photo1Url }}
+            accessibilityLabel="Photo 1"
+            style={{ flex: 1, height: 160, borderRadius: 12, borderWidth: 1, borderColor: '#111' }}
+          />
+        ) : null}
+        {photo2Url ? (
+          <Image
+            source={{ uri: photo2Url }}
+            accessibilityLabel="Photo 2"
+            style={{ flex: 1, height: 160, borderRadius: 12, borderWidth: 1, borderColor: '#111' }}
+          />
+        ) : null}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 12 as any, marginTop: 4 }}>
         <Pressable
           onPress={downloadExcelWithPhotos}
-          style={{ flex: 1, backgroundColor: colors.blue, padding: 12, borderRadius: 10, alignItems: 'center' }}
+          accessibilityRole="button"
+          accessibilityLabel="Download Excel with photos"
+          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight }]}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Download Excel (with photos)</Text>
+          <Text {...textA11yProps} style={theme.buttonText}>Download Excel (with photos)</Text>
         </Pressable>
         <Pressable
           onPress={share}
-          style={{ flex: 1, backgroundColor: colors.blue, padding: 12, borderRadius: 10, alignItems: 'center' }}
+          accessibilityRole="button"
+          accessibilityLabel="Share CSV"
+          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight }]}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Share CSV</Text>
+          <Text {...textA11yProps} style={theme.buttonText}>Share CSV</Text>
         </Pressable>
       </View>
 
       <Pressable
         onPress={() => (typeof history !== 'undefined' ? history.back() : router.back())}
-        style={{ alignSelf: 'flex-end', marginTop: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel="Exit"
+        style={{ alignSelf: 'flex-end', marginTop: 10, minHeight: targetMinHeight, justifyContent: 'center' }}
       >
-        <Text>Exit</Text>
+        <Text {...textA11yProps} style={bodyStyle}>Exit</Text>
       </Pressable>
     </ScrollView>
   );
