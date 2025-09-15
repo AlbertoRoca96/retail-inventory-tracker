@@ -1,47 +1,75 @@
 // apps/mobile/src/components/Button.tsx
 import React from 'react';
 import { Pressable, Text, StyleSheet } from 'react-native';
-import { theme } from '../theme';
+import { theme, textA11yProps } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
+
+type Variant = 'primary' | 'secondary' | 'success';
 
 export default function Button({
   title,
   onPress,
-  variant = 'primary'
-}: { title: string; onPress: () => void; variant?: 'primary' | 'secondary' | 'success' }) {
+  variant = 'primary',
+  accessibilityLabel,
+  disabled = false,
+}: {
+  title: string;
+  onPress: () => void;
+  variant?: Variant;
+  accessibilityLabel?: string;
+  disabled?: boolean;
+}) {
+  const { simplifiedMode } = useUISettings();
+  const padV = simplifiedMode ? theme.spacing(2) : theme.spacing(1.5);
+  const padH = simplifiedMode ? theme.spacing(3) : theme.spacing(2.5);
+  const textSize = simplifiedMode ? 18 : 17;
+
   const styleMap = {
     primary: styles.primary,
     secondary: styles.secondary,
     success: styles.success,
   } as const;
-  const { simplifiedMode } = useUISettings();
-  const basePad = simplifiedMode ? theme.spacing(3) : theme.spacing(2);
-  const textSize = simplifiedMode ? 18 : 16;
 
   return (
     <Pressable
-      style={({ hovered }) => [
-        styles.base,
-        { padding: basePad },
-        styleMap[variant],
-        hovered ? styles.hovered : null,
-      ]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || title}
+      hitSlop={10}
+      android_ripple={{ borderless: false }}
       onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.base,
+        { paddingVertical: padV, paddingHorizontal: padH, opacity: disabled ? 0.5 : 1 },
+        styleMap[variant],
+        pressed && styles.pressed,
+      ]}
     >
-      <Text style={[styles.text, { fontSize: textSize }]}>{title}</Text>
+      <Text
+        {...textA11yProps}
+        style={[styles.text, { fontSize: textSize }]}
+      >
+        {title}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
+    minHeight: 48, // >=44pt iOS / >=48dp Android
     borderRadius: theme.radius.xl,
     alignItems: 'center',
-    marginVertical: theme.spacing(1)
+    justifyContent: 'center',
+    marginVertical: theme.spacing(1),
   },
-  hovered: { opacity: 0.9 },
+  pressed: { opacity: 0.9 },
   primary: { backgroundColor: theme.colors.blue },
   secondary: { backgroundColor: theme.colors.black },
   success: { backgroundColor: theme.colors.green },
-  text: { color: '#fff', fontWeight: '600' }
+  text: {
+    color: '#fff',
+    fontWeight: '600',
+    lineHeight: 24,
+  },
 });
