@@ -14,6 +14,7 @@ import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
+import { loadUserDefaults, saveUserDefaults } from '../../src/lib/preferences';
 
 type ValidationErrors = Partial<{
   storeSite: string;
@@ -432,6 +433,10 @@ export default function NewFormScreen() {
 
   const [pdfReady, setPdfReady] = useState<PdfPayload | null>(null);
 
+  // After-submit: prompt to remember defaults
+  const [showRememberPrompt, setShowRememberPrompt] = useState(false);
+  const [lastSubmittedVals, setLastSubmittedVals] = useState<FormValues | null>(null);
+
   const camInputRef = useRef<HTMLInputElement | null>(null);
   const libInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -496,8 +501,55 @@ export default function NewFormScreen() {
       setPhotos(draft.photos ?? []);
       setFormKey((k) => k + 1);
       setBanner({ kind: 'success', text: 'Draft loaded.' });
+    } else {
+      // No draft: try prefill from saved user defaults (per-team)
+      (async () => {
+        try {
+          const defaults = await loadUserDefaults(uid, selectedTeamId || teamId);
+          if (defaults && (defaults.storeSite || defaults.storeLocation || defaults.brand)) {
+            const base = getDefaultValues();
+            const merged: FormValues = {
+              ...base,
+              storeSite: defaults.storeSite ?? base.storeSite,
+              storeLocation: defaults.storeLocation ?? base.storeLocation,
+              brand: defaults.brand ?? base.brand,
+            } as FormValues;
+            formRef.current = merged;
+            setNVals(merged);
+            setFormKey((k) => k + 1);
+            setBanner({ kind: 'info', text: 'Prefilled from your saved defaults.' });
+          }
+        } catch {}
+      })();
     }
   }, [hydrated]);
+
+  // Secondary prefill: in case team selection arrives after mount and no draft exists
+  useEffect(() => {
+    if (!hydrated) return;
+    const cur = getValues();
+    // Only prefill if fields are blank-ish (avoid clobbering user's in-progress input)
+    const hasAny = !!(cur.storeSite?.trim() || cur.storeLocation?.trim() || cur.brand?.trim());
+    if (hasAny) return;
+    (async () => {
+      try {
+        const defaults = await loadUserDefaults(uid, selectedTeamId || teamId);
+        if (defaults && (defaults.storeSite || defaults.storeLocation || defaults.brand)) {
+          const base = getDefaultValues();
+          const merged: FormValues = {
+            ...cur,
+            storeSite: defaults.storeSite ?? cur.storeSite ?? base.storeSite,
+            storeLocation: defaults.storeLocation ?? cur.storeLocation ?? base.storeLocation,
+            brand: defaults.brand ?? cur.brand ?? base.brand,
+          } as FormValues;
+          formRef.current = merged;
+          setNVals(merged);
+          setFormKey((k) => k + 1);
+          setBanner({ kind: 'info', text: 'Prefilled from your saved defaults.' });
+        }
+      } catch {}
+    })();
+  }, [uid, teamId, selectedTeamId, hydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -820,8 +872,12 @@ export default function NewFormScreen() {
         return;
       }
 
+      // Stash submitted values for optional defaults prompt
+      setLastSubmittedVals(v);
+
       resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
+      setShowRememberPrompt(true);
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message ?? 'Submit failed' });
     } finally {
@@ -860,6 +916,27 @@ export default function NewFormScreen() {
     </Pressable>
   );
 
+  const rememberNow = async () => {
+    try {
+      const v = lastSubmittedVals || getValues();
+      await saveUserDefaults(uid, selectedTeamId || teamId, {
+        storeSite: v.storeSite?.trim() || undefined,
+        storeLocation: v.storeLocation?.trim() || undefined,
+        brand: v.brand?.trim() || undefined,
+      });
+      setBanner({ kind: 'success', text: 'Defaults saved for this team.' });
+    } catch (e: any) {
+      setBanner({ kind: 'error', text: e?.message || 'Failed to save defaults' });
+    } finally {
+      setShowRememberPrompt(false);
+      setLastSubmittedVals(null);
+    }
+  };
+  const rememberLater = () => {
+    setShowRememberPrompt(false);
+    setLastSubmittedVals(null);
+  };
+
   const currentPri = (isWeb ? formRef.current.priorityLevel : nVals.priorityLevel) || '3';
 
   return (
@@ -888,6 +965,25 @@ export default function NewFormScreen() {
           }}
         >
           <Text style={{ color: 'white', textAlign: 'center' }}>{banner.text}</Text>
+        </View>
+      ) : null}
+
+      {showRememberPrompt ? (
+        <View style={{ backgroundColor: '#fefce8', borderWidth: 1, borderColor: '#f59e0b', padding: 12, borderRadius: 8, marginBottom: 12 }}>
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 8 }}>
+            Save these as your defaults for this store/team?
+          </Text>
+          <Text style={{ color: '#92400e', marginBottom: 12, fontSize: 12 }}>
+            We can remember Store Site, Store Location, and Brand to prefill next time.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Pressable onPress={rememberNow} style={{ flex: 1, backgroundColor: '#16a34a', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
+              <Text style={{ color: 'white', fontWeight: '700' }}>Save defaults</Text>
+            </Pressable>
+            <Pressable onPress={rememberLater} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
+              <Text style={{ fontWeight: '700' }}>Not now</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
