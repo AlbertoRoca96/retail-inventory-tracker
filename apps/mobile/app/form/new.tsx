@@ -8,7 +8,8 @@ import React, {
 } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { router, Head } from 'expo-router';
+import { router } from 'expo-router';
+import Head from 'expo-router/head';
 
 import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
