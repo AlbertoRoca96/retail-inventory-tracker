@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Stack, Redirect, usePathname } from 'expo-router';
+import { Stack, Redirect, usePathname, Head } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
 import { UISettingsProvider } from '../src/lib/uiSettings';
@@ -158,6 +158,25 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <UISettingsProvider>
+        {/* Global document metadata + CSS for static-exported web pages */}
+        <Head>
+          <meta charSet="utf-8" />
+          <title>Retail Inventory Tracker</title>
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, viewport-fit=cover"
+          />
+          <meta name="color-scheme" content="light dark" />
+          {/* Inject a tiny global CSS patch so audits stop flagging text-size-adjust.
+             Keeping it here avoids adding extra files in your repo UI flow. */}
+          <style>{`
+            :root { text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+            html { -ms-text-size-adjust: 100%; }
+            html, body, #root { min-height: 100%; }
+            :focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+          `}</style>
+        </Head>
+
         <Gate>
           <Stack screenOptions={{ headerShown: false }} />
         </Gate>
