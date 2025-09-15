@@ -919,12 +919,28 @@ export default function NewFormScreen() {
   const rememberNow = async () => {
     try {
       const v = lastSubmittedVals || getValues();
-      await saveUserDefaults(uid, selectedTeamId || teamId, {
+      const prefs = {
         storeSite: v.storeSite?.trim() || undefined,
         storeLocation: v.storeLocation?.trim() || undefined,
         brand: v.brand?.trim() || undefined,
-      });
-      setBanner({ kind: 'success', text: 'Defaults saved for this team.' });
+      } as const;
+
+      await saveUserDefaults(uid, selectedTeamId || teamId, prefs);
+
+      // Immediately apply prefs to current (fresh) form so user sees them
+      const cur = getValues();
+      const merged: FormValues = {
+        ...cur,
+        storeSite: prefs.storeSite ?? cur.storeSite,
+        storeLocation: prefs.storeLocation ?? cur.storeLocation,
+        brand: prefs.brand ?? cur.brand,
+      } as FormValues;
+      formRef.current = merged;
+      setNVals(merged);
+      setFormKey((k) => k + 1);
+      scheduleAutosave();
+
+      setBanner({ kind: 'success', text: 'Defaults saved and applied.' });
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message || 'Failed to save defaults' });
     } finally {
