@@ -21,25 +21,19 @@ export default function Input({
   secureTextEntry?: boolean;
   multiline?: boolean;
 }) {
-  const { simplifiedMode } = useUISettings();
-  const labelSize = simplifiedMode ? 16 : 15;
-  const inputPadV = simplifiedMode ? theme.spacing(1.75) : theme.spacing(1.5);
-  const inputPadH = simplifiedMode ? theme.spacing(2) : theme.spacing(2);
-  const minHeight = multiline ? 80 : 56;
+  const { simplifiedMode, highContrast, fontScale, targetMinHeight } = useUISettings();
+  const labelSize = Math.round(15 * (simplifiedMode ? 1.05 : 1) * fontScale);
+  const inputPadV = theme.spacing(simplifiedMode ? 1.75 : 1.5);
+  const inputPadH = theme.spacing(2);
 
   return (
     <View style={styles.wrap}>
-      <Text
-        {...textA11yProps}
-        style={[styles.label, { fontSize: labelSize }]}
-      >
-        {label}
-      </Text>
+      <Text {...textA11yProps} style={[styles.label, { fontSize: labelSize }]}>{label}</Text>
       <TextInput
         {...textA11yProps}
         accessibilityLabel={label}
         placeholder={placeholder}
-        placeholderTextColor="#6b7280"
+        placeholderTextColor={highContrast ? '#4b5563' : '#6b7280'}
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
         multiline={multiline}
@@ -50,10 +44,12 @@ export default function Input({
           {
             paddingVertical: inputPadV,
             paddingHorizontal: inputPadH,
-            minHeight,
+            minHeight: multiline ? Math.max(80, targetMinHeight) : targetMinHeight,
             textAlignVertical: multiline ? 'top' : 'center',
-            fontSize: typography.body.fontSize,
-            lineHeight: typography.body.lineHeight,
+            fontSize: Math.round(typography.body.fontSize * fontScale),
+            lineHeight: Math.round(typography.body.lineHeight * fontScale),
+            borderColor: highContrast ? '#111111' : theme.colors.black,
+            backgroundColor: theme.colors.white,
           },
         ]}
       />
@@ -65,9 +61,7 @@ const styles = StyleSheet.create({
   wrap: { marginVertical: theme.spacing(1) },
   label: { marginBottom: 6, color: theme.colors.black, fontWeight: '600' },
   input: {
-    backgroundColor: theme.colors.white,
     borderWidth: 1,
-    borderColor: theme.colors.black,
     borderRadius: theme.radius.xl,
   },
 });
