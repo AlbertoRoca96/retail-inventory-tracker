@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Puppy UI 🐶</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>Puppy UI 🐶</h1>
+        <div class="config">
+          <label>
+            Provider
+            <select id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </label>
+          <label>
+            Model
+            <input id="model" list="models" value="gpt-4o-mini" />
+            <datalist id="models"></datalist>
+          </label>
+          <button id="fetchModels" type="button">Fetch models</button>
+          <label>
+            Max output tokens
+            <input id="maxTokens" value="max" />
+          </label>
+        </div>
+      </header>
+      <main id="chat"></main>
+      <footer>
+        <form id="form">
+          <textarea id="input" placeholder="Ask Puppy anything…"></textarea>
+          <button>Send</button>
+        </form>
+      </footer>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

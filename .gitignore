@@ -1,0 +1,26 @@
+node_modules
+.env
+.DS_Store
+npm-debug.log*
+yarn-error.log*
+# Added by Alberto (code-puppy): broader ignores
+.env.local
+.env.*.local
+logs
+*.log
+*.log.*
+pids
+*.pid
+*.seed
+*.pid.lock
+Thumbs.db
+coverage/
+dist/
+build/
+.tmp/
+.temp/
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tgz
