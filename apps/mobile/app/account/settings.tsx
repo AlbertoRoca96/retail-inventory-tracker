@@ -1,17 +1,15 @@
 // apps/mobile/app/account/settings.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Image, Platform, Switch } from 'react-native';
+import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../src/hooks/useAuth';
 import { supabase } from '../../src/lib/supabase';
 import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
 import { router } from 'expo-router';
 import { useUISettings } from '../../src/lib/uiSettings';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme, textA11yProps, typography } from '../../src/theme';
 
 const isWeb = Platform.OS === 'web';
-const DISPLAY_PREFS_KEY = 'display_prefs';
 
 export default function AccountSettings() {
   const { session } = useAuth();
@@ -22,49 +20,17 @@ export default function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Existing simplified mode (from your UI context)
-  const { simplifiedMode, setSimplifiedMode } = useUISettings();
-
-  // New: app-local display prefs
-  const [largeText, setLargeText] = useState(false);
-  const [highContrast, setHighContrast] = useState(false);
+  const {
+    simplifiedMode, setSimplifiedMode,
+    largeText, setLargeText,
+    highContrast, setHighContrast,
+  } = useUISettings();
 
   useEffect(() => {
     const md = (user?.user_metadata || {}) as any;
     setDisplayName(md.display_name || user?.email?.split('@')[0] || '');
     setAvatarUrl(md.avatar_url || null);
   }, [user?.id]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const saved = await AsyncStorage.getItem(DISPLAY_PREFS_KEY);
-        if (saved) {
-          const j = JSON.parse(saved);
-          setLargeText(!!j.largeText);
-          setHighContrast(!!j.highContrast);
-        }
-      } catch {}
-    })();
-  }, []);
-
-  const saveDisplayPrefs = async (next: { largeText: boolean; highContrast: boolean }) => {
-    try {
-      await AsyncStorage.setItem(DISPLAY_PREFS_KEY, JSON.stringify(next));
-    } catch {}
-  };
-
-  const toggleLT = () => {
-    const next = { largeText: !largeText, highContrast };
-    setLargeText(next.largeText);
-    saveDisplayPrefs(next);
-  };
-
-  const toggleHC = () => {
-    const next = { largeText, highContrast: !highContrast };
-    setHighContrast(next.highContrast);
-    saveDisplayPrefs(next);
-  };
 
   const pickAvatar = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -89,7 +55,7 @@ export default function AccountSettings() {
   };
 
   return (
-    <View style={{ flex:1, padding:16, gap:12 as any }}>
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
       <Text
         {...textA11yProps}
         style={{ fontSize: typography.title.fontSize, lineHeight: typography.title.lineHeight, fontWeight:'800', textAlign:'center', marginBottom:8 }}
@@ -97,7 +63,7 @@ export default function AccountSettings() {
         Account Settings
       </Text>
 
-      <View style={{ alignItems:'center', gap:8 as any }}>
+      <View style={{ alignItems:'center', gap: 8 as any }}>
         <Image
           source={{ uri: avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
           style={{ width:120, height:120, borderRadius:60, borderWidth:1, borderColor:'#111' }}
@@ -113,7 +79,7 @@ export default function AccountSettings() {
         </Pressable>
       </View>
 
-      <View>
+      <View style={{ marginTop: 16 }}>
         <Text {...textA11yProps} style={{ fontWeight:'700', marginBottom:6 }}>DISPLAY NAME</Text>
         <TextInput
           {...textA11yProps}
@@ -127,28 +93,28 @@ export default function AccountSettings() {
         />
       </View>
 
-      <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.colors.gray }}>
+      <View style={{ marginTop: 16, paddingVertical: 8, borderTopWidth: 1, borderTopColor: theme.colors.gray }}>
         <Text {...textA11yProps} style={{ fontWeight: '800', marginBottom: 6 }}>ACCESSIBILITY</Text>
 
-        <Row
+        <SettingsRow
           title="Simplified mode"
           desc="Larger text and buttons for easier reading and tapping."
           value={simplifiedMode}
           onValueChange={setSimplifiedMode}
         />
 
-        <Row
+        <SettingsRow
           title="Large text mode"
           desc="Bumps body & button text sizes even more. Also honors system text size."
           value={largeText}
-          onValueChange={toggleLT}
+          onValueChange={setLargeText}
         />
 
-        <Row
+        <SettingsRow
           title="High-contrast mode"
           desc="Uses stronger color contrast for text & UI."
           value={highContrast}
-          onValueChange={toggleHC}
+          onValueChange={setHighContrast}
         />
       </View>
 
@@ -174,11 +140,11 @@ export default function AccountSettings() {
           <Text {...textA11yProps} style={{ color: msg === 'Saved' ? '#16a34a' : '#ef4444' }}>{msg}</Text>
         </View>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
-function Row({
+function SettingsRow({
   title, desc, value, onValueChange,
 }: {
   title: string; desc: string; value: boolean; onValueChange: (v: boolean | ((x: boolean) => boolean)) => void;
