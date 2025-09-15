@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView } from 'react-native';
-import { router, Head } from 'expo-router';
+import { router } from 'expo-router';
+import Head from 'expo-router/head';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../src/hooks/useAuth';
 import { supabase } from '../../src/lib/supabase';
@@ -19,7 +20,7 @@ export default function AccountSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // UI accessibility settings (all optional; fallbacks keep this file safe)
+  // UI accessibility settings (safe defaults if provider not mounted for some reason)
   const {
     simplifiedMode = false,
     setSimplifiedMode = () => {},
