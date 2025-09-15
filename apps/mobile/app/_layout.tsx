@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Stack, Redirect, usePathname, Head } from 'expo-router';
+import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
 import { UISettingsProvider } from '../src/lib/uiSettings';
 
+/** ---------- Helpers to detect sections ---------- */
 function isUnauthPath(p: string | null) {
   if (!p) return false;
   return p.endsWith('/login') || p.endsWith('/auth/callback');
@@ -22,6 +23,45 @@ function isDisplayNamePath(p: string | null) {
   return p.endsWith('/account/display-name');
 }
 
+/** ---------- Error boundary so the app never renders blank ---------- */
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; msg?: string }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, msg: undefined };
+  }
+  static getDerivedStateFromError(err: any) {
+    return { hasError: true, msg: String(err?.message || err) };
+  }
+  componentDidCatch(error: any, info: any) {
+    // Helpful in case you pop DevTools open
+    // eslint-disable-next-line no-console
+    console.error('App render error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, padding: 16, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Something went wrong</Text>
+          <Text style={{ color: '#475569', textAlign: 'center' }}>
+            Try reloading the page. If it persists, open the browser console and share the top red error line.
+          </Text>
+          {this.state.msg ? (
+            <Text style={{ marginTop: 12, color: '#ef4444', textAlign: 'center' }}>{this.state.msg}</Text>
+          ) : null}
+          <Pressable
+            onPress={() => (typeof location !== 'undefined' ? location.reload() : undefined)}
+            style={{ marginTop: 16, backgroundColor: '#2563eb', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Reload</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return this.props.children as any;
+  }
+}
+
+/** ---------- Gate ---------- */
 function Gate({ children }: { children: React.ReactNode }) {
   const { session, ready } = useAuth();
   const pathname = usePathname();
@@ -154,32 +194,17 @@ function Gate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** ---------- Root ---------- */
 export default function RootLayout() {
   return (
     <AuthProvider>
       <UISettingsProvider>
-        {/* Global document metadata + CSS for static-exported web pages */}
-        <Head>
-          <meta charSet="utf-8" />
-          <title>Retail Inventory Tracker</title>
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1, viewport-fit=cover"
-          />
-          <meta name="color-scheme" content="light dark" />
-          {/* Inject a tiny global CSS patch so audits stop flagging text-size-adjust.
-             Keeping it here avoids adding extra files in your repo UI flow. */}
-          <style>{`
-            :root { text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
-            html { -ms-text-size-adjust: 100%; }
-            html, body, #root { min-height: 100%; }
-            :focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
-          `}</style>
-        </Head>
-
-        <Gate>
-          <Stack screenOptions={{ headerShown: false }} />
-        </Gate>
+        <ErrorBoundary>
+          {/* Keep headerless stack; per-route <Head> is added inside each screen as needed */}
+          <Gate>
+            <Stack screenOptions={{ headerShown: false }} />
+          </Gate>
+        </ErrorBoundary>
       </UISettingsProvider>
     </AuthProvider>
   );
