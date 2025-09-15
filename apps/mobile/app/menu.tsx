@@ -1,13 +1,15 @@
 // apps/mobile/app/menu.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router';
-import { colors } from '../src/theme';
+import { Head, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
 import { useIsAdmin } from '../src/hooks/useIsAdmin';
+import { useUISettings } from '../src/lib/uiSettings';
+import { colors, theme, typography, textA11yProps } from '../src/theme';
 
 export default function Menu() {
   const { isAdmin, loading } = useIsAdmin();
+  const { fontScale, highContrast, targetMinHeight, simplifiedMode, largeText } = useUISettings();
 
   // Lightweight check so we can surface a direct "Set Display Name" shortcut if needed
   const [needsDisplayName, setNeedsDisplayName] = useState(false);
@@ -21,62 +23,94 @@ export default function Menu() {
     return () => { cancelled = true; };
   }, []);
 
+  // Typography scaled by user preference
+  const titleStyle = useMemo(() => ({
+    fontSize: Math.round(typography.title.fontSize * fontScale * 1.05),
+    lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.05),
+    fontWeight: '700' as const,
+    marginBottom: 12,
+  }), [fontScale]);
+
+  const bodyStyle = useMemo(() => ({
+    fontSize: Math.round(typography.body.fontSize * fontScale * (largeText || simplifiedMode ? 1.08 : 1.02)),
+    lineHeight: Math.round(typography.body.lineHeight * fontScale * (largeText || simplifiedMode ? 1.08 : 1.02)),
+    fontWeight: '700' as const,
+  }), [fontScale, largeText, simplifiedMode]);
+
+  const basePadV = simplifiedMode ? theme.spacing(3) : theme.spacing(2);
+
   const Btn = ({
     label,
     onPress,
     bg = colors.blue,
-    fg = 'white',
+    fg = colors.white,
     mt = 6,
+    a11y,
   }: {
     label: string;
     onPress: () => void;
     bg?: string;
     fg?: string;
     mt?: number;
-  }) => (
-    <Pressable
-      onPress={onPress}
-      style={{
-        width: 260,
-        backgroundColor: bg,
-        padding: 14,
-        borderRadius: 12,
-        alignItems: 'center',
-        marginTop: mt,
-      }}
-    >
-      <Text style={{ color: fg, fontWeight: '700' }}>{label}</Text>
-    </Pressable>
-  );
+    a11y?: string;
+  }) => {
+    // Slightly darker button in high-contrast
+    const effectiveBg =
+      highContrast && bg === colors.blue ? '#1743b3'
+      : highContrast && bg === colors.red ? '#b11414'
+      : bg;
+
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={a11y ?? label}
+        hitSlop={10}
+        style={({ pressed }) => [
+          {
+            width: 280,
+            backgroundColor: effectiveBg,
+            paddingVertical: basePadV,
+            paddingHorizontal: 16,
+            borderRadius: 12,
+            alignItems: 'center',
+            marginTop: mt,
+            minHeight: targetMinHeight, // ≥48dp target (Material guidance)
+            borderWidth: highContrast ? 1 : 0,
+            borderColor: highContrast ? '#000' : 'transparent',
+          },
+          pressed && { opacity: 0.97 },
+        ]}
+      >
+        <Text {...textA11yProps} style={[bodyStyle, { color: fg }]}>{label}</Text>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 12 }}>Menu</Text>
+      <Head><title>Menu</title></Head>
 
-      <Btn label="Create New Form" onPress={() => router.push('/form/new')} />
-      <Btn label="View Submissions" onPress={() => router.push('/submissions')} />
+      <Text {...textA11yProps} style={titleStyle}>Menu</Text>
 
-      {/* Account is now blue like the others */}
-      <Btn
-        label="Account"
-        onPress={() => router.push('/account/settings')}
-      />
+      <Btn label="Create New Form" onPress={() => router.push('/form/new')} a11y="Create new form" />
+      <Btn label="View Submissions" onPress={() => router.push('/submissions')} a11y="View submissions" />
 
-      {/* If user hasn't set a display name yet, surface a shortcut to the capture page (also blue) */}
+      {/* Account */}
+      <Btn label="Account" onPress={() => router.push('/account/settings')} a11y="Account settings" />
+
+      {/* If user hasn't set a display name yet, surface a shortcut */}
       {needsDisplayName ? (
-        <Btn
-          label="Set Display Name"
-          onPress={() => router.push('/account/display-name')}
-        />
+        <Btn label="Set Display Name" onPress={() => router.push('/account/display-name')} a11y="Set display name" />
       ) : null}
 
       {/* Admin-only actions */}
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 10 }} />
+        <ActivityIndicator accessibilityLabel="Loading admin status" style={{ marginTop: 10 }} />
       ) : isAdmin ? (
         <>
-          <Btn label="Admin" onPress={() => router.push('/admin')} />
-          <Btn label="Metrics" onPress={() => router.push('/admin/metrics')} />
+          <Btn label="Admin" onPress={() => router.push('/admin')} a11y="Admin section" />
+          <Btn label="Metrics" onPress={() => router.push('/admin/metrics')} a11y="Metrics dashboard" />
         </>
       ) : null}
 
@@ -90,6 +124,7 @@ export default function Menu() {
         bg={colors.red}
         fg={colors.white}
         mt={14}
+        a11y="Log out"
       />
     </View>
   );
