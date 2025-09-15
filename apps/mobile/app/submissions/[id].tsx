@@ -1,7 +1,7 @@
-// apps/mobile/app/submissions/[id].tsx
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Image, ScrollView, Pressable } from 'react-native';
-import { router, useLocalSearchParams, Head } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
 import { colors, theme, typography, textA11yProps } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
