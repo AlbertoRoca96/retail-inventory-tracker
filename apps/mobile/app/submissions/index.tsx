@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { View, Text, Pressable, FlatList, ActivityIndicator } from 'react-native';
-import { Head, router } from 'expo-router';
+import { router } from 'expo-router';
+import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
 import { colors, textA11yProps, typography, theme } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
@@ -99,7 +100,7 @@ export default function Submissions() {
             borderColor: highContrast ? '#000000' : '#111827',
             borderRadius: 12,
             padding: 16,
-            minHeight: targetMinHeight,
+            minHeight: targetMinHeight, // ≥ ~48–56dp per guidelines
           },
           pressed && { opacity: 0.95 },
         ]}
