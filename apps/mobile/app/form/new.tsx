@@ -8,13 +8,15 @@ import React, {
 } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Image, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, Head } from 'expo-router';
 
 import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 import { loadUserDefaults, saveUserDefaults } from '../../src/lib/preferences';
+// ✨ NEW: pull UI accessibility toggles
+import { useUISettings } from '../../src/lib/uiSettings';
 
 type ValidationErrors = Partial<{
   storeSite: string;
@@ -194,9 +196,21 @@ const WebField = memo(function WebField({
   typingStart,
   typingEnd,
 }: WebFieldProps) {
+  // ✨ NEW: accessibility-aware sizing/colors
+  const {
+    simplifiedMode = false,
+    largeText = false,
+    highContrast = false,
+    fontScale = 1,
+    targetMinHeight = 48,
+  } = useUISettings() || ({} as any);
+  const labelFontSize = Math.round(14 * (simplifiedMode || largeText ? 1.15 : 1) * fontScale);
+  const bodyFontSize = Math.round(14 * (largeText ? 1.1 : 1) * fontScale);
+  const inputHeight = (simplifiedMode || largeText) ? 52 : 40;
+
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+      <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>{label}</Text>
       {multiline ? (
         <textarea
           key={`${name}-${formKey}`}
@@ -216,11 +230,12 @@ const WebField = memo(function WebField({
             width: '100%',
             backgroundColor: 'white',
             borderWidth: 1,
-            borderColor: '#111',
+            borderColor: highContrast ? '#000' : '#111',
             borderStyle: 'solid',
             borderRadius: 8,
             padding: 10,
             minHeight: 80,
+            fontSize: bodyFontSize,
           } as any}
         />
       ) : (
@@ -243,11 +258,12 @@ const WebField = memo(function WebField({
             width: '100%',
             backgroundColor: 'white',
             borderWidth: 1,
-            borderColor: '#111',
+            borderColor: highContrast ? '#000' : '#111',
             borderStyle: 'solid',
             borderRadius: 8,
             padding: 8,
-            height: 40,
+            height: inputHeight,
+            fontSize: bodyFontSize,
           } as any}
         />
       )}
@@ -286,9 +302,19 @@ const NativeField = memo(function NativeField({
   typingStart,
   typingEnd,
 }: NativeFieldProps) {
+  // ✨ NEW: accessibility-aware sizing/colors
+  const {
+    simplifiedMode = false,
+    largeText = false,
+    highContrast = false,
+    fontScale = 1,
+  } = useUISettings() || ({} as any);
+  const labelFontSize = Math.round(14 * (simplifiedMode || largeText ? 1.15 : 1) * fontScale);
+  const bodyFontSize = Math.round(14 * (largeText ? 1.1 : 1) * fontScale);
+
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6 }}>{label}</Text>
+      <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>{label}</Text>
       <TextInput
         value={value}
         onFocus={typingStart}
@@ -307,12 +333,13 @@ const NativeField = memo(function NativeField({
         style={{
           backgroundColor: 'white',
           borderWidth: 1,
-          borderColor: '#111',
+          borderColor: highContrast ? '#000' : '#111',
           borderRadius: 8,
           paddingHorizontal: 12,
           paddingVertical: multiline ? 10 : 8,
           minHeight: multiline ? 80 : 40,
           textAlignVertical: multiline ? 'top' : 'center',
+          fontSize: bodyFontSize,
         }}
       />
       {touched[prop] && error ? (
@@ -395,6 +422,20 @@ const Field = memo(function Field({
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
+
+  // ✨ NEW: accessibility toggles & derived sizes
+  const {
+    simplifiedMode = false,
+    largeText = false,
+    highContrast = false,
+    fontScale = 1,
+    targetMinHeight = 48,
+  } = useUISettings() || ({} as any);
+  const statusFontSize = Math.round(12 * (largeText ? 1.1 : 1) * fontScale);
+  const labelFontSize = Math.round(14 * (simplifiedMode || largeText ? 1.15 : 1) * fontScale);
+  const bodyFontSize = Math.round(14 * (largeText ? 1.1 : 1) * fontScale);
+  const buttonPadV = simplifiedMode ? 14 : 12;
+  const btnBlue = highContrast ? '#1743b3' : '#2563eb';
 
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
@@ -908,11 +949,12 @@ export default function NewFormScreen() {
       onPress={onPress}
       style={{
         paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1,
-        borderColor: active ? '#111' : '#d1d5db',
+        borderColor: active ? (highContrast ? '#000' : '#111') : '#d1d5db',
         backgroundColor: active ? color : '#f9fafb',
+        minHeight: targetMinHeight, justifyContent: 'center',
       }}
     >
-      <Text style={{ fontWeight: '700', color: active ? '#fff' : '#111' }}>{label}</Text>
+      <Text style={{ fontWeight: '700', color: active ? '#fff' : '#111', fontSize: bodyFontSize }}>{label}</Text>
     </Pressable>
   );
 
@@ -960,12 +1002,15 @@ export default function NewFormScreen() {
       contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       keyboardShouldPersistTaps="always"
     >
-      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
+      {/* ✨ NEW: proper document <title> for web */}
+      <Head><title>Create New Form</title></Head>
+
+      <Text style={{ fontSize: Math.round(20 * fontScale), fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
         Create New Form
       </Text>
 
       <View style={{ marginBottom: 8 }}>
-        <Text style={{ textAlign: 'center', fontSize: 12, color: isOnline ? '#16a34a' : '#b45309' }}>
+        <Text style={{ textAlign: 'center', fontSize: statusFontSize, color: isOnline ? '#16a34a' : '#b45309' }}>
           {isOnline ? 'Online' : 'Offline'} • Queue: {queuedCount} • Last saved draft: {lastSavedAt ?? '—'}
         </Text>
       </View>
@@ -980,24 +1025,24 @@ export default function NewFormScreen() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: 'white', textAlign: 'center' }}>{banner.text}</Text>
+          <Text style={{ color: 'white', textAlign: 'center', fontSize: bodyFontSize }}>{banner.text}</Text>
         </View>
       ) : null}
 
       {showRememberPrompt ? (
         <View style={{ backgroundColor: '#fefce8', borderWidth: 1, borderColor: '#f59e0b', padding: 12, borderRadius: 8, marginBottom: 12 }}>
-          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 8 }}>
+          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 8, fontSize: labelFontSize }}>
             Save these as your defaults for this store/team?
           </Text>
-          <Text style={{ color: '#92400e', marginBottom: 12, fontSize: 12 }}>
+          <Text style={{ color: '#92400e', marginBottom: 12, fontSize: statusFontSize }}>
             We can remember Store Site, Store Location, and Brand to prefill next time.
           </Text>
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Pressable onPress={rememberNow} style={{ flex: 1, backgroundColor: '#16a34a', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
-              <Text style={{ color: 'white', fontWeight: '700' }}>Save defaults</Text>
+            <Pressable onPress={rememberNow} style={{ flex: 1, backgroundColor: '#16a34a', paddingVertical: buttonPadV, borderRadius: 8, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}>
+              <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>Save defaults</Text>
             </Pressable>
-            <Pressable onPress={rememberLater} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
-              <Text style={{ fontWeight: '700' }}>Not now</Text>
+            <Pressable onPress={rememberLater} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: buttonPadV, borderRadius: 8, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}>
+              <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Not now</Text>
             </Pressable>
           </View>
         </View>
@@ -1005,7 +1050,7 @@ export default function NewFormScreen() {
 
       {uid && teamOptions.length > 1 ? (
         <View style={{ marginBottom: 12 }}>
-          <Text style={{ fontWeight: '700', marginBottom: 6 }}>TEAM</Text>
+          <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>TEAM</Text>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' as any }}>
             {teamOptions.map((t) => {
               const active = (selectedTeamId ?? teamId) === t.team_id;
@@ -1020,9 +1065,10 @@ export default function NewFormScreen() {
                     borderWidth: 1,
                     borderColor: active ? '#1d4ed8' : '#d1d5db',
                     backgroundColor: active ? '#e0e7ff' : '#f9fafb',
+                    minHeight: targetMinHeight, justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ fontWeight: '700', color: '#111827' }}>
+                  <Text style={{ fontWeight: '700', color: '#111827', fontSize: bodyFontSize }}>
                     {t.name || t.team_id.slice(0, 8)}
                   </Text>
                 </Pressable>
@@ -1037,13 +1083,14 @@ export default function NewFormScreen() {
           <Pressable
             onPress={() => setAutoQueueWhenOffline((x) => !x)}
             style={{
-              width: 22, height: 22, borderRadius: 4, borderWidth: 1, borderColor: '#111',
+              width: 22, height: 22, borderRadius: 4, borderWidth: 1, borderColor: highContrast ? '#000' : '#111',
               alignItems: 'center', justifyContent: 'center', backgroundColor: autoQueueWhenOffline ? '#16a34a' : 'white',
+              minHeight: targetMinHeight, // keeps minimum tap size when spacing is tight
             }}
           >
-            {autoQueueWhenOffline ? <Text style={{ color: 'white' }}>✓</Text> : null}
+            {autoQueueWhenOffline ? <Text style={{ color: 'white', fontSize: bodyFontSize }}>✓</Text> : null}
           </Pressable>
-          <Text>Auto-queue when offline</Text>
+          <Text style={{ fontSize: bodyFontSize }}>Auto-queue when offline</Text>
         </View>
       ) : null}
 
@@ -1194,20 +1241,20 @@ export default function NewFormScreen() {
       />
 
       {/* NEW: PRIORITY LEVEL */}
-      <Text style={{ fontWeight: '700', marginBottom: 6 }}>PRIORITY LEVEL</Text>
+      <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>PRIORITY LEVEL</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
         <PriBtn label="1" active={currentPri === '1'} color="#ef4444" onPress={() => setPriority('1')} />
         <PriBtn label="2" active={currentPri === '2'} color="#f59e0b" onPress={() => setPriority('2')} />
         <PriBtn label="3" active={currentPri === '3'} color="#22c55e" onPress={() => setPriority('3')} />
       </View>
 
-      <Text style={{ fontWeight: '700', marginBottom: 8 }}>PHOTOS</Text>
+      <Text style={{ fontWeight: '700', marginBottom: 8, fontSize: labelFontSize }}>PHOTOS</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         {photos.map((p, i) => (
           <View key={`${p.uri}-${i}`} style={{ position: 'relative' }}>
             <Image
               source={{ uri: p.uri }}
-              style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: '#111' }}
+              style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: highContrast ? '#000' : '#111' }}
             />
             <Pressable
               onPress={() => removePhotoAt(i)}
@@ -1222,6 +1269,7 @@ export default function NewFormScreen() {
                 paddingVertical: 2,
                 borderWidth: 1,
                 borderColor: 'white',
+                minHeight: targetMinHeight, justifyContent: 'center',
               }}
             >
               <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>×</Text>
@@ -1233,24 +1281,24 @@ export default function NewFormScreen() {
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
         <Pressable
           onPress={takePhoto}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+          style={{ flex: 1, backgroundColor: btnBlue, paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Take Photo</Text>
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>Take Photo</Text>
         </Pressable>
         <Pressable
           onPress={addFromLibrary}
-          style={{ flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+          style={{ flex: 1, backgroundColor: btnBlue, paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>Add from Library</Text>
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>Add from Library</Text>
         </Pressable>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <Pressable
           onPress={onSave}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
         >
-          <Text style={{ fontWeight: '700' }}>Save</Text>
+          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Save</Text>
         </Pressable>
 
         <Pressable
@@ -1258,20 +1306,21 @@ export default function NewFormScreen() {
           disabled={busy}
           style={{
             flex: 1,
-            backgroundColor: busy ? '#94a3b8' : '#2563eb',
-            paddingVertical: 12,
+            backgroundColor: busy ? '#94a3b8' : btnBlue,
+            paddingVertical: buttonPadV,
             borderRadius: 10,
             alignItems: 'center',
+            minHeight: targetMinHeight, justifyContent: 'center',
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit'}</Text>
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </Pressable>
 
         <Pressable
           onPress={() => router.back()}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
         >
-          <Text style={{ fontWeight: '700' }}>Exit</Text>
+          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Exit</Text>
         </Pressable>
       </View>
 
@@ -1280,17 +1329,18 @@ export default function NewFormScreen() {
           <Pressable
             onPress={onDownloadPdf}
             style={{
-              backgroundColor: '#2563eb',
-              paddingVertical: 12,
+              backgroundColor: btnBlue,
+              paddingVertical: buttonPadV,
               borderRadius: 10,
               alignItems: 'center',
               borderWidth: 1,
-              borderColor: '#1d4ed8',
+              borderColor: highContrast ? '#000' : '#1d4ed8',
+              minHeight: targetMinHeight, justifyContent: 'center',
             }}
           >
-            <Text style={{ color: 'white', fontWeight: '700' }}>Download PDF</Text>
+            <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>Download PDF</Text>
           </Pressable>
-          <Text style={{ fontSize: 12, color: '#334155', textAlign: 'center' }}>
+          <Text style={{ fontSize: statusFontSize, color: '#334155', textAlign: 'center' }}>
             Some mobile browsers only allow one automatic download per tap. If the PDF didn’t auto-download, tap this button.
           </Text>
         </View>
@@ -1302,27 +1352,28 @@ export default function NewFormScreen() {
           style={{
             flex: 1,
             backgroundColor: '#f3f4f6',
-            paddingVertical: 12,
+            paddingVertical: buttonPadV,
             borderRadius: 10,
             alignItems: 'center',
             borderWidth: 1,
             borderColor: '#d1d5db',
+            minHeight: targetMinHeight, justifyContent: 'center',
           }}
         >
-          <Text style={{ fontWeight: '700' }}>Clear (wipe saved fields & photos)</Text>
+          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Clear (wipe saved fields & photos)</Text>
         </Pressable>
       </View>
 
       <View style={{ marginTop: 16 }}>
         <Pressable
           onPress={() => setShowDebug((x) => !x)}
-          style={{ alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#f3f4f6' }}
+          style={{ alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#f3f4f6', minHeight: targetMinHeight, justifyContent: 'center' }}
         >
-          <Text style={{ fontSize: 12, color: '#334155' }}>{showDebug ? 'Hide' : 'Show'} debug</Text>
+          <Text style={{ fontSize: statusFontSize, color: '#334155' }}>{showDebug ? 'Hide' : 'Show'} debug</Text>
         </Pressable>
         {showDebug ? (
           <View style={{ marginTop: 8, padding: 8, backgroundColor: '#111827', borderRadius: 8 }}>
-            <Text style={{ color: '#93c5fd', fontFamily: 'monospace' as any, fontSize: 12 }}>
+            <Text style={{ color: '#93c5fd', fontFamily: 'monospace' as any, fontSize: statusFontSize }}>
               {JSON.stringify(
                 {
                   uid,
