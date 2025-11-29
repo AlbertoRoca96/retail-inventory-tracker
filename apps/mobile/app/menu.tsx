@@ -1,13 +1,12 @@
 // apps/mobile/app/menu.tsx - Professional Menu Page
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, ScrollView, Dimensions } from 'react-native';
-import LinearGradient from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 import { supabase } from '../src/lib/supabase';
 import { useIsAdmin } from '../src/hooks/useIsAdmin';
 import { useUISettings } from '../src/lib/uiSettings';
-import { colors, theme, typography, textA11yProps, borderRadius, shadows, gradients } from '../src/theme';
+import { colors, theme, typography, textA11yProps, borderRadius, shadows } from '../src/theme';
 import Button from '../src/components/Button';
 
 const { width, height } = Dimensions.get('window');
@@ -57,14 +56,9 @@ export default function Menu() {
         <title>Menu - Retail Inventory Tracker</title>
       </Head>
 
-      {/* Header with Gradient Background */}
+      {/* Header with Professional Background */}
       <View style={styles.header}>
-        <LinearGradient
-          colors={gradients.hero}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
+        <View style={styles.headerBackground}>
           <View style={styles.headerContent}>
             <Text {...textA11yProps} style={titleStyle}>
               Retail Tracker
@@ -73,7 +67,7 @@ export default function Menu() {
               Manage your retail inventory with ease
             </Text>
           </View>
-        </LinearGradient>
+        </View>
       </View>
 
       {/* Quick Actions Section */}
@@ -217,7 +211,8 @@ const styles = {
   header: {
     marginBottom: theme.spacing.lg,
   },
-  headerGradient: {
+  headerBackground: {
+    backgroundColor: theme.colors.primary[600],
     borderBottomLeftRadius: borderRadius.xl * 2,
     borderBottomRightRadius: borderRadius.xl * 2,
     ...shadows.lg,

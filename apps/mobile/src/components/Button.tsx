@@ -1,7 +1,6 @@
 // apps/mobile/src/components/Button.tsx - Professional Button Component
 import React from 'react';
 import { Pressable, Text, StyleSheet, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { theme, typography, textA11yProps, animations, borderRadius, shadows } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
 
@@ -60,7 +59,7 @@ export default function Button({
   const fontSize = Math.round(textSizes[size] * fontScale);
   const currentSizeStyle = sizeStyles[size];
   
-  // Professional gradient and color configurations
+  // Professional color configurations
   const getVariantStyles = () => {
     const baseStyle = {
       borderRadius: borderRadius.lg,
@@ -204,12 +203,5 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontWeight: '600',
-  },
-  loadingSpinner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderTopColor: 'transparent',
   },
 });
