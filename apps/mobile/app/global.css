@@ -1,20 +1,221 @@
-/* Improve mobile text scaling compatibility */
 :root {
   text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
 }
 html { -ms-text-size-adjust: 100%; }
 
-/* Better focus visibility on web */
+/* Professional design system variables */
+:root {
+  --color-primary: 59, 130, 246;
+  --color-success: 34, 197, 94;
+  --color-warning: 245, 158, 11;
+  --color-error: 239, 68, 68;
+  --color-gray-50: 249, 250, 251;
+  --color-gray-100: 243, 244, 246;
+  --color-gray-200: 229, 231, 235;
+  --color-gray-300: 209, 213, 219;
+  --color-gray-400: 156, 163, 175;
+  --color-gray-500: 107, 114, 128;
+  --color-gray-600: 75, 85, 99;
+  --color-gray-700: 55, 65, 81;
+  --color-gray-800: 31, 41, 55;
+  --color-gray-900: 17, 24, 39;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.15);
+  
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-xxl: 20px;
+  
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+  
+  --font-family-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', monospace;
+}
+
+/* Professional focus visible */
 :focus-visible {
-  outline: 2px solid #1d4ed8;
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* Better focus states for inputs */
+input:focus,
+textarea:focus,
+[contenteditable]:focus {
+  outline: 2px solid rgb(var(--color-primary));
+  outline-offset: 2px;
+  border-color: rgb(var(--color-primary));
+}
+
+/* Ensure proper scrolling and sizing */
+html, body, #root { 
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Professional scrollbar styling (webkit) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--color-gray-100));
+  border-radius: var(--radius-md);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-gray-400));
+  border-radius: var(--radius-md);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-gray-500));
+}
+
+/* Professional scrollbar styling (firefox) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-gray-400)) rgb(var(--color-gray-100));
+}
+
+/* Professional selection styling */
+::selection {
+  background-color: rgba(var(--color-primary), 0.2);
+  color: rgb(var(--color-gray-900));
+}
+
+/* Professional link styling */
+a {
+  color: rgb(var(--color-primary));
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+a:hover {
+  color: rgb(var(--color-primary));
+  opacity: 0.8;
+}
+
+a:focus-visible {
+  outline: 2px solid rgb(var(--color-primary));
   outline-offset: 2px;
 }
 
-/* Make pages scroll-friendly & stable */
-html, body, #root { min-height: 100%; }
+/* Professional button resets */
+button {
+  font-family: var(--font-family-sans);
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Professional input styling */
+input, textarea, select {
+  font-family: var(--font-family-sans);
+  font-size: 16px;
+  border: 1px solid rgb(var(--color-gray-300));
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
+  transition: all 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: rgb(var(--color-primary));
+  box-shadow: var(--shadow-sm);
+}
+
+/* Professional body styling */
+body {
+  font-family: var(--font-family-sans);
+  line-height: 1.6;
+  color: rgb(var(--color-gray-900));
+  background-color: rgb(var(--color-gray-50));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Professional typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  line-height: 1.2;
+  color: rgb(var(--color-gray-900));
+  margin-bottom: var(--spacing-sm);
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+h5 { font-size: 1.125rem; }
+h6 { font-size: 1rem; }
+
+p {
+  margin-bottom: var(--spacing-md);
+}
+
+/* Professional utility classes */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Professional print styles */
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  a, a:visited {
+    text-decoration: underline;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+}
 /* Notes:
    - 'forced-color-adjust' isn't supported by Safari; avoid depending on it. 
-   - 'scrollbar-width' is Firefox-only; avoid it for cross-browser styling.
+   - Modern CSS variables for consistent theming.
+   - Smooth scrolling and transitions for better UX.
+   - Professional focus states for accessibility.
+   - Modern scrollbar styling for web builds.
 */
