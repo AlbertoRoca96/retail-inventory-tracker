@@ -29,21 +29,21 @@ export default function Menu() {
 
   // Typography scaled by user preference
   const titleStyle = useMemo(() => ({
-    fontSize: Math.round(typography.h1.fontSize * fontScale * 1.1),
-    lineHeight: Math.round(typography.h1.lineHeight * fontScale * 1.1),
+    fontSize: Math.round(typography.title.fontSize * fontScale * 1.2),
+    lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.2),
     fontWeight: '800' as const,
-    marginBottom: theme.spacing.lg,
+    marginBottom: spacing.lg,
     color: colors.primary[800],
     textAlign: 'center' as const,
   }), [fontScale]);
 
   const subtitleStyle = useMemo(() => ({
-    fontSize: Math.round(typography.bodyLarge.fontSize * fontScale),
-    lineHeight: Math.round(typography.bodyLarge.lineHeight * fontScale),
+    fontSize: Math.round(typography.body.fontSize * fontScale * 1.1),
+    lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.1),
     fontWeight: '500' as const,
     color: colors.gray[600],
     textAlign: 'center' as const,
-    marginBottom: theme.spacing.xl,
+    marginBottom: spacing.xl,
   }), [fontScale]);
 
   return (
@@ -214,63 +214,63 @@ export default function Menu() {
 const styles = {
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: colors.white,
   },
   contentContainer: {
     flexGrow: 1,
-    paddingBottom: theme.spacing.xxl,
+    paddingBottom: spacing.xxl,
   },
   header: {
-    marginBottom: theme.spacing.lg,
+    marginBottom: spacing.lg,
   },
   headerBackground: {
-    backgroundColor: theme.colors.primary[600],
+    backgroundColor: colors.primary[600],
     borderBottomLeftRadius: borderRadius.xl * 2,
     borderBottomRightRadius: borderRadius.xl * 2,
     ...shadows.lg,
   },
   headerContent: {
-    paddingVertical: theme.spacing.xxl,
-    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
   },
   section: {
-    marginBottom: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.lg,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
   lastSection: {
-    marginBottom: theme.spacing.xl,
+    marginBottom: spacing.xl,
   },
   sectionTitle: {
-    fontSize: typography.h3.fontSize,
+    fontSize: typography.title.fontSize,
     fontWeight: '700' as const,
     color: colors.gray[800],
-    marginBottom: theme.spacing.md,
+    marginBottom: spacing.md,
   },
   sectionHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.spacing.md,
+    marginBottom: spacing.md,
   },
   adminBadge: {
     backgroundColor: colors.error[500],
     paddingHorizontal: spacing.sm,
-    paddingVertical: theme.spacing.xs,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.sm,
     ...shadows.sm,
   },
   adminBadgeText: {
-    color: theme.colors.white,
-    fontSize: typography.caption.fontSize,
+    color: colors.white,
+    fontSize: Math.round(typography.label.fontSize * 0.8),
     fontWeight: '700' as const,
   },
   actionGrid: {
-    gap: theme.spacing.md,
+    gap: spacing.md,
   },
   loadingSection: {
     alignItems: 'center',
-    paddingVertical: theme.spacing.lg,
+    paddingVertical: spacing.lg,
   },
   loadingText: {
     marginTop: spacing.sm,
@@ -279,17 +279,17 @@ const styles = {
   },
   footer: {
     alignItems: 'center',
-    paddingTop: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
+    paddingTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
   footerText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: typography.label.fontSize,
     color: colors.gray[500],
     fontWeight: '600' as const,
   },
   footerSubtext: {
-    fontSize: typography.captionSmall.fontSize,
+    fontSize: Math.round(typography.label.fontSize * 0.8),
     color: colors.gray[400],
-    marginTop: theme.spacing.xs,
+    marginTop: spacing.xs,
   },
 };
