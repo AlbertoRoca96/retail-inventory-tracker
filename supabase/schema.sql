@@ -76,6 +76,66 @@ begin
   end if;
 end$$;
 
+-- ========== Submission Messages Table ==========
+create table if not exists public.submission_messages (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  
+  -- Relationships
+  team_id uuid not null references public.teams(id) on delete cascade,
+  submission_id uuid references public.submissions(id) on delete cascade,
+  sender_id uuid not null,
+  
+  -- Message content
+  body text not null,
+  is_internal boolean not null default false,
+  
+  -- Attachments and revisions
+  attachment_path text,
+  attachment_type text check (attachment_type in ('csv', 'image', 'pdf', 'excel') or attachment_type is null),
+  is_revised boolean not null default false,
+  
+  -- Optional reply chain support
+  reply_to_id uuid references public.submission_messages(id) on delete set null
+);
+
+-- Allow submission_id to be NULL for team chat messages
+alter table public.submission_messages alter column submission_id drop not null;
+
+-- Remove deleted_at column since soft deletes are not used
+alter table public.submission_messages drop column if exists deleted_at;
+
+-- Create indexes for performance
+create index if not exists submission_messages_team_idx on public.submission_messages(team_id);
+create index if not exists submission_messages_submission_idx on public.submission_messages(submission_id);
+create index if not exists submission_messages_sender_idx on public.submission_messages(sender_id);
+create index if not exists submission_messages_created_idx on public.submission_messages(created_at);
+create index if not exists submission_messages_reply_to_idx on public.submission_messages(reply_to_id);
+
+-- Trigger to automatically update updated_at
+drop trigger if exists update_submission_messages_updated_at on public.submission_messages;
+create trigger update_submission_messages_updated_at
+  before update on public.submission_messages
+  for each row
+  execute function public.update_updated_at_column();
+
+-- Helper function for updating updated_at if it doesn't exist
+do $$
+begin
+  if not exists (select 1 from pg_proc where proname = 'update_updated_at_column') then
+    create or replace function public.update_updated_at_column()
+    returns trigger
+    language plpgsql
+    as $$
+    begin
+      new.updated_at = now();
+      return new;
+    end;
+    $$;
+  end if;
+end$$;
+
 -- Helpful indexes
 create index if not exists submissions_team_created_idx
   on public.submissions (team_id, created_at desc);

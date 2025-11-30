@@ -4,6 +4,7 @@ import { Stack, Redirect, usePathname } from 'expo-router';
 import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
 import { UISettingsProvider } from '../src/lib/uiSettings';
+import ChatBubble from '../src/components/ChatBubble';
 
 /** ---------- Helpers to detect sections ---------- */
 function isUnauthPath(p: string | null) {
@@ -189,6 +190,14 @@ function Gate({ children }: { children: React.ReactNode }) {
           </View>
         </View>
       ) : null}
+      
+      {/* Global Chat Bubble - shows on all pages when there are unread messages */}
+      <ChatBubble 
+        visible={session ? true : false} 
+        position="top-right" 
+        size="medium" 
+      />
+      
       {children}
     </>
   );

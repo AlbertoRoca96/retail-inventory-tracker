@@ -171,6 +171,18 @@ export default function Menu() {
         </View>
       ) : null}
 
+      {/* Chat functionality */}
+      <View style={[styles.section, styles.lastSection]}>
+        <Button
+          title="💬 Chat"
+          onPress={() => router.push('/chat')}
+          variant="primary"
+          size="md"
+          fullWidth
+          accessibilityLabel="Open team chat"
+        />
+      </View>
+
       {/* Logout Section */}
       <View style={[styles.section, styles.lastSection]}>
         <Button
