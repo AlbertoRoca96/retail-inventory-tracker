@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { getMonthlyCounts, getDailyCounts, getYTDTotal } from '../../src/lib/analytics';
+import { theme, colors, typography } from '../../src/theme';
+import Button from '../../src/components/Button';
 
 type MonthRow = { month_start: string; submitted: number; cumulative: number };
 type DayRow   = { day: string; submitted: number };
@@ -199,23 +201,32 @@ export default function AdminMetrics() {
   const userOptions = teamId ? (teamUsers.length ? teamUsers : [{ id: '', label: 'All users' }]) : (allUsers.length ? allUsers : [{ id: '', label: 'All users' }]);
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.container}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+        contentContainerStyle={{ paddingHorizontal: theme.spacing(4), paddingBottom: theme.spacing(12) }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Metrics</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Analytics Dashboard</Text>
+          <Text style={styles.subtitle}>
+            Track team submissions and performance metrics
+          </Text>
+        </View>
 
-        {/* Controls */}
-        <View style={{ gap: 10 as any, marginBottom: 12 }}>
+        {/* Filters Card */}
+        <View style={[styles.card, { backgroundColor: colors.white }]}>
+          <Text style={styles.sectionHeader}>Filters</Text>
+          
           {/* Team filter */}
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <Text>Team:</Text>
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Team:</Text>
             {isWeb ? (
               <select
                 value={teamId ?? ''}
                 onChange={(e) => setTeamId(e.currentTarget.value || null)}
+                style={styles.selectInput}
               >
                 <option value="">
                   {adminTeams.length > 1 ? 'All my teams' : (adminTeams[0]?.name ?? 'My team')}
@@ -225,48 +236,57 @@ export default function AdminMetrics() {
                 ))}
               </select>
             ) : (
-              <Text>{adminTeams.find(t => t.id === teamId)?.name ?? 'All my teams'}</Text>
+              <Text style={styles.filterValue}>
+                {adminTeams.find(t => t.id === teamId)?.name ?? 'All my teams'}
+              </Text>
             )}
           </View>
 
           {/* Date range */}
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <Text>Start:</Text>
-            {isWeb ? (
-              <input
-                type="date"
-                value={rangeStart ?? ''}
-                onChange={(e) => setRangeStart(e.currentTarget.value)}
-              />
-            ) : (
-              <Text>{rangeStart}</Text>
-            )}
-            <Text>End:</Text>
-            {isWeb ? (
-              <input
-                type="date"
-                value={rangeEnd ?? ''}
-                onChange={(e) => setRangeEnd(e.currentTarget.value)}
-              />
-            ) : (
-              <Text>{rangeEnd}</Text>
-            )}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Date Range:</Text>
+            <View style={styles.dateRange}>
+              {isWeb ? (
+                <>
+                  <input
+                    type="date"
+                    value={rangeStart ?? ''}
+                    onChange={(e) => setRangeStart(e.currentTarget.value)}
+                    style={styles.dateInput}
+                  />
+                  <Text style={styles.dateSeparator}>to</Text>
+                  <input
+                    type="date"
+                    value={rangeEnd ?? ''}
+                    onChange={(e) => setRangeEnd(e.currentTarget.value)}
+                    style={styles.dateInput}
+                  />
+                </>
+              ) : (
+                <View style={styles.dateDisplay}>
+                  <Text style={styles.filterValue}>{rangeStart}</Text>
+                  <Text style={styles.dateSeparator}>to</Text>
+                  <Text style={styles.filterValue}>{rangeEnd}</Text>
+                </View>
+              )}
+            </View>
           </View>
 
-          {/* User filter — now also works for "All my teams" */}
-          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-            <Text>User:</Text>
+          {/* User filter */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>User:</Text>
             {isWeb ? (
               <select
                 value={userFilter ?? ''}
                 onChange={(e) => setUserFilter(e.currentTarget.value || null)}
+                style={styles.selectInput}
               >
                 {userOptions.map((u) => (
                   <option key={u.id || 'all'} value={u.id}>{u.label}</option>
                 ))}
               </select>
             ) : (
-              <Text>
+              <Text style={styles.filterValue}>
                 {userFilter
                   ? (userOptions.find(u => u.id === userFilter)?.label ?? 'User')
                   : 'All users'}
@@ -276,99 +296,285 @@ export default function AdminMetrics() {
         </View>
 
         {loading ? (
-          <ActivityIndicator />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.blue} />
+            <Text style={[styles.loadingText, { marginTop: theme.spacing(2) }]}>
+              Loading metrics...
+            </Text>
+          </View>
         ) : (
-          <View style={{ gap: 12 as any }}>
-            {/* 1) YTD */}
-            <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-              <Text style={{ fontWeight: '700' }}>YTD total (as of today)</Text>
-              <Text style={{ fontSize: 18 }}>{ytd} submissions</Text>
+          <View style={styles.content}>
+            {/* YTD Summary Card */}
+            <View style={[styles.card, { backgroundColor: colors.white }]}>
+              <Text style={styles.sectionHeader}>Year-to-Date Summary</Text>
+              <View style={styles.metricHighlight}>
+                <Text style={styles.metricValue}>{ytd.toLocaleString()}</Text>
+                <Text style={styles.metricLabel}>total submissions this year</Text>
+              </View>
             </View>
 
-            {/* 2) Monthly buckets + cumulative */}
-            <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-              <Text style={{ fontWeight: '700', marginBottom: 6 }}>Monthly</Text>
+            {/* Monthly Breakdown Card */}
+            <View style={[styles.card, { backgroundColor: colors.white }]}>
+              <Text style={styles.sectionHeader}>Monthly Breakdown</Text>
               {monthly.length === 0 ? (
-                <Text>No data in range.</Text>
+                <Text style={styles.emptyState}>No data available in selected range.</Text>
               ) : (
-                monthly.map((r) => {
-                  const idx = monthIndex(r.month_start);
-                  const label =
-                    idx != null
-                      ? `Month ${idx}`
-                      : monthFmtUTC.format(new Date(`${r.month_start}T00:00:00Z`));
-                  return (
-                    <View
-                      key={r.month_start}
-                      style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}
-                    >
-                      <Text>
-                        {label} ({r.month_start})
-                      </Text>
-                      <Text>
-                        {r.submitted} (cumulative {r.cumulative})
-                      </Text>
-                    </View>
-                  );
-                })
+                <>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Month</Text>
+                    <Text style={[styles.tableHeaderCell, { textAlign: 'center' }]}>Submissions</Text>
+                    <Text style={[styles.tableHeaderCell, { textAlign: 'right' }]}>Cumulative</Text>
+                  </View>
+                  {monthly.map((r, index) => {
+                    const idx = monthIndex(r.month_start);
+                    const label =
+                      idx != null
+                        ? `Month ${idx}`
+                        : monthFmtUTC.format(new Date(`${r.month_start}T00:00:00Z`));
+                    return (
+                      <View
+                        key={r.month_start}
+                        style={[styles.tableRow, index % 2 === 1 && styles.tableRowStriped ]}
+                      >
+                        <Text style={[styles.tableCell, { flex: 2 }]}>
+                          {label}
+                          <Text style={styles.tableCellSubtext}>({r.month_start})</Text>
+                        </Text>
+                        <Text style={[styles.tableCell, { textAlign: 'center', fontWeight: '600' }]}>
+                          {r.submitted}
+                        </Text>
+                        <Text style={[styles.tableCell, { textAlign: 'right', color: '#6b7280' }]}>
+                          {r.cumulative}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </>
               )}
 
               {/* CSV export (web) */}
               {isWeb && monthly.length ? (
-                <Pressable
-                  onPress={() =>
-                    downloadCSV(
-                      'monthly.csv',
-                      [['month_start', 'submitted', 'cumulative']].concat(
-                        monthly.map((r) => [r.month_start, String(r.submitted), String(r.cumulative)])
+                <View style={styles.exportSection}>
+                  <Button
+                    title="Download Monthly CSV"
+                    onPress={() =>
+                      downloadCSV(
+                        'monthly.csv',
+                        [['month_start', 'submitted', 'cumulative']].concat(
+                          monthly.map((r) => [r.month_start, String(r.submitted), String(r.cumulative)])
+                        )
                       )
-                    )
-                  }
-                  style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
-                >
-                  <Text>Download Monthly CSV</Text>
-                </Pressable>
+                    }
+                    variant="secondary"
+                    accessibilityLabel="Download monthly metrics as CSV"
+                  />
+                </View>
               ) : null}
             </View>
 
-            {/* 3) Current month daily (real-time) */}
-            <View style={{ padding: 12, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-              <Text style={{ fontWeight: '700', marginBottom: 6 }}>This month (by day)</Text>
+            {/* Daily Breakdown Card */}
+            <View style={[styles.card, { backgroundColor: colors.white }]}>
+              <Text style={styles.sectionHeader}>Current Month (Daily View)</Text>
               {daily.length === 0 ? (
-                <Text>No submissions yet this month.</Text>
+                <Text style={styles.emptyState}>No submissions yet this month.</Text>
               ) : (
-                daily.map((r) => (
-                  <View
-                    key={r.day}
-                    style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}
-                  >
-                    <Text>{r.day}</Text>
-                    <Text>{r.submitted}</Text>
+                <>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Date</Text>
+                    <Text style={[styles.tableHeaderCell, { textAlign: 'center' }]}>Submissions</Text>
                   </View>
-                ))
+                  {daily.map((r, index) => (
+                    <View
+                      key={r.day}
+                      style={[styles.tableRow, index % 2 === 1 && styles.tableRowStriped ]}
+                    >
+                      <Text style={[styles.tableCell, { flex: 2 }]}>{r.day}</Text>
+                      <Text style={[styles.tableCell, { textAlign: 'center', fontWeight: '600' }]}>
+                        {r.submitted}
+                      </Text>
+                    </View>
+                  ))}
+                </>
               )}
 
               {/* CSV export (web) */}
               {isWeb && daily.length ? (
-                <Pressable
-                  onPress={() =>
-                    downloadCSV('daily.csv', [['day', 'submitted']].concat(daily.map((r) => [r.day, String(r.submitted)])))}
-                  style={{ marginTop: 8, padding: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 6 }}
-                >
-                  <Text>Download Daily CSV</Text>
-                </Pressable>
+                <View style={styles.exportSection}>
+                  <Button
+                    title="Download Daily CSV"
+                    onPress={() => downloadCSV('daily.csv', [['day', 'submitted']].concat(daily.map((r) => [r.day, String(r.submitted)])))}
+                    variant="secondary"
+                    accessibilityLabel="Download daily metrics as CSV"
+                  />
+                </View>
               ) : null}
             </View>
 
-            <Pressable
-              onPress={() => router.replace('/admin')}
-              style={{ alignSelf: 'flex-start', marginTop: 4, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: '#6b7280', borderRadius: 10 }}
-            >
-              <Text style={{ color: 'white', fontWeight: '700' }}>Back</Text>
-            </Pressable>
+            <View style={styles.navigation}>
+              <Button
+                title="Back to Admin"
+                onPress={() => router.replace('/admin')}
+                variant="secondary"
+                accessibilityLabel="Navigate back to admin dashboard"
+              />
+            </View>
           </View>
         )}
       </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.gray,
+  },
+  header: {
+    paddingTop: theme.spacing(4),
+    paddingHorizontal: theme.spacing(4),
+    paddingBottom: theme.spacing(3),
+  },
+  title: {
+    ...typography.title,
+    fontSize: 24,
+    marginBottom: theme.spacing(1),
+  },
+  subtitle: {
+    ...typography.body,
+    color: '#6b7280',
+    marginBottom: 0,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.spacing(8),
+  },
+  loadingText: {
+    ...typography.body,
+    color: '#6b7280',
+  },
+  content: {
+    gap: theme.spacing(4),
+  },
+  card: {
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing(4),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    // Web shadow support
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+      },
+    }),
+  },
+  sectionHeader: {
+    ...typography.title,
+    fontSize: 18,
+    marginBottom: theme.spacing(3),
+    color: theme.colors.text,
+  },
+  filterRow: {
+    marginBottom: theme.spacing(3),
+  },
+  filterLabel: {
+    ...typography.label,
+    color: '#6b7280',
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  filterValue: {
+    ...typography.body,
+    color: theme.colors.text,
+  },
+  dateRange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+  },
+  dateInput: {
+    padding: theme.spacing(2),
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: theme.radius.lg,
+    backgroundColor: colors.white,
+  },
+  dateDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+  },
+  dateSeparator: {
+    ...typography.label,
+    color: '#6b7280',
+  },
+  selectInput: {
+    padding: theme.spacing(2),
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: theme.radius.lg,
+    backgroundColor: colors.white,
+  },
+  metricHighlight: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing(3),
+  },
+  metricValue: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: theme.colors.blue,
+    marginBottom: theme.spacing(1),
+  },
+  metricLabel: {
+    ...typography.body,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
+    paddingBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
+  },
+  tableHeaderCell: {
+    ...typography.label,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: theme.spacing(2),
+  },
+  tableRowStriped: {
+    backgroundColor: colors.gray,
+  },
+  tableCell: {
+    ...typography.body,
+    color: theme.colors.text,
+  },
+  tableCellSubtext: {
+    ...typography.label,
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  emptyState: {
+    ...typography.body,
+    color: '#6b7280',
+    textAlign: 'center',
+    paddingVertical: theme.spacing(3),
+  },
+  exportSection: {
+    marginTop: theme.spacing(4),
+    paddingTop: theme.spacing(3),
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  navigation: {
+    paddingTop: theme.spacing(2),
+  },
+});
