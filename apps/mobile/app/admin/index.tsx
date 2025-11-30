@@ -7,11 +7,13 @@ import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import Banner from '../../src/components/Banner';
 
-type Member = { user_id: string; is_admin: boolean };
+type Member = { user_id: string; is_admin: boolean; display_name?: string | null; email?: string | null };
+type TeamInfo = { id: string; name: string };
 
 export default function AdminRoute() {
   const { session, ready } = useAuth();
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -20,36 +22,68 @@ export default function AdminRoute() {
     const load = async () => {
       if (!session?.user) return;
       setLoading(true);
-      // Read memberships directly from team_members (avoid view/caching surprises)
-      const { data: tm, error: tmErr } = await supabase
-        .from('team_members')
-        .select('team_id,is_admin')
-        .eq('user_id', session.user.id)
-        .eq('is_admin', true)
-        .limit(1)
-        .maybeSingle();
-
-      if (tmErr) {
-        console.error('admin: team_members lookup failed', tmErr);
-        setLoading(false);
-        return;
-      }
-
-      const tid = tm?.team_id ?? null;
-      setTeamId(tid);
-      setIsAdmin(!!tm?.is_admin);
-
-      if (tid) {
-        const { data: mem, error: mErr } = await supabase
+      
+      try {
+        // 1) Get my admin team(s) with team names
+        const { data: tm, error: tmErr } = await supabase
           .from('team_members')
-          .select('user_id,is_admin')
-          .eq('team_id', tid)
-          .order('is_admin', { ascending: false });
-        if (mErr) console.error('admin: members load failed', mErr);
-        setMembers(mem || []);
-      }
+          .select('team_id,is_admin,teams(name)')
+          .eq('user_id', session.user.id)
+          .eq('is_admin', true)
+          .limit(1)
+          .maybeSingle();
 
-      setLoading(false);
+        if (tmErr) {
+          console.error('admin: team_members lookup failed', tmErr);
+          setLoading(false);
+          return;
+        }
+
+        const tid = tm?.team_id ?? null;
+        setTeamId(tid);
+        setTeamName(tm?.teams?.name ?? null);
+        setIsAdmin(!!tm?.is_admin);
+
+        // 2) If I have a team, load all members with their names
+        if (tid) {
+          // Use the existing function that gets display names
+          const { data: membersWithNames, error: mErr } = await supabase
+            .rpc('team_users_with_names', { p_team_id: tid });
+          
+          if (mErr) {
+            console.error('admin: members load failed', mErr);
+            // Fallback to basic member list
+            const { data: mem, error: basicErr } = await supabase
+              .from('team_members')
+              .select('user_id,is_admin')
+              .eq('team_id', tid)
+              .order('is_admin', { ascending: false });
+            if (!basicErr) {
+              setMembers(mem || []);
+            }
+          } else {
+            // Combine the names with admin status
+            const memberMap = new Map((membersWithNames || []).map((m: any) => [m.user_id, m]));
+            const { data: adminStatus } = await supabase
+              .from('team_members')
+              .select('user_id,is_admin')
+              .eq('team_id', tid);
+            
+            const membersWithAdminInfo = (adminStatus || []).map((admin: any) => ({
+              user_id: admin.user_id,
+              is_admin: admin.is_admin,
+              display_name: memberMap.get(admin.user_id)?.display_name,
+              email: memberMap.get(admin.user_id)?.email,
+            }));
+            
+            setMembers(membersWithAdminInfo);
+          }
+        }
+      } catch (error) {
+        console.error('admin: load error', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     if (ready && session?.user) load();
@@ -116,9 +150,15 @@ export default function AdminRoute() {
             <View style={[S.card, { backgroundColor: colors.white }]}>
               <Text style={styles.sectionHeader}>Team Information</Text>
               <View style={S.infoRow}>
-                <Text style={styles.labelText}>Team ID:</Text>
+                <Text style={styles.labelText}>Team Name:</Text>
                 <Text style={[styles.valueText, { fontWeight: '700' }]}>
-                  {teamId}
+                  {teamName || 'Loading...'}
+                </Text>
+              </View>
+              <View style={S.infoRow}>
+                <Text style={styles.labelText}>Team ID:</Text>
+                <Text style={[styles.valueText, { color: '#6b7280', fontFamily: 'monospace', fontSize: 12 }]}>
+                  {teamId?.substring(0, 8)}...
                 </Text>
               </View>
               <View style={S.infoRow}>
@@ -140,8 +180,11 @@ export default function AdminRoute() {
                 members.map((m, index) => (
                   <View key={m.user_id} style={[S.memberRow, index === members.length - 1 && S.memberRowLast ]}>
                     <View style={S.memberInfo}>
-                      <Text style={styles.memberId}>
-                        {m.user_id.length > 20 ? `${m.user_id.substring(0, 20)}...` : m.user_id}
+                      <Text style={styles.memberName}>
+                        {m.display_name || m.email || 'Unknown User'}
+                      </Text>
+                      <Text style={styles.memberEmail}>
+                        {m.email && m.display_name !== m.email ? m.email : ''}
                       </Text>
                     </View>
                     <View style={S.roleBadge}>
@@ -290,10 +333,23 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: theme.colors.text,
   },
-  memberId: {
+  memberName: {
     ...typography.body,
     color: theme.colors.text,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  memberEmail: {
+    ...typography.label,
+    color: '#6b7280',
+    fontSize: 13,
+  },
+  memberId: {
+    ...typography.label,
+    color: '#9CA3AF',
     fontFamily: 'monospace',
+    fontSize: 11,
+    marginTop: 2,
   },
   roleAdmin: {
     ...typography.label,

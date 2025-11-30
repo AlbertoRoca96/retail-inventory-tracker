@@ -11,6 +11,7 @@ import Banner from '../../src/components/Banner';
 export default function InviteUserRoute() {
   const { session, ready } = useAuth();
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -20,13 +21,14 @@ export default function InviteUserRoute() {
       if (!session?.user) return;
       const { data: tm, error } = await supabase
         .from('team_members')
-        .select('team_id')
+        .select('team_id,teams(name)')
         .eq('user_id', session.user.id)
         .eq('is_admin', true)
         .limit(1)
         .maybeSingle();
       if (error) console.error('invite: team lookup failed', error);
       setTeamId(tm?.team_id ?? null);
+      setTeamName(tm?.teams?.name ?? null);
       setLoading(false);
     };
     if (ready && session?.user) boot();
@@ -86,9 +88,15 @@ export default function InviteUserRoute() {
           <View style={[S.card, { backgroundColor: colors.white }]}>
             <Text style={styles.sectionHeader}>Team Information</Text>
             <View style={S.infoRow}>
-              <Text style={styles.labelText}>Inviting to Team:</Text>
+              <Text style={styles.labelText}>Team Name:</Text>
               <Text style={[styles.valueText, { fontWeight: '700' }]}>
-                {teamId}
+                {teamName || 'Loading...'}
+              </Text>
+            </View>
+            <View style={S.infoRow}>
+              <Text style={styles.labelText}>Team ID:</Text>
+              <Text style={[styles.valueText, { color: '#6b7280', fontFamily: 'monospace', fontSize: 12 }]}>
+                {teamId?.substring(0, 8)}...
               </Text>
             </View>
           </View>
