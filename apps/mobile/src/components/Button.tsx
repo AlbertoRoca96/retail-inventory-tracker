@@ -38,9 +38,9 @@ const sizeStyles = {
 };
 
 const textSizes = {
-  sm: typography.buttonSmall.fontSize,
-  md: typography.button.fontSize, 
-  lg: typography.buttonLarge.fontSize,
+  sm: typography.button.fontSize * 0.875,  // 14px (18 * 0.875)
+  md: typography.button.fontSize,          // 18px
+  lg: typography.button.fontSize * 1.125,   // 20px (18 * 1.125)
 };
 
 export default function Button({
@@ -56,8 +56,10 @@ export default function Button({
 }: ButtonProps) {
   const { simplifiedMode, largeText, highContrast, targetMinHeight, fontScale } = useUISettings();
 
-  const fontSize = Math.round(textSizes[size] * fontScale);
-  const currentSizeStyle = sizeStyles[size];
+  // Safe fallback for size prop to prevent undefined fontSize access
+  const safeSize = (size && textSizes[size] && sizeStyles[size]) ? size : 'md';
+  const fontSize = Math.round(textSizes[safeSize] * fontScale);
+  const currentSizeStyle = sizeStyles[safeSize];
   
   // Professional color configurations
   const getVariantStyles = () => {
