@@ -107,87 +107,69 @@ using (
 -- ========== Submission Messages RLS ==========
 
 -- Messages: team members can read messages for their team
--- Team members can see all messages about submissions they can access
 drop  policy if exists "team members can read team messages" on public.submission_messages;
 create policy     "team members can read team messages"
 on public.submission_messages
 for select
 to authenticated
 using (
-  -- Must be a team member and either:
-  -- 1) Message is about a submission they can see, or
-  -- 2) Message is internal (team-level) for their team
-  team_id in (select team_id from public.v_user_teams where user_id = auth.uid())
-  and (
-    -- Team members can see messages about submissions they can read
-    exists (
-      select 1 from public.submissions s
-      where s.id = submission_messages.submission_id
-        and s.team_id in (select team_id from public.v_user_teams where user_id = auth.uid())
-    )
-    -- All team members can see internal team messages
-    or is_internal = true
+  exists (
+    select 1 from public.team_members tm
+    where tm.team_id = submission_messages.team_id and tm.user_id = auth.uid()
   )
-  -- Only non-deleted messages
-  and deleted_at is null
 );
 
 -- Messages: team members can insert messages
--- Users can create messages about their team's submissions or internal team messages
 drop  policy if exists "team members can insert messages" on public.submission_messages;
 create policy     "team members can insert messages"
 on public.submission_messages
 for insert
 to authenticated
 with check (
-  -- Must be for their team
-  team_id in (select team_id from public.v_user_teams where user_id = auth.uid())
-  -- Must be the sender
-  and sender_id = auth.uid()
-  -- Either message is internal or about a submission they can access
-  and (
-    is_internal = true
-    or exists (
-      select 1 from public.submissions s
-      where s.id = submission_id
-        and team_id in (select team_id from public.v_user_teams where user_id = auth.uid())
-    )
+  sender_id = auth.uid()
+  and exists (
+    select 1 from public.team_members tm
+    where tm.team_id = submission_messages.team_id and tm.user_id = auth.uid()
   )
 );
 
--- Messages: senders can update their own messages
+-- Messages: senders or admins can update
 drop  policy if exists "senders can update own messages" on public.submission_messages;
-create policy     "senders can update own messages"
+create policy     "senders or admins can update messages"
 on public.submission_messages
 for update
 to authenticated
 using (
   sender_id = auth.uid()
-  and deleted_at is null
+  or exists (
+    select 1 from public.team_members tm
+    where tm.team_id = submission_messages.team_id
+      and tm.user_id = auth.uid()
+      and tm.is_admin = true
+  )
 )
 with check (
   sender_id = auth.uid()
-  and deleted_at is null
+  or exists (
+    select 1 from public.team_members tm
+    where tm.team_id = submission_messages.team_id
+      and tm.user_id = auth.uid()
+      and tm.is_admin = true
+  )
 );
 
--- Messages: senders or admins can delete (soft delete)
+-- Messages: senders or admins can delete
 drop  policy if exists "senders or admins can delete messages" on public.submission_messages;
 create policy     "senders or admins can delete messages"
 on public.submission_messages
-for update
+for delete
 to authenticated
 using (
-  -- Original sender can delete their own messages
   sender_id = auth.uid()
-  -- Team admins can delete any team message
   or exists (
-    select 1 from public.v_user_teams v
-    where v.team_id = submission_messages.team_id
-      and v.user_id = auth.uid()
-      and v.is_admin
+    select 1 from public.team_members tm
+    where tm.team_id = submission_messages.team_id
+      and tm.user_id = auth.uid()
+      and tm.is_admin = true
   )
-)
-with check (
-  -- Only update to set deleted_at (soft delete)
-  deleted_at is not null
 );

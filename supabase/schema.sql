@@ -97,11 +97,14 @@ create table if not exists public.submission_messages (
   is_revised boolean not null default false,
   
   -- Optional reply chain support
-  reply_to_id uuid references public.submission_messages(id) on delete set null,
-  
-  -- Soft delete support
-  deleted_at timestamptz
+  reply_to_id uuid references public.submission_messages(id) on delete set null
 );
+
+-- Allow submission_id to be NULL for team chat messages
+alter table public.submission_messages alter column submission_id drop not null;
+
+-- Remove deleted_at column since soft deletes are not used
+alter table public.submission_messages drop column if exists deleted_at;
 
 -- Create indexes for performance
 create index if not exists submission_messages_team_idx on public.submission_messages(team_id);

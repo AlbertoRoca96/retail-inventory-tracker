@@ -6,7 +6,7 @@ import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
-import { sendSubmissionMessage, subscribeToTeamMessages, type SubmissionMessage } from '../../src/lib/chat';
+import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, type SubmissionMessage } from '../../src/lib/chat';
 
 export default function TeamChat() {
   const { session, ready } = useAuth();
@@ -63,16 +63,12 @@ export default function TeamChat() {
       
       if (!teamMember) return;
       
-      // Import fetchTeamMessages function and use it
-      const { fetchTeamMessages } = await import('../../src/lib/chat');
+      // Use the new fetchTeamMessages function
       const { messages: teamMessages } = await fetchTeamMessages(teamMember.team_id, {
         limit: 100,
-        includeInternal: true,
       });
       
-      // Filter for internal team messages only
-      const internalMessages = teamMessages.filter(m => m.is_internal);
-      setMessages(internalMessages.reverse());
+      setMessages(teamMessages.reverse());
     } catch (error) {
       console.error('Error loading messages:', error);
     } finally {
@@ -111,6 +107,7 @@ export default function TeamChat() {
       
       const result = await sendSubmissionMessage({
         team_id: teamInfo.id,
+        submission_id: null,
         body: newMessage.trim(),
         is_internal: true, // This is team chat
       });

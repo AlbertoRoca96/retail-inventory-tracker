@@ -14,21 +14,15 @@ export type SubmissionMessage = {
   attachment_path?: string | null;
   attachment_type?: 'csv' | 'image' | 'pdf' | 'excel' | null;
   is_revised: boolean;
-  reply_to_id?: string | null;
-  deleted_at?: string | null;
-  // Optional joined data
-  sender_name?: string;
-  sender_email?: string;
-  submission_date?: string;
-  submission_location?: string;
 };
+
+// Fixed message columns - no auth.users joins to avoid PGRST100 errors
+const MESSAGE_COLUMNS = 'id, team_id, submission_id, sender_id, body, is_internal, attachment_path, attachment_type, is_revised, created_at, updated_at';
 
 export type ChatRoom = {
   team_id: string;
   team_name: string;
   submission_id?: string;
-  submission_date?: string;
-  submission_location?: string;
   last_message?: SubmissionMessage;
   unread_count: number;
   last_activity: string;
@@ -36,13 +30,12 @@ export type ChatRoom = {
 
 export type NewMessage = {
   team_id: string;
-  submission_id?: string;
+  submission_id?: string | null;
   body: string;
   is_internal?: boolean;
   attachment_path?: string;
   attachment_type?: 'csv' | 'image' | 'pdf' | 'excel';
   is_revised?: boolean;
-  reply_to_id?: string;
 };
 
 // Fetch messages for a specific submission
@@ -50,134 +43,49 @@ export async function fetchSubmissionMessages(
   submissionId: string,
   options: {
     limit?: number;
-    offset?: number;
-    includeDeleted?: boolean;
   } = {}
 ): Promise<{ messages: SubmissionMessage[]; error?: string }> {
   try {
-    const { limit = 50, offset = 0, includeDeleted = false } = options;
+    const { limit = 50 } = options;
 
-    let query = supabase
+    const { data, error } = await supabase
       .from('submission_messages')
-      .select(`
-        *,
-        sender:auth.users!sender_id(
-          id,
-          raw_user_meta_data->>'display_name' as display_name,
-          email
-        ),
-        submission:submissions(
-          id,
-          date,
-          store_location
-        )
-      `)
+      .select(MESSAGE_COLUMNS)
       .eq('submission_id', submissionId)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (!includeDeleted) {
-      query = query.is('deleted_at', null);
-    }
-
-    const { data, error } = await query;
+      .limit(limit);
 
     if (error) throw error;
 
-    // Transform the data to match the expected types
-    const messages: SubmissionMessage[] = (data || []).map((msg: any) => ({
-      id: msg.id,
-      created_at: msg.created_at,
-      updated_at: msg.updated_at,
-      team_id: msg.team_id,
-      submission_id: msg.submission_id,
-      sender_id: msg.sender_id,
-      body: msg.body,
-      is_internal: msg.is_internal,
-      attachment_path: msg.attachment_path,
-      attachment_type: msg.attachment_type,
-      is_revised: msg.is_revised,
-      reply_to_id: msg.reply_to_id,
-      deleted_at: msg.deleted_at,
-      sender_name: msg.sender?.display_name,
-      sender_email: msg.sender?.email,
-      submission_date: msg.submission?.date,
-      submission_location: msg.submission?.store_location,
-    }));
-
-    return { messages };
+    return { messages: data || [] };
   } catch (error) {
     console.error('Error fetching submission messages:', error);
     return { messages: [], error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
-// Fetch team messages (including internal and submission-specific)
+// Fetch team messages for team chat (internal messages only, no submission_id)
 export async function fetchTeamMessages(
   teamId: string,
   options: {
     limit?: number;
-    offset?: number;
-    includeInternal?: boolean;
-    includeDeleted?: boolean;
   } = {}
 ): Promise<{ messages: SubmissionMessage[]; error?: string }> {
   try {
-    const { limit = 50, offset = 0, includeInternal = true, includeDeleted = false } = options;
+    const { limit = 100 } = options;
 
-    let query = supabase
+    const { data, error } = await supabase
       .from('submission_messages')
-      .select(`
-        *,
-        sender:auth.users!sender_id(
-          id,
-          raw_user_meta_data->>'display_name' as display_name,
-          email
-        ),
-        submission:submissions(
-          id,
-          date,
-          store_location,
-          store_site
-        )
-      `)
+      .select(MESSAGE_COLUMNS)
       .eq('team_id', teamId)
+      .eq('is_internal', true)
+      .is('submission_id', null)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (!includeInternal) {
-      query = query.is('is_internal', false);
-    }
-
-    if (!includeDeleted) {
-      query = query.is('deleted_at', null);
-    }
-
-    const { data, error } = await query;
+      .limit(limit);
 
     if (error) throw error;
 
-    const messages: SubmissionMessage[] = (data || []).map((msg: any) => ({
-      id: msg.id,
-      created_at: msg.created_at,
-      updated_at: msg.updated_at,
-      team_id: msg.team_id,
-      submission_id: msg.submission_id,
-      sender_id: msg.sender_id,
-      body: msg.body,
-      is_internal: msg.is_internal,
-      attachment_path: msg.attachment_path,
-      attachment_type: msg.attachment_type,
-      is_revised: msg.is_revised,
-      reply_to_id: msg.reply_to_id,
-      deleted_at: msg.deleted_at,
-      sender_name: msg.sender?.display_name,
-      sender_email: msg.sender?.email,
-      submission_date: msg.submission?.date,
-      submission_location: msg.submission?.store_location,
-    }));
-
-    return { messages };
+    return { messages: data || [] };
   } catch (error) {
     console.error('Error fetching team messages:', error);
     return { messages: [], error: error instanceof Error ? error.message : 'Unknown error' };
@@ -189,52 +97,21 @@ export async function sendSubmissionMessage(
   message: NewMessage
 ): Promise<{ success: boolean; error?: string; message?: SubmissionMessage }> {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
     const { data, error } = await supabase
       .from('submission_messages')
       .insert({
         ...message,
-        sender_id: (await supabase.auth.getUser()).data.user?.id,
+        sender_id: user.id,
       })
-      .select()
+      .select(MESSAGE_COLUMNS)
       .single();
 
     if (error) throw error;
 
-    // Fetch the complete message with sender info
-    const { data: fullMessage, error: fetchError } = await supabase
-      .from('submission_messages')
-      .select(`
-        *,
-        sender:auth.users!sender_id(
-          id,
-          raw_user_meta_data->>'display_name' as display_name,
-          email
-        )
-      `)
-      .eq('id', data.id)
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    const result: SubmissionMessage = {
-      id: fullMessage.id,
-      created_at: fullMessage.created_at,
-      updated_at: fullMessage.updated_at,
-      team_id: fullMessage.team_id,
-      submission_id: fullMessage.submission_id,
-      sender_id: fullMessage.sender_id,
-      body: fullMessage.body,
-      is_internal: fullMessage.is_internal,
-      attachment_path: fullMessage.attachment_path,
-      attachment_type: fullMessage.attachment_type,
-      is_revised: fullMessage.is_revised,
-      reply_to_id: fullMessage.reply_to_id,
-      deleted_at: fullMessage.deleted_at,
-      sender_name: fullMessage.sender?.display_name,
-      sender_email: fullMessage.sender?.email,
-    };
-
-    return { success: true, message: result };
+    return { success: true, message: data };
   } catch (error) {
     console.error('Error sending message:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -254,11 +131,6 @@ export async function sendCsvAttachmentMessage(
 ): Promise<{ success: boolean; error?: string; message?: SubmissionMessage }> {
   try {
     const { is_internal = false, is_revised = false } = options;
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('User not authenticated');
-    }
 
     // Upload CSV file to storage
     const fileName = `${Date.now()}-${file.name}`;
@@ -281,7 +153,7 @@ export async function sendCsvAttachmentMessage(
     // Send the chat message with attachment
     const result = await sendSubmissionMessage({
       team_id: teamId,
-      submission_id: submissionId || undefined,
+      submission_id: submissionId,
       body: message,
       is_internal,
       is_revised,
@@ -315,39 +187,12 @@ export function subscribeToSubmissionMessages(
         table: 'submission_messages',
         filter: `submission_id=eq.${submissionId}`,
       },
-      async (payload) => {
-        // Transform payload to include sender info if needed
-        if (payload.eventType === 'INSERT' && payload.new) {
-          const { data: fullMessage } = await supabase
-            .from('submission_messages')
-            .select(`
-              *,
-              sender:auth.users!sender_id(
-                id,
-                raw_user_meta_data->>'display_name' as display_name,
-                email
-              )
-            `)
-            .eq('id', (payload.new as any).id)
-            .single();
-
-          const message: SubmissionMessage = {
-            ...(payload.new as any),
-            sender_name: fullMessage?.sender?.display_name,
-            sender_email: fullMessage?.sender?.email,
-          };
-
-          callback({
-            eventType: payload.eventType,
-            new: message,
-          });
-        } else {
-          callback({
-            eventType: payload.eventType,
-            new: payload.new as SubmissionMessage,
-            old: payload.old as SubmissionMessage,
-          });
-        }
+      (payload) => {
+        callback({
+          eventType: payload.eventType,
+          new: payload.new as SubmissionMessage,
+          old: payload.old as SubmissionMessage,
+        });
       }
     )
     .subscribe();
@@ -355,7 +200,7 @@ export function subscribeToSubmissionMessages(
   return subscription;
 }
 
-// Subscribe to real-time updates for all team messages (for global notifications)
+// Subscribe to real-time updates for team messages
 export function subscribeToTeamMessages(
   teamId: string,
   callback: (payload: { 
@@ -372,49 +217,14 @@ export function subscribeToTeamMessages(
         event: '*',
         schema: 'public',
         table: 'submission_messages',
-        filter: `team_id=eq.${teamId}`,
+        filter: `team_id=eq.${teamId},is_internal=eq.true`,
       },
-      async (payload) => {
-        // Similar transformation as above
-        if (payload.eventType === 'INSERT' && payload.new) {
-          const { data: fullMessage } = await supabase
-            .from('submission_messages')
-            .select(`
-              *,
-              sender:auth.users!sender_id(
-                id,
-                raw_user_meta_data->>'display_name' as display_name,
-                email
-              ),
-              submission:submissions(
-                id,
-                date,
-                store_location,
-                store_site
-              )
-            `)
-            .eq('id', (payload.new as any).id)
-            .single();
-
-          const message: SubmissionMessage = {
-            ...(payload.new as any),
-            sender_name: fullMessage?.sender?.display_name,
-            sender_email: fullMessage?.sender?.email,
-            submission_date: fullMessage?.submission?.date,
-            submission_location: fullMessage?.submission?.store_location,
-          };
-
-          callback({
-            eventType: payload.eventType,
-            new: message,
-          });
-        } else {
-          callback({
-            eventType: payload.eventType,
-            new: payload.new as SubmissionMessage,
-            old: payload.old as SubmissionMessage,
-          });
-        }
+      (payload) => {
+        callback({
+          eventType: payload.eventType,
+          new: payload.new as SubmissionMessage,
+          old: payload.old as SubmissionMessage,
+        });
       }
     )
     .subscribe();
@@ -450,7 +260,7 @@ export async function markMessagesAsRead(
   }
 }
 
-// Get unread message count for a team
+// Get unread message count for a team (removed soft-delete filtering)
 export async function getUnreadMessageCount(
   teamId: string,
   submissionId?: string
@@ -465,7 +275,8 @@ export async function getUnreadMessageCount(
     let query = supabase
       .from('submission_messages')
       .select('id', { count: 'exact', head: true })
-      .eq('team_id', teamId);
+      .eq('team_id', teamId)
+      .neq('sender_id', user.id);
 
     if (submissionId) {
       query = query.eq('submission_id', submissionId);
@@ -474,8 +285,6 @@ export async function getUnreadMessageCount(
     if (lastRead) {
       query = query.gt('created_at', lastRead);
     }
-
-    query = query.neq('sender_id', user.id).is('deleted_at', null);
 
     const { count, error } = await query;
 
@@ -488,21 +297,4 @@ export async function getUnreadMessageCount(
   }
 }
 
-// Delete a message (soft delete)
-export async function deleteMessage(
-  messageId: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-      .from('submission_messages')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', messageId);
-
-    if (error) throw error;
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error deleting message:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
+// Delete messages functionality removed - soft deletes disabled for now
