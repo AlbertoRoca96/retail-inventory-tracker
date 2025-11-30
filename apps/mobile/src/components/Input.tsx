@@ -1,7 +1,7 @@
 // apps/mobile/src/components/Input.tsx - Professional Input Component
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
-import { theme, typography, textA11yProps, borderRadius, shadows, animations } from '../theme';
+import { theme, typography, textA11yProps, borderRadius, shadows, animations, spacing } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
 
 interface InputProps {
@@ -188,7 +188,7 @@ export default function Input({
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: theme.spacing.sm,
+    marginVertical: spacing.sm,
   },
   labelContainer: {
     marginBottom: theme.spacing.xs,

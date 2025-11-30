@@ -1,7 +1,7 @@
 // apps/mobile/src/components/Button.tsx - Professional Button Component
 import React from 'react';
 import { Pressable, Text, StyleSheet, View } from 'react-native';
-import { theme, typography, textA11yProps, animations, borderRadius, shadows } from '../theme';
+import { theme, typography, textA11yProps, animations, borderRadius, shadows, spacing } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
 
 type Variant = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'ghost';
@@ -21,18 +21,18 @@ interface ButtonProps {
 
 const sizeStyles = {
   sm: {
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     minHeight: 40,
   },
   md: {
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     minHeight: 48,
   },
   lg: {
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
     minHeight: 56,
   },
 };
@@ -68,7 +68,7 @@ export default function Button({
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
       flexDirection: 'row' as const,
-      gap: theme.spacing.sm,
+      gap: spacing.sm,
       minWidth: fullWidth ? '100%' : 120,
       ...shadows.md,
     };
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing.sm,
+    gap: spacing.sm,
   },
   loadingText: {
     fontWeight: '600',

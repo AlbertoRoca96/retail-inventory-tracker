@@ -6,7 +6,7 @@ import Head from 'expo-router/head';
 import { supabase } from '../src/lib/supabase';
 import { useIsAdmin } from '../src/hooks/useIsAdmin';
 import { useUISettings } from '../src/lib/uiSettings';
-import { colors, theme, typography, textA11yProps, borderRadius, shadows } from '../src/theme';
+import { colors, theme, typography, textA11yProps, borderRadius, shadows, spacing } from '../src/theme';
 import Button from '../src/components/Button';
 
 const { width, height } = Dimensions.get('window');
@@ -255,7 +255,7 @@ const styles = {
   },
   adminBadge: {
     backgroundColor: colors.error[500],
-    paddingHorizontal: theme.spacing.sm,
+    paddingHorizontal: spacing.sm,
     paddingVertical: theme.spacing.xs,
     borderRadius: borderRadius.sm,
     ...shadows.sm,
@@ -273,7 +273,7 @@ const styles = {
     paddingVertical: theme.spacing.lg,
   },
   loadingText: {
-    marginTop: theme.spacing.sm,
+    marginTop: spacing.sm,
     fontSize: typography.body.fontSize,
     color: colors.gray[500],
   },

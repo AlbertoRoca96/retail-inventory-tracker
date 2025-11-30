@@ -1,7 +1,7 @@
 // apps/mobile/src/components/Banner.tsx - Professional Banner Component
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { theme, typography, textA11yProps, borderRadius, shadows, animations } from '../theme';
+import { theme, typography, textA11yProps, borderRadius, shadows, animations, spacing } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
 
 interface BannerProps {
@@ -29,7 +29,7 @@ export default function Banner({
       paddingVertical: theme.spacing.md,
       paddingHorizontal: theme.spacing.lg,
       borderRadius: borderRadius.lg,
-      marginVertical: theme.spacing.sm,
+      marginVertical: spacing.sm,
       minHeight: targetMinHeight,
       justifyContent: 'center' as const,
       ...shadows.md,
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 20,
-    marginRight: theme.spacing.sm,
+    marginRight: spacing.sm,
   },
   message: {
     color: theme.colors.white,
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: spacing.sm,
   },
   actionButton: {
     paddingHorizontal: theme.spacing.md,
