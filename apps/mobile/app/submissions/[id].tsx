@@ -233,22 +233,30 @@ export default function Submission() {
         ) : null}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 12 as any, marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', gap: 8 as any, marginTop: 4, flexWrap: 'wrap' }}>
         <Pressable
           onPress={downloadExcelWithPhotos}
           accessibilityRole="button"
           accessibilityLabel="Download Excel with photos"
-          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight }]}
+          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight, flex: 1, minWidth: 200 }]}
         >
-          <Text {...textA11yProps} style={theme.buttonText}>Download Excel (with photos)</Text>
+          <Text {...textA11yProps} style={theme.buttonText}>Download Excel</Text>
         </Pressable>
         <Pressable
           onPress={share}
           accessibilityRole="button"
           accessibilityLabel="Share CSV"
-          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight }]}
+          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight, flex: 1, minWidth: 120 }]}
         >
           <Text {...textA11yProps} style={theme.buttonText}>Share CSV</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push(`/chat/${row.id}`)}
+          accessibilityRole="button"
+          accessibilityLabel="Open discussion about this submission"
+          style={[theme.button, { backgroundColor: '#10b981', minHeight: targetMinHeight, flex: 1, minWidth: 100 }]}
+        >
+          <Text {...textA11yProps} style={theme.buttonText}>💬 Chat</Text>
         </Pressable>
       </View>
 

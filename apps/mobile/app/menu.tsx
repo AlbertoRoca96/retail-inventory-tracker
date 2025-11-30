@@ -115,6 +115,9 @@ export default function Menu() {
         </>
       ) : null}
 
+      {/* Chat functionality */}
+      <Btn label="Chat" onPress={() => router.push('/chat')} a11y="Open team chat" />
+
       {/* Logout is red */}
       <Btn
         label="Log Out"
