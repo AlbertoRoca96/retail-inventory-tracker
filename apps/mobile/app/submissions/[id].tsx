@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Image, ScrollView, Pressable } from 'react-native';
+import { View, Text, Image, ScrollView, Pressable, Platform, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
 import { colors, theme, typography, textA11yProps } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 type Row = {
   id: string;
@@ -86,11 +88,44 @@ function toCsv(r: Row) {
   return cells.map(([k, v]) => `"${k}","${String(v).replace(/"/g, '""')}"`).join('\n');
 }
 
-function download(filename: string, text: string) {
+const isWeb = Platform.OS === 'web';
+
+function downloadCsvWeb(filename: string, text: string) {
   const blob = new Blob([text], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  if (typeof document !== 'undefined') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+  }
   setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+async function shareCsvNative(filename: string, text: string) {
+  const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!dir) {
+    throw new Error('Unable to access the document directory.');
+  }
+
+  const target = `${dir}${filename}`;
+  await FileSystem.writeAsStringAsync(target, text, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+
+  try {
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(target, {
+        mimeType: 'text/csv',
+        UTI: 'public.comma-separated-values-text',
+        dialogTitle: 'Share CSV',
+      });
+    } else {
+      Alert.alert('Sharing unavailable', 'Unable to open the iOS share sheet on this device.');
+    }
+  } finally {
+    await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => undefined);
+  }
 }
 
 export default function Submission() {
@@ -149,6 +184,10 @@ export default function Submission() {
   if (!row) return null;
 
   const downloadExcelWithPhotos = async () => {
+    if (!isWeb) {
+      Alert.alert('Web only', 'Excel downloads are only available from the web dashboard for now.');
+      return;
+    }
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
     const p2 = row.photo2_url || photo2Url || null;
@@ -173,12 +212,30 @@ export default function Submission() {
 
   const share = async () => {
     const csv = toCsv(row);
-    if (navigator.share) {
-      const file = new File([csv], 'submission.csv', { type: 'text/csv' });
-      // @ts-ignore
-      await navigator.share({ title: 'Submission', text: 'See attached CSV', files: [file] }).catch(() => {});
-    } else {
-      download('submission.csv', csv);
+
+    if (isWeb) {
+      if (
+        typeof navigator !== 'undefined' &&
+        typeof (navigator as any).share === 'function' &&
+        typeof File !== 'undefined'
+      ) {
+        try {
+          // Browsers with the Web Share API + File support
+          const file = new File([csv], 'submission.csv', { type: 'text/csv' });
+          await (navigator as any).share({ title: 'Submission', text: 'See attached CSV', files: [file] });
+          return;
+        } catch (err) {
+          console.warn('Web share failed, falling back to download', err);
+        }
+      }
+      downloadCsvWeb('submission.csv', csv);
+      return;
+    }
+
+    try {
+      await shareCsvNative('submission.csv', csv);
+    } catch (error: any) {
+      Alert.alert('Share failed', error?.message ?? 'Unable to create the CSV file.');
     }
   };
 
@@ -234,14 +291,16 @@ export default function Submission() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8 as any, marginTop: 4, flexWrap: 'wrap' }}>
-        <Pressable
-          onPress={downloadExcelWithPhotos}
-          accessibilityRole="button"
-          accessibilityLabel="Download Excel with photos"
-          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight, flex: 1, minWidth: 200 }]}
-        >
-          <Text {...textA11yProps} style={theme.buttonText}>Download Excel</Text>
-        </Pressable>
+        {isWeb ? (
+          <Pressable
+            onPress={downloadExcelWithPhotos}
+            accessibilityRole="button"
+            accessibilityLabel="Download Excel with photos"
+            style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight, flex: 1, minWidth: 200 }]}
+          >
+            <Text {...textA11yProps} style={theme.buttonText}>Download Excel</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={share}
           accessibilityRole="button"
