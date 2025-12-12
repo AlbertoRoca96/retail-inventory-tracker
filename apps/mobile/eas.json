@@ -14,11 +14,28 @@
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
       }
+    },
+    "production": {
+      "node": "20.19.4",
+      "distribution": "store",
+      "ios": {
+        "image": "latest"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
+      }
     }
   },
   "submit": {
     "preview": {
       "ios": {
+        "appleId": "alroca308@gmail.com"
+      }
+    },
+    "production": {
+      "ios": {
+        "ascAppId": "6756455733",
         "appleId": "alroca308@gmail.com"
       }
     }
