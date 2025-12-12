@@ -27,7 +27,13 @@ const isAnonymousUser = (u: any) =>
 
 // Compute redirect URL for email flows (magic link / confirm / reset)
 function emailRedirectTo(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
+  if (
+    typeof window === 'undefined' ||
+    typeof window.location === 'undefined' ||
+    typeof window.location.origin !== 'string'
+  ) {
+    return undefined;
+  }
   const base = `${window.location.origin}${webBasePath()}`; // e.g. ".../retail-inventory-tracker"
   return `${base}/auth/callback`;
 }

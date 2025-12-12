@@ -8,7 +8,13 @@ const fnBase = process.env.EXPO_PUBLIC_SUPABASE_URL!
 
 function computeRedirectTo(): string | undefined {
   // Web only – for native you’ll likely use your custom scheme
-  if (typeof window === 'undefined') return undefined;
+  if (
+    typeof window === 'undefined' ||
+    typeof window.location === 'undefined' ||
+    typeof window.location.origin !== 'string'
+  ) {
+    return undefined;
+  }
   const base = `${window.location.origin}${webBasePath()}`; // e.g. https://albertoroca96.github.io/retail-inventory-tracker
   return `${base}/auth/callback`;
 }

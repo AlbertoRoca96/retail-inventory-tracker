@@ -10,7 +10,18 @@ export default function AuthCallback() {
   useEffect(() => {
     (async () => {
       try {
-        const url = typeof window !== 'undefined' ? window.location.href : '';
+        const hasLocation =
+          typeof window !== 'undefined' &&
+          typeof window.location !== 'undefined' &&
+          typeof window.location.href === 'string';
+
+        if (!hasLocation) {
+          setMsg('Auth callback is only available when opened from a browser link.');
+          router.replace('/login');
+          return;
+        }
+
+        const url = window.location.href;
 
         // 1) Try the PKCE code flow first (magic link / password reset use this)
         const u = new URL(url);

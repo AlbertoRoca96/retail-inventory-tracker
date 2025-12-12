@@ -7,11 +7,11 @@ export default function DebugAuth() {
   const nukeAuth = async () => {
     try {
       await supabase.auth.signOut();
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
         // Supabase stores under keys like "sb-<project-ref>-auth-token"
-        Object.keys(window.localStorage)
+        Object.keys(window.localStorage ?? {})
           .filter((k) => k.startsWith('sb-'))
-          .forEach((k) => window.localStorage.removeItem(k));
+          .forEach((k) => window.localStorage?.removeItem(k));
       }
       Alert.alert('Done', 'Signed out and cleared local storage.');
     } catch (e: any) {
