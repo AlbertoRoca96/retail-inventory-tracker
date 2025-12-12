@@ -15,5 +15,12 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
       }
     }
+  },
+  "submit": {
+    "preview": {
+      "ios": {
+        "appleIdUsername": "alroca308@gmail.com"
+      }
+    }
   }
 }
