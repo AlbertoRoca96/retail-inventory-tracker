@@ -6,16 +6,20 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "retailinventory",
-
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.github.albertoroca96.retailinventorytracker"
+      "bundleIdentifier": "io.github.albertoroca96.retailinventorytracker",
+      "buildNumber": "2",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
-
     "android": {
-      "package": "io.github.albertoroca96.retailinventorytracker"
+      "package": "io.github.albertoroca96.retailinventorytracker",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
-
     "plugins": [
       [
         "expo-image-picker",
