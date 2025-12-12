@@ -1,5 +1,9 @@
 // apps/mobile/src/lib/exportPdf.native.ts
 
+import * as FileSystem from 'expo-file-system';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
 export type SubmissionPdf = {
   store_site: string;
   date: string;
@@ -34,8 +38,6 @@ async function toDataUri(url?: string | null, mime = 'image/jpeg'): Promise<stri
 
   // Already a data URI
   if (url.startsWith('data:')) return url;
-
-  const FileSystem = await import('expo-file-system');
 
   try {
     let localPath = url;
@@ -77,9 +79,6 @@ export async function createSubmissionPdf(
   data: SubmissionPdf,
   opts: BuildOptions = {}
 ): Promise<string> {
-  const Print = await import('expo-print');
-  const FileSystem = await import('expo-file-system');
-
   // Prepare up to two photos
   const [raw1, raw2] = (data.photo_urls || []).slice(0, 2);
   const inline = !!opts.inlineImages;
@@ -157,39 +156,34 @@ export async function createSubmissionPdf(
  * Returns the file URI either way.
  */
 export async function downloadSubmissionPdf(data: SubmissionPdf): Promise<string> {
-  const uri = await createSubmissionPdf(data, { inlineImages: true, fileNamePrefix: 'submission' });
-  const FileSystem = await import('expo-file-system');
+  const uri = await createSubmissionPdf(data, {
+    inlineImages: true,
+    fileNamePrefix: 'submission',
+  });
 
   // Sanity: make sure the file exists before trying to share/print
   try {
     const info = await FileSystem.getInfoAsync(uri);
-    if (!info.exists) return uri;
-  } catch {}
-
-  let Sharing: typeof import('expo-sharing') | null = null;
-  try {
-    Sharing = await import('expo-sharing');
+    if (!info.exists) {
+      return uri;
+    }
   } catch {
-    Sharing = null;
+    return uri;
   }
 
-  await shareIfPossible(uri, Sharing);
+  await shareIfPossible(uri);
   return uri;
 }
 
-async function shareIfPossible(
-  fileUri: string,
-  Sharing: typeof import('expo-sharing') | null
-) {
+async function shareIfPossible(fileUri: string) {
   try {
-    if (Sharing && (await Sharing.isAvailableAsync())) {
+    if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(fileUri, {
         UTI: 'com.adobe.pdf',
         mimeType: 'application/pdf',
       });
     } else {
       // Fallback: open native print dialog
-      const Print = await import('expo-print');
       await Print.printAsync({ uri: fileUri });
     }
   } catch {
