@@ -6,13 +6,16 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "retailinventory",
+
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.al96.retailinventory"
+      "bundleIdentifier": "io.github.albertoroca96.retailinventorytracker"
     },
+
     "android": {
-      "package": "com.al96.retailinventory"
+      "package": "io.github.albertoroca96.retailinventorytracker"
     },
+
     "plugins": [
       [
         "expo-image-picker",
