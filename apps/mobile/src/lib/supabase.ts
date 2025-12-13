@@ -35,6 +35,18 @@ const EXPO_SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SU
 const EXPO_SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
 
 const missingEnv: string[] = [];
+
+if (__DEV__) {
+  const preview = (value?: string | null) => {
+    if (!value) return 'undefined';
+    if (value.length <= 12) return value;
+    return `${value.slice(0, 8)}…${value.slice(-4)}`;
+  };
+  console.log('[Supabase] Runtime env check', {
+    url: preview(EXPO_SUPABASE_URL),
+    anonKey: preview(EXPO_SUPABASE_ANON_KEY),
+  });
+}
 if (!EXPO_SUPABASE_URL) missingEnv.push('EXPO_PUBLIC_SUPABASE_URL (or SUPABASE_URL)');
 if (!EXPO_SUPABASE_ANON_KEY) missingEnv.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)');
 
