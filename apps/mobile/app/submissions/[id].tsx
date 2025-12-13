@@ -5,7 +5,6 @@ import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
 import { colors, theme, typography, textA11yProps } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
-import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
@@ -194,6 +193,7 @@ export default function Submission() {
     if (p1) photos.push(p1);
     if (p2) photos.push(p2);
 
+    const { downloadSubmissionExcel } = await import('../../src/lib/exportExcel');
     await downloadSubmissionExcel({
       store_site: row.store_site || '',
       date: row.date || '',

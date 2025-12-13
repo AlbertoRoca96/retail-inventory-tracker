@@ -14,7 +14,6 @@ import Head from 'expo-router/head';
 import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
-import { downloadSubmissionExcel } from '../../src/lib/exportExcel';
 import { loadUserDefaults, saveUserDefaults } from '../../src/lib/preferences';
 // ✨ NEW: pull UI accessibility toggles
 import { useUISettings } from '../../src/lib/uiSettings';
@@ -862,6 +861,7 @@ export default function NewFormScreen() {
 
       if (isWeb) {
         setBanner({ kind: 'info', text: 'Creating Excel…' });
+        const { downloadSubmissionExcel } = await import('../../src/lib/exportExcel');
         await downloadSubmissionExcel({
           store_site: v.storeSite || '',
           date: v.date || '',
