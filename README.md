@@ -25,7 +25,7 @@ Expo Go includes many native modules out of the box. TestFlight/standalone build
    ```
 2. Build a development client that contains the same native modules as TestFlight:
    ```bash
-   eas build --platform ios --profile preview --type development
+   eas build --platform ios --profile devclient
    ```
 3. Install that `.ipa` on your device (TestFlight or Apple Configurator) and open Metro with release settings:
    ```bash

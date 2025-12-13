@@ -3,6 +3,18 @@
     "appVersionSource": "local"
   },
   "build": {
+    "devclient": {
+      "node": "20.19.4",
+      "distribution": "internal",
+      "ios": {
+        "developmentClient": true,
+        "autoIncrement": "buildNumber"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}"
+      }
+    },
     "preview": {
       "node": "20.19.4",
       "distribution": "internal",
