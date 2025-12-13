@@ -47,6 +47,10 @@ async function toCanvasBase64(url: string): Promise<string> {
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel) {
+  if (typeof document === 'undefined') {
+    throw new Error('Excel export is only available on the web app.');
+  }
+
   const wb = new ExcelJS.Workbook();
 
   const ws = wb.addWorksheet('submission', {

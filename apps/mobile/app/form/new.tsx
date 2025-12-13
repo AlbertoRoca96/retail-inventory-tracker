@@ -860,22 +860,26 @@ export default function NewFormScreen() {
         insertError = { message: 'Not authenticated – saved to Excel/PDF only.' };
       }
 
-      setBanner({ kind: 'info', text: 'Creating Excel…' });
-      await downloadSubmissionExcel({
-        store_site: v.storeSite || '',
-        date: v.date || '',
-        brand: v.brand || '',
-        store_location: v.storeLocation || '',
-        location: v.location || '',
-        conditions: v.conditions || '',
-        price_per_unit: v.pricePerUnit || '',
-        shelf_space: v.shelfSpace || '',
-        on_shelf: v.onShelf || '',
-        tags: v.tags || '',
-        notes: v.notes || '',
-        priority_level: v.priorityLevel,
-        photo_urls: excelPhotoUrls,
-      });
+      if (isWeb) {
+        setBanner({ kind: 'info', text: 'Creating Excel…' });
+        await downloadSubmissionExcel({
+          store_site: v.storeSite || '',
+          date: v.date || '',
+          brand: v.brand || '',
+          store_location: v.storeLocation || '',
+          location: v.location || '',
+          conditions: v.conditions || '',
+          price_per_unit: v.pricePerUnit || '',
+          shelf_space: v.shelfSpace || '',
+          on_shelf: v.onShelf || '',
+          tags: v.tags || '',
+          notes: v.notes || '',
+          priority_level: v.priorityLevel,
+          photo_urls: excelPhotoUrls,
+        });
+      } else {
+        setBanner({ kind: 'info', text: 'Excel export available on the web dashboard. PDF continues below.' });
+      }
 
       const pdfPayload: PdfPayload = {
         store_site: v.storeSite || '',
