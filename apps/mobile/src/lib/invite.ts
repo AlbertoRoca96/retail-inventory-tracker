@@ -2,9 +2,15 @@
 import { supabase } from './supabase';
 import { webBasePath } from './webBasePath';
 
-const fnBase = process.env.EXPO_PUBLIC_SUPABASE_URL!
-  .replace('https://', 'https://')
-  .replace('.supabase.co', '.functions.supabase.co');
+function getFunctionsBase(): string {
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  if (!supabaseUrl) {
+    throw new Error('Cannot send invites because EXPO_PUBLIC_SUPABASE_URL is not configured.');
+  }
+  return supabaseUrl
+    .replace('https://', 'https://')
+    .replace('.supabase.co', '.functions.supabase.co');
+}
 
 function computeRedirectTo(): string | undefined {
   // Web only – for native you’ll likely use your custom scheme
@@ -26,7 +32,7 @@ export async function inviteUserByEmail(email: string, team_id?: string) {
 
   const redirectTo = computeRedirectTo();
 
-  const res = await fetch(`${fnBase}/invite-user`, {
+  const res = await fetch(`${getFunctionsBase()}/invite-user`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
