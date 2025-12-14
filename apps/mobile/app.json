@@ -10,8 +10,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.github.albertoroca96.retailinventorytracker",
-      "buildNumber": "20",
+      "buildNumber": "22",
       "jsEngine": "jsc",
+      "newArchEnabled": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
