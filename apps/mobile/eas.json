@@ -7,8 +7,7 @@
       "node": "20.19.4",
       "distribution": "internal",
       "ios": {
-        "developmentClient": true,
-        "autoIncrement": "buildNumber"
+        "developmentClient": true
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
@@ -23,9 +22,7 @@
         "buildType": "apk",
         "image": "latest"
       },
-      "ios": {
-        "autoIncrement": "buildNumber"
-      },
+      "ios": {},
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
@@ -36,8 +33,7 @@
       "node": "20.19.4",
       "distribution": "store",
       "ios": {
-        "image": "latest",
-        "autoIncrement": "buildNumber"
+        "image": "latest"
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
