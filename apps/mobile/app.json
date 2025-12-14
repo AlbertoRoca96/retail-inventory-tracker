@@ -6,10 +6,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "retailinventory",
+    "jsEngine": "jsc",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.github.albertoroca96.retailinventorytracker",
-      "buildNumber": "3",
+      "buildNumber": "16",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
