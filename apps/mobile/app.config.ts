@@ -1,6 +1,7 @@
 import type { ConfigContext, ExpoConfig } from "@expo/config";
 import "dotenv/config";
 import supabaseEnv from "./src/config/supabaseEnv.json";
+import versioning from "./version.json";
 
 const sanitize = (value?: string | null): string | undefined => {
   if (!value) return undefined;
@@ -17,6 +18,12 @@ const {
   FALLBACK_SUPABASE_ANON_KEY: string;
 };
 
+const { version: appVersion, iosBuildNumber, androidVersionCode } = versioning as {
+  version: string;
+  iosBuildNumber: number;
+  androidVersionCode: number;
+};
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const supabaseUrl =
     sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL) ??
@@ -30,7 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: "Retail Inventory Tracker",
     slug: "retail-inventory-tracker",
     owner: "al96",
-    version: "1.0.0",
+    version: appVersion,
     orientation: "portrait",
     scheme: "retailinventory",
     jsEngine: "hermes",
@@ -38,14 +45,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "io.github.albertoroca96.retailinventorytracker",
-      buildNumber: "25",
+      buildNumber: String(iosBuildNumber),
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
     },
     android: {
       package: "io.github.albertoroca96.retailinventorytracker",
-      versionCode: 3,
+      versionCode: androidVersionCode,
       permissions: ["android.permission.RECORD_AUDIO"],
     },
     plugins: [
