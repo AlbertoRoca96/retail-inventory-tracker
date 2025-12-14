@@ -28,7 +28,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: "1.0.0",
     orientation: "portrait",
     scheme: "retailinventory",
-    jsEngine: "jsc",
+    jsEngine: "hermes",
     newArchEnabled: false,
     ios: {
       supportsTablet: true,
@@ -56,11 +56,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-build-properties",
         {
           ios: {
-            useHermes: false,
+            useHermes: true,
             newArchEnabled: false,
           },
           android: {
-            useHermes: false,
+            useHermes: true,
           },
         },
       ],
