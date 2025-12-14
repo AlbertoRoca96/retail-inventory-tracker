@@ -1,0 +1,16 @@
+diff --git a/node_modules/react-native/scripts/react_native_pods.rb b/node_modules/react-native/scripts/react_native_pods.rb
+index e9f5a89..b5b62c7 100644
+--- a/node_modules/react-native/scripts/react_native_pods.rb
++++ b/node_modules/react-native/scripts/react_native_pods.rb
+@@ -73,7 +73,10 @@ def use_react_native! (
+ )
+   error_if_try_to_use_jsc_from_core()
+ 
+-  hermes_enabled= true
++  # Respect the hermes_enabled flag passed from the Podfile (Expo writes this based on expo.jsEngine)
++  # so we can opt out when the app is configured for JSC.
++  hermes_enabled = !!hermes_enabled
++
+   # Set the app_path as env variable so the podspecs can access it.
+   ENV['APP_PATH'] = app_path
+   ENV['REACT_NATIVE_PATH'] = path

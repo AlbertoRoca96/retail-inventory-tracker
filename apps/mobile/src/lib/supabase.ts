@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const isSSR = typeof window === 'undefined';
@@ -31,29 +32,63 @@ const storage = {
   },
 };
 
-const EXPO_SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-const EXPO_SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+const getConfigExtra = () => {
+  const expoConfig = Constants.expoConfig;
+  const manifest2 = (Constants as unknown as { manifest2?: { extra?: Record<string, unknown> } }).manifest2;
+  const legacyManifest = (Constants as unknown as { manifest?: { extra?: Record<string, unknown> } }).manifest;
+  return expoConfig?.extra ?? manifest2?.extra ?? legacyManifest?.extra ?? {};
+};
+
+const sanitize = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return undefined;
+  return trimmed;
+};
+
+const isValidHttpUrl = (value?: string | null) => {
+  if (!value) return false;
+  return /^https?:\/\//i.test(value.trim());
+};
+
+const extra = getConfigExtra();
+const envSupabaseUrl = sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL);
+const envSupabaseAnonKey = sanitize(
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
+);
+
+const resolvedSupabaseUrl = envSupabaseUrl ?? sanitize(extra.supabaseUrl as string | undefined);
+const resolvedSupabaseAnonKey = envSupabaseAnonKey ?? sanitize(extra.supabaseAnonKey as string | undefined);
 
 const missingEnv: string[] = [];
 
 if (__DEV__) {
-  const preview = (value?: string | null) => {
+  const preview = (value?: string) => {
     if (!value) return 'undefined';
     if (value.length <= 12) return value;
     return `${value.slice(0, 8)}…${value.slice(-4)}`;
   };
-  console.log('[Supabase] Runtime env check', {
-    url: preview(EXPO_SUPABASE_URL),
-    anonKey: preview(EXPO_SUPABASE_ANON_KEY),
+  console.log('[Supabase] Runtime config', {
+    url: preview(resolvedSupabaseUrl),
+    anonKey: preview(resolvedSupabaseAnonKey),
+    source: envSupabaseUrl || envSupabaseAnonKey ? 'env' : 'app.config.extra',
   });
 }
-if (!EXPO_SUPABASE_URL) missingEnv.push('EXPO_PUBLIC_SUPABASE_URL (or SUPABASE_URL)');
-if (!EXPO_SUPABASE_ANON_KEY) missingEnv.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)');
+
+const supabaseUrl = isValidHttpUrl(resolvedSupabaseUrl) ? resolvedSupabaseUrl : undefined;
+const supabaseAnonKey = resolvedSupabaseAnonKey;
+
+if (!supabaseUrl) {
+  missingEnv.push('EXPO_PUBLIC_SUPABASE_URL (or SUPABASE_URL)');
+} else if (!isValidHttpUrl(supabaseUrl)) {
+  missingEnv.push('EXPO_PUBLIC_SUPABASE_URL must start with http(s)://');
+}
+if (!supabaseAnonKey) missingEnv.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)');
 
 let supabaseClient: SupabaseClient;
 
-if (missingEnv.length === 0) {
-  supabaseClient = createClient(EXPO_SUPABASE_URL!, EXPO_SUPABASE_ANON_KEY!, {
+if (missingEnv.length === 0 && supabaseUrl && supabaseAnonKey) {
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       storage,
       persistSession: true,
