@@ -15,8 +15,6 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
         "EXPO_USE_HERMES": "0"
       }
-      }
-      }
     },
     "preview": {
       "node": "20.19.4",
