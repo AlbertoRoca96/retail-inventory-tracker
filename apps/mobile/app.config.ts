@@ -1,9 +1,29 @@
 import type { ConfigContext, ExpoConfig } from "@expo/config";
 import "dotenv/config";
-import { resolveSupabaseConfig } from "./src/config/supabaseEnv";
+import supabaseEnv from "./src/config/supabaseEnv.json";
+
+const sanitize = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") return undefined;
+  return trimmed;
+};
+
+const {
+  FALLBACK_SUPABASE_URL,
+  FALLBACK_SUPABASE_ANON_KEY,
+} = supabaseEnv as {
+  FALLBACK_SUPABASE_URL: string;
+  FALLBACK_SUPABASE_ANON_KEY: string;
+};
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
+  const supabaseUrl =
+    sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL) ??
+    FALLBACK_SUPABASE_URL;
+  const supabaseAnonKey =
+    sanitize(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) ??
+    FALLBACK_SUPABASE_ANON_KEY;
 
   return {
     ...config,

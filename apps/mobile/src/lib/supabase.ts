@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { resolveSupabaseConfig } from '../config/supabaseEnv';
+import supabaseEnv from '../config/supabaseEnv.json';
 
 const isSSR = typeof window === 'undefined';
 const isWeb = Platform.OS === 'web';
@@ -54,16 +54,25 @@ const isValidHttpUrl = (value?: string | null) => {
 
 const extra = getConfigExtra();
 const {
-  supabaseUrl: defaultSupabaseUrl,
-  supabaseAnonKey: defaultSupabaseAnonKey,
-  source: envSource,
-} = resolveSupabaseConfig();
+  FALLBACK_SUPABASE_URL,
+  FALLBACK_SUPABASE_ANON_KEY,
+} = supabaseEnv as {
+  FALLBACK_SUPABASE_URL: string;
+  FALLBACK_SUPABASE_ANON_KEY: string;
+};
+
+const envSupabaseUrl = sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL);
+const envSupabaseAnonKey = sanitize(
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
+);
 
 const extraSupabaseUrl = sanitize(extra.supabaseUrl as string | undefined);
 const extraSupabaseAnonKey = sanitize(extra.supabaseAnonKey as string | undefined);
 
-const resolvedSupabaseUrl = sanitize(extraSupabaseUrl ?? defaultSupabaseUrl);
-const resolvedSupabaseAnonKey = sanitize(extraSupabaseAnonKey ?? defaultSupabaseAnonKey);
+const resolvedSupabaseUrl =
+  envSupabaseUrl ?? extraSupabaseUrl ?? FALLBACK_SUPABASE_URL;
+const resolvedSupabaseAnonKey =
+  envSupabaseAnonKey ?? extraSupabaseAnonKey ?? FALLBACK_SUPABASE_ANON_KEY;
 
 const missingEnv: string[] = [];
 
@@ -73,7 +82,11 @@ if (__DEV__) {
     if (value.length <= 12) return value;
     return `${value.slice(0, 8)}…${value.slice(-4)}`;
   };
-  const source = extraSupabaseUrl || extraSupabaseAnonKey ? 'constants.extra' : envSource;
+  const source = envSupabaseUrl || envSupabaseAnonKey
+    ? 'env'
+    : extraSupabaseUrl || extraSupabaseAnonKey
+    ? 'constants.extra'
+    : 'fallback';
   console.log('[Supabase] Runtime config', {
     url: preview(resolvedSupabaseUrl),
     anonKey: preview(resolvedSupabaseAnonKey),
