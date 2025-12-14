@@ -1,7 +1,6 @@
 import type { ConfigContext, ExpoConfig } from "@expo/config";
 import "dotenv/config";
 import supabaseEnv from "./src/config/supabaseEnv.json";
-import versioning from "./version.json";
 
 const sanitize = (value?: string | null): string | undefined => {
   if (!value) return undefined;
@@ -18,11 +17,60 @@ const {
   FALLBACK_SUPABASE_ANON_KEY: string;
 };
 
-const { version: appVersion, iosBuildNumber, androidVersionCode } = versioning as {
-  version: string;
-  iosBuildNumber: number;
-  androidVersionCode: number;
+const APP_VERSION = "1.0.0";
+const ANDROID_VERSION_CODE_MAX = 2147483647;
+
+const sanitizeNumericString = (value?: string | number | null): string | undefined => {
+  if (value == null) return undefined;
+  const text = `${value}`.trim();
+  if (!text) return undefined;
+  if (!/^[0-9]+$/.test(text)) return undefined;
+  return text;
 };
+
+const sanitizeInteger = (value?: string | number | null): number | undefined => {
+  if (value == null) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  if (parsed < 1) return undefined;
+  return Math.floor(parsed);
+};
+
+const ensureAndroidBounds = (value: number): number => {
+  return Math.min(Math.max(value, 1), ANDROID_VERSION_CODE_MAX);
+};
+
+type BuildMeta = { ios: string; android: number };
+type GlobalWithBuildMeta = typeof globalThis & {
+  __retailInventoryBuildMeta?: BuildMeta;
+};
+
+const resolveBuildMeta = (): BuildMeta => {
+  const globalScope = globalThis as GlobalWithBuildMeta;
+  if (globalScope.__retailInventoryBuildMeta) {
+    return globalScope.__retailInventoryBuildMeta;
+  }
+
+  const now = Date.now();
+  const iosAuto = String(now);
+  const androidAuto = ensureAndroidBounds(Math.floor(now / 1000));
+
+  const meta: BuildMeta = {
+    ios: iosAuto,
+    android: androidAuto,
+  };
+  globalScope.__retailInventoryBuildMeta = meta;
+  return meta;
+};
+
+const envIosBuild =
+  sanitizeNumericString(process.env.IOS_BUILD_NUMBER ?? process.env.EXPO_IOS_BUILD_NUMBER) ?? undefined;
+const envAndroidBuild =
+  sanitizeInteger(process.env.ANDROID_VERSION_CODE ?? process.env.EXPO_ANDROID_VERSION_CODE) ?? undefined;
+
+const autoMeta = resolveBuildMeta();
+const iosBuildNumber = envIosBuild ?? autoMeta.ios;
+const androidVersionCode = ensureAndroidBounds(envAndroidBuild ?? autoMeta.android);
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const supabaseUrl =
@@ -37,7 +85,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: "Retail Inventory Tracker",
     slug: "retail-inventory-tracker",
     owner: "al96",
-    version: appVersion,
+    version: APP_VERSION,
     orientation: "portrait",
     scheme: "retailinventory",
     jsEngine: "hermes",
@@ -45,7 +93,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "io.github.albertoroca96.retailinventorytracker",
-      buildNumber: String(iosBuildNumber),
+      buildNumber: iosBuildNumber,
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
