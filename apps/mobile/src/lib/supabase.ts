@@ -2,7 +2,10 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import supabaseEnv from '../config/supabaseEnv.json';
+
+const FALLBACK_SUPABASE_URL = 'https://prhhlvdoplavakbgcbes.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InByaGhsdmRvcGxhdmFrYmdjYmVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDQ5MzQsImV4cCI6MjA3MDkyMDkzNH0.1m2eqSItpNq_rl_uU5PwOlSubdCfwp-NmW2QCPVWB5c';
 
 const isSSR = typeof window === 'undefined';
 const isWeb = Platform.OS === 'web';
@@ -53,14 +56,6 @@ const isValidHttpUrl = (value?: string | null) => {
 };
 
 const extra = getConfigExtra();
-const {
-  FALLBACK_SUPABASE_URL,
-  FALLBACK_SUPABASE_ANON_KEY,
-} = supabaseEnv as {
-  FALLBACK_SUPABASE_URL: string;
-  FALLBACK_SUPABASE_ANON_KEY: string;
-};
-
 const envSupabaseUrl = sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL);
 const envSupabaseAnonKey = sanitize(
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
