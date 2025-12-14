@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.github.albertoroca96.retailinventorytracker",
-      "buildNumber": "22",
+      "buildNumber": "23",
       "jsEngine": "jsc",
       "newArchEnabled": false,
       "infoPlist": {
@@ -31,7 +31,19 @@
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to attach store shelf images."
         }
       ],
-      "expo-router"
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useHermes": false,
+            "newArchEnabled": false
+          },
+          "android": {
+            "useHermes": false
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
