@@ -1,24 +1,9 @@
 import type { ConfigContext, ExpoConfig } from "@expo/config";
 import "dotenv/config";
-
-const FALLBACK_SUPABASE_URL = "https://prhhlvdoplavakbgcbes.supabase.co";
-const FALLBACK_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InByaGhsdmRvcGxhdmFrYmdjYmVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDQ5MzQsImV4cCI6MjA3MDkyMDkzNH0.1m2eqSItpNq_rl_uU5PwOlSubdCfwp-NmW2QCPVWB5c";
-
-const sanitize = (value?: string | null): string | undefined => {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "undefined" || trimmed === "null") return undefined;
-  return trimmed;
-};
+import { resolveSupabaseConfig } from "./src/config/supabaseEnv";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const supabaseUrl =
-    sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL) ??
-    FALLBACK_SUPABASE_URL;
-  const supabaseAnonKey =
-    sanitize(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) ??
-    FALLBACK_SUPABASE_ANON_KEY;
+  const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
 
   return {
     ...config,

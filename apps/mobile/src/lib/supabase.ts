@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { resolveSupabaseConfig } from '../config/supabaseEnv';
 
 const isSSR = typeof window === 'undefined';
 const isWeb = Platform.OS === 'web';
@@ -52,13 +53,17 @@ const isValidHttpUrl = (value?: string | null) => {
 };
 
 const extra = getConfigExtra();
-const envSupabaseUrl = sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL);
-const envSupabaseAnonKey = sanitize(
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
-);
+const {
+  supabaseUrl: defaultSupabaseUrl,
+  supabaseAnonKey: defaultSupabaseAnonKey,
+  source: envSource,
+} = resolveSupabaseConfig();
 
-const resolvedSupabaseUrl = envSupabaseUrl ?? sanitize(extra.supabaseUrl as string | undefined);
-const resolvedSupabaseAnonKey = envSupabaseAnonKey ?? sanitize(extra.supabaseAnonKey as string | undefined);
+const extraSupabaseUrl = sanitize(extra.supabaseUrl as string | undefined);
+const extraSupabaseAnonKey = sanitize(extra.supabaseAnonKey as string | undefined);
+
+const resolvedSupabaseUrl = sanitize(extraSupabaseUrl ?? defaultSupabaseUrl);
+const resolvedSupabaseAnonKey = sanitize(extraSupabaseAnonKey ?? defaultSupabaseAnonKey);
 
 const missingEnv: string[] = [];
 
@@ -68,10 +73,11 @@ if (__DEV__) {
     if (value.length <= 12) return value;
     return `${value.slice(0, 8)}…${value.slice(-4)}`;
   };
+  const source = extraSupabaseUrl || extraSupabaseAnonKey ? 'constants.extra' : envSource;
   console.log('[Supabase] Runtime config', {
     url: preview(resolvedSupabaseUrl),
     anonKey: preview(resolvedSupabaseAnonKey),
-    source: envSupabaseUrl || envSupabaseAnonKey ? 'env' : 'app.config.extra',
+    source,
   });
 }
 
