@@ -1,6 +1,7 @@
 // apps/mobile/src/components/Button.tsx - Professional Button Component
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Pressable, Text, StyleSheet, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { theme, typography, textA11yProps, animations, borderRadius, shadows, spacing } from '../theme';
 import { useUISettings } from '../lib/uiSettings';
 
@@ -58,7 +59,8 @@ export default function Button({
 
   // Safe fallback for size prop to prevent undefined fontSize access
   const safeSize = (size && textSizes[size] && sizeStyles[size]) ? size : 'md';
-  const fontSize = Math.round(textSizes[safeSize] * fontScale);
+  const seniorBoost = simplifiedMode ? 1.25 : largeText ? 1.18 : 1.12;
+  const fontSize = Math.round(textSizes[safeSize] * fontScale * seniorBoost);
   const currentSizeStyle = sizeStyles[safeSize];
   
   // Professional color configurations
@@ -165,13 +167,19 @@ export default function Button({
     );
   };
 
+  const handlePress = useCallback(() => {
+    if (disabled || loading) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    onPress();
+  }, [disabled, loading, onPress]);
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || title}
       accessibilityState={{ disabled, busy: loading }}
       hitSlop={10}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         getVariantStyles(),

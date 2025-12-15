@@ -29,8 +29,8 @@ export default function Menu() {
 
   // Typography scaled by user preference
   const titleStyle = useMemo(() => ({
-    fontSize: Math.round(typography.title.fontSize * fontScale * 1.2),
-    lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.2),
+    fontSize: Math.round(typography.title.fontSize * fontScale * 1.35),
+    lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.35),
     fontWeight: '800' as const,
     marginBottom: spacing.lg,
     color: colors.primary[800],
@@ -38,8 +38,8 @@ export default function Menu() {
   }), [fontScale]);
 
   const subtitleStyle = useMemo(() => ({
-    fontSize: Math.round(typography.body.fontSize * fontScale * 1.1),
-    lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.1),
+    fontSize: Math.round(typography.body.fontSize * fontScale * 1.2),
+    lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.2),
     fontWeight: '500' as const,
     color: colors.gray[600],
     textAlign: 'center' as const,
@@ -80,7 +80,7 @@ export default function Menu() {
           <Button
             title="📝 Create Form"
             onPress={() => router.push('/form/new')}
-            variant="primary"
+            variant="success"
             size="lg"
             fullWidth
             accessibilityLabel="Create new submission form"
@@ -89,7 +89,7 @@ export default function Menu() {
           <Button
             title="📊 View Submissions"
             onPress={() => router.push('/submissions')}
-            variant="secondary"
+            variant="primary"
             size="lg"
             fullWidth
             accessibilityLabel="View all submissions"
@@ -171,6 +171,17 @@ export default function Menu() {
         </View>
       ) : null}
 
+      <View style={styles.section}>
+        <Button
+          title="✅ Submit Form"
+          onPress={() => router.push('/form/new')}
+          variant="success"
+          size="lg"
+          fullWidth
+          accessibilityLabel="Submit form from bottom CTA"
+        />
+      </View>
+
       {/* Chat functionality */}
       <View style={[styles.section, styles.lastSection]}>
         <Button
@@ -219,9 +230,14 @@ const styles = {
   contentContainer: {
     flexGrow: 1,
     paddingBottom: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
   },
   header: {
     marginBottom: spacing.lg,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   headerBackground: {
     backgroundColor: colors.primary[600],
@@ -236,13 +252,14 @@ const styles = {
   },
   section: {
     marginBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    width: '100%',
+    maxWidth: 560,
   },
   lastSection: {
     marginBottom: spacing.xl,
   },
   sectionTitle: {
-    fontSize: typography.title.fontSize,
+    fontSize: Math.round(typography.title.fontSize * 1.2),
     fontWeight: '700' as const,
     color: colors.gray[800],
     marginBottom: spacing.md,
@@ -267,6 +284,7 @@ const styles = {
   },
   actionGrid: {
     gap: spacing.md,
+    width: '100%',
   },
   loadingSection: {
     alignItems: 'center',

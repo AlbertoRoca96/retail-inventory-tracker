@@ -93,6 +93,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...config,
     name: "Retail Inventory Tracker",
     slug: "retail-inventory-tracker",
+    icon: "./assets/app-icon.png",
+    splash: {
+      image: "./assets/app-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff",
+    },
+    notification: {
+      icon: "./assets/app-icon.png",
+      color: "#2563eb",
+      iosDisplayInForeground: true,
+    },
     owner: "al96",
     version: APP_VERSION,
     orientation: "portrait",
@@ -101,6 +112,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     newArchEnabled: false,
     ios: {
       supportsTablet: true,
+      icon: "./assets/app-icon.png",
       bundleIdentifier: "io.github.albertoroca96.retailinventorytracker",
       buildNumber: iosBuildNumber,
       infoPlist: {
@@ -111,6 +123,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: "io.github.albertoroca96.retailinventorytracker",
       versionCode: androidVersionCode,
       permissions: ["android.permission.RECORD_AUDIO"],
+      adaptiveIcon: {
+        foregroundImage: "./assets/app-icon.png",
+        backgroundColor: "#ffffff",
+      },
+      icon: "./assets/app-icon.png",
     },
     plugins: [
       [
@@ -124,6 +141,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-router",
         {
           origin: webOrigin,
+        },
+      ],
+      [
+        "expo-notifications",
+        {
+          icon: "./assets/app-icon.png",
+          color: "#2563eb",
         },
       ],
       [

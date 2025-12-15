@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { supabase } from '../src/lib/supabase';
 import { UISettingsProvider } from '../src/lib/uiSettings';
 import ChatBubble from '../src/components/ChatBubble';
+import { ensureNotificationPermissions, notifyPrioritySubmission } from '../src/lib/notifications';
 
 /** ---------- Helpers to detect sections ---------- */
 function isUnauthPath(p: string | null) {
@@ -102,6 +103,11 @@ function Gate({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [ready, session?.user?.id]);
 
+  useEffect(() => {
+    if (!session?.user?.id || !isAdmin) return;
+    ensureNotificationPermissions().catch(() => {});
+  }, [session?.user?.id, isAdmin]);
+
   // Subscribe to priority-1 inserts/updates for all of my teams
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -120,8 +126,21 @@ function Gate({ children }: { children: React.ReactNode }) {
         const teamId = t.team_id;
         const handle = (payload: any) => {
           const row = payload?.new || {};
-          if (row.priority_level === 1 && row.created_by !== me) {
+          if (!row?.id || row.created_by === me) return;
+
+          if (row.priority_level === 1) {
             setAlert({ id: row.id, store: row.store_location || row.store_site || '', who: row.created_by });
+          }
+
+          const eventType = String(payload?.eventType || payload?.type || '').toUpperCase();
+          if (eventType === 'INSERT' && isAdmin) {
+            notifyPrioritySubmission({
+              id: row.id,
+              teamId,
+              store: row.store_location || row.store_site || t?.teams?.name || 'New submission',
+              createdBy: row.created_by,
+              priority: row.priority_level ?? 3,
+            }).catch(() => {});
           }
         };
         const ch = supabase.channel(`pri1-${teamId}`)
@@ -143,7 +162,7 @@ function Gate({ children }: { children: React.ReactNode }) {
         try { supabase.removeChannel(ch); } catch {}
       }
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, me, isAdmin]);
 
   if (!ready) return <>{children}</>;
   const onUnauth = isUnauthPath(pathname);

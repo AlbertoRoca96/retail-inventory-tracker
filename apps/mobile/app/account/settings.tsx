@@ -104,6 +104,15 @@ export default function AccountSettings() {
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
       <Head><title>Account Settings</title></Head>
 
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        style={{ alignSelf: 'flex-start', paddingVertical: 4 }}
+      >
+        <Text style={{ fontSize: 18, color: '#2563eb', fontWeight: '600' }}>← Back</Text>
+      </Pressable>
+
       <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
         Account Settings
       </Text>

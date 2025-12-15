@@ -1,8 +1,10 @@
 // apps/mobile/src/screens/LoginScreen.tsx
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, Image, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Image, Platform, KeyboardAvoidingView, ScrollView } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useAuth } from '../hooks/useAuth';
 import { theme } from '../theme';
+import Button from '../components/Button';
 
 // Statically reference your logo at apps/mobile/assets/logo.png.
 // If the file is missing, Metro will error at build time.
@@ -19,7 +21,7 @@ const isWeb = Platform.OS === 'web';
  *   If you ever *still* see a halo, the remaining white is baked inside the PNG—trim and re-export.
  */
 export default function LoginScreen() {
-  const { signIn, signUp, signInWithOtp, resetPassword, demo } = useAuth();
+  const { signIn, resetPassword, demo } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,16 +65,6 @@ export default function LoginScreen() {
     await signIn(emailTrim, passwordTrim);
   });
 
-  const onSignUp = wrap(async () => {
-    if (!emailTrim || !passwordTrim) throw new Error('Email & password required');
-    await signUp(emailTrim, passwordTrim);
-  });
-
-  const onMagic = wrap(async () => {
-    if (!emailTrim) throw new Error('Email required');
-    await signInWithOtp(emailTrim); // magic link
-  });
-
   const onForgot = wrap(async () => {
     if (!emailTrim) throw new Error('Email required');
     await resetPassword(emailTrim);
@@ -87,148 +79,140 @@ export default function LoginScreen() {
   const onPasswordSubmit = () => onSignIn();
 
   // Slightly taller banner so the logo reads nicely when cropped to the edges.
-  const LOGO_BANNER_HEIGHT = 64;
+  const LOGO_BANNER_HEIGHT = 80;
+
+  const togglePasswordVisibility = () => {
+    Haptics.selectionAsync().catch(() => {});
+    setShowPw((s) => !s);
+  };
 
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <View
-        style={{
-          width: 320,
-          backgroundColor: '#eee',
-          padding: 20,
-          borderRadius: 12,
-          // RN Web accepts string shadows; native ignores it safely
-          boxShadow: (isWeb ? '0 4px 24px rgba(0,0,0,0.08)' : undefined) as any,
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          padding: 24,
+          backgroundColor: '#f5f6fb',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Logo banner — now *touches* the edges (no white halo) */}
         <View
           style={{
-            height: LOGO_BANNER_HEIGHT,
-            backgroundColor: '#ddd',
-            borderRadius: 8,
-            marginBottom: 16,
-            overflow: 'hidden',      // crops any outer whitespace baked into the PNG
-            alignItems: 'center',
-            justifyContent: 'center',
+            width: '100%',
+            maxWidth: 420,
+            backgroundColor: '#ffffff',
+            padding: 24,
+            borderRadius: 24,
+            gap: 16,
+            shadowColor: '#000',
+            shadowOpacity: 0.08,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 4,
           }}
         >
-          {logoOk ? (
-            <Image
-              source={logoPng}
-              // Absolute fill + cover => image touches top/bottom/left/right of the banner
+          <View style={{ alignItems: 'center', marginBottom: 8 }}>
+            <View
               style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
+                height: LOGO_BANNER_HEIGHT,
+                width: LOGO_BANNER_HEIGHT * 2,
+                borderRadius: LOGO_BANNER_HEIGHT,
+                overflow: 'hidden',
+                backgroundColor: '#dbeafe',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-              resizeMode="cover"
-              accessibilityLabel="Company logo"
-              onError={() => setLogoOk(false)}
-            />
-          ) : (
-            // Fallback keeps a clean look if the asset fails to load for any reason
-            <Text style={{ fontSize: 20, color: '#777', fontWeight: '700' }}>Logo</Text>
-          )}
-        </View>
+            >
+              {logoOk ? (
+                <Image
+                  source={logoPng}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                  accessibilityLabel="RWS globe"
+                  onError={() => setLogoOk(false)}
+                />
+              ) : (
+                <Text style={{ fontSize: 28, fontWeight: '800', color: '#111827' }}>RWS</Text>
+              )}
+            </View>
+            <Text style={{ fontSize: 26, fontWeight: '800', marginTop: 12 }}>Welcome back</Text>
+            <Text style={{ fontSize: 16, color: '#475569', textAlign: 'center' }}>
+              Sign in with your store email and password
+            </Text>
+          </View>
 
-        {/* Email */}
-        <TextInput
-          ref={emailRef}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          // RN web nicety for autofill
-          // @ts-expect-error RN web prop
-          autoComplete={isWeb ? 'email' : undefined}
-          textContentType="emailAddress"
-          returnKeyType="next"
-          onSubmitEditing={onEmailSubmit}
-          style={theme.input}
-        />
-
-        {/* Password + show/hide toggle */}
-        <View style={{ marginTop: 12 }}>
           <TextInput
-            ref={pwRef}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPw}
+            ref={emailRef}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
             // RN web nicety for autofill
             // @ts-expect-error RN web prop
-            autoComplete={isWeb ? 'current-password' : undefined}
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={onPasswordSubmit}
-            style={theme.input}
+            autoComplete={isWeb ? 'email' : undefined}
+            textContentType="emailAddress"
+            returnKeyType="next"
+            onSubmitEditing={onEmailSubmit}
+            style={[theme.input, { fontSize: 18 }]}
           />
-          <Pressable
-            onPress={() => setShowPw((s) => !s)}
-            style={{ alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 6 }}
-            accessibilityRole="button"
-          >
-            <Text style={{ color: '#2563eb', fontWeight: '600' }}>
-              {showPw ? 'Hide password' : 'Show password'}
-            </Text>
-          </Pressable>
+
+          <View>
+            <TextInput
+              ref={pwRef}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPw}
+              // RN web nicety for autofill
+              // @ts-expect-error RN web prop
+              autoComplete={isWeb ? 'current-password' : undefined}
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={onPasswordSubmit}
+              style={[theme.input, { fontSize: 18 }]}
+            />
+            <Pressable
+              onPress={togglePasswordVisibility}
+              style={{ alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 6 }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: '#2563eb', fontWeight: '600' }}>
+                {showPw ? 'Hide password' : 'Show password'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {!!error && <Text style={{ color: '#dc2626', fontSize: 16 }}>{error}</Text>}
+          {!!info && <Text style={{ color: '#0f766e', fontSize: 16 }}>{info}</Text>}
+          {demo && <Text style={{ color: '#1e293b', fontSize: 14 }}>Demo bypass is enabled</Text>}
+
+          <Button
+            title={busy ? 'Signing in…' : 'Sign in'}
+            onPress={onSignIn}
+            disabled={busy}
+            fullWidth
+            size="lg"
+            variant="primary"
+            accessibilityLabel="Sign in"
+          />
+
+          <Button
+            title="Forgot password"
+            onPress={onForgot}
+            disabled={busy}
+            fullWidth
+            size="md"
+            variant="secondary"
+            accessibilityLabel="Reset password"
+          />
         </View>
-
-        {!!error && <Text style={{ color: 'red', marginTop: 8 }}>{error}</Text>}
-        {!!info && <Text style={{ color: '#0a7', marginTop: 8 }}>{info}</Text>}
-        {demo && <Text style={{ color: '#555', marginTop: 8 }}>Demo bypass is enabled</Text>}
-
-        {/* Primary actions */}
-        <Pressable
-          onPress={onSignIn}
-          disabled={busy}
-          style={[
-            theme.button,
-            { marginTop: 8, opacity: busy ? 0.8 : 1 },
-          ]}
-        >
-          <Text style={theme.buttonText}>{busy ? 'Working…' : 'Sign in'}</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onSignUp}
-          disabled={busy}
-          style={[
-            theme.button,
-            { marginTop: 8, backgroundColor: '#475569', opacity: busy ? 0.8 : 1 },
-          ]}
-        >
-          <Text style={theme.buttonText}>Create account</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onMagic}
-          disabled={busy}
-          style={[
-            theme.button,
-            { marginTop: 8, backgroundColor: '#334155', opacity: busy ? 0.8 : 1 },
-          ]}
-        >
-          <Text style={theme.buttonText}>Send magic link</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onForgot}
-          disabled={busy}
-          style={[
-            theme.button,
-            { marginTop: 8, backgroundColor: '#64748b', opacity: busy ? 0.8 : 1 },
-          ]}
-        >
-          <Text style={theme.buttonText}>Forgot password</Text>
-        </Pressable>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
