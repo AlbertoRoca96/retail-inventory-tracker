@@ -2,10 +2,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-
-const FALLBACK_SUPABASE_URL = 'https://prhhlvdoplavakbgcbes.supabase.co';
-const FALLBACK_SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InByaGhsdmRvcGxhdmFrYmdjYmVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDQ5MzQsImV4cCI6MjA3MDkyMDkzNH0.1m2eqSItpNq_rl_uU5PwOlSubdCfwp-NmW2QCPVWB5c';
+import { FALLBACK_SUPABASE_ANON_KEY, FALLBACK_SUPABASE_URL } from '../config/staticSupabase';
 
 const isSSR = typeof window === 'undefined';
 const isWeb = Platform.OS === 'web';
@@ -55,6 +52,14 @@ const isValidHttpUrl = (value?: string | null) => {
   return /^https?:\/\//i.test(value.trim());
 };
 
+type ConfigSource = 'env' | 'constants.extra' | 'fallback';
+type ConfigDiagnostics = {
+  source: ConfigSource;
+  hasUrl: boolean;
+  urlValid: boolean;
+  hasAnonKey: boolean;
+};
+
 const extra = getConfigExtra();
 const envSupabaseUrl = sanitize(process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL);
 const envSupabaseAnonKey = sanitize(
@@ -64,40 +69,54 @@ const envSupabaseAnonKey = sanitize(
 const extraSupabaseUrl = sanitize(extra.supabaseUrl as string | undefined);
 const extraSupabaseAnonKey = sanitize(extra.supabaseAnonKey as string | undefined);
 
-const resolvedSupabaseUrl =
-  envSupabaseUrl ?? extraSupabaseUrl ?? FALLBACK_SUPABASE_URL;
-const resolvedSupabaseAnonKey =
-  envSupabaseAnonKey ?? extraSupabaseAnonKey ?? FALLBACK_SUPABASE_ANON_KEY;
+const fallbackSupabaseUrl = sanitize(FALLBACK_SUPABASE_URL);
+const fallbackSupabaseAnonKey = sanitize(FALLBACK_SUPABASE_ANON_KEY);
+
+const candidates: { source: ConfigSource; url?: string; anonKey?: string }[] = [
+  { source: 'env', url: envSupabaseUrl, anonKey: envSupabaseAnonKey },
+  { source: 'constants.extra', url: extraSupabaseUrl, anonKey: extraSupabaseAnonKey },
+  { source: 'fallback', url: fallbackSupabaseUrl, anonKey: fallbackSupabaseAnonKey },
+];
+
+const configDiagnostics: ConfigDiagnostics[] = candidates.map((candidate) => ({
+  source: candidate.source,
+  hasUrl: !!candidate.url,
+  urlValid: isValidHttpUrl(candidate.url),
+  hasAnonKey: !!candidate.anonKey,
+}));
+
+const resolvedConfig = candidates.find(
+  (candidate) => isValidHttpUrl(candidate.url) && !!candidate.anonKey
+);
+
+const supabaseUrl = resolvedConfig?.url;
+const supabaseAnonKey = resolvedConfig?.anonKey;
+const supabaseConfigSource: ConfigSource | null = resolvedConfig?.source ?? null;
 
 const missingEnv: string[] = [];
 
 if (__DEV__) {
-  const preview = (value?: string) => {
-    if (!value) return 'undefined';
-    if (value.length <= 12) return value;
-    return `${value.slice(0, 8)}…${value.slice(-4)}`;
-  };
-  const source = envSupabaseUrl || envSupabaseAnonKey
-    ? 'env'
-    : extraSupabaseUrl || extraSupabaseAnonKey
-    ? 'constants.extra'
-    : 'fallback';
   console.log('[Supabase] Runtime config', {
-    url: preview(resolvedSupabaseUrl),
-    anonKey: preview(resolvedSupabaseAnonKey),
-    source,
+    resolvedFrom: supabaseConfigSource ?? 'none',
+    diagnostics: configDiagnostics,
   });
 }
 
-const supabaseUrl = isValidHttpUrl(resolvedSupabaseUrl) ? resolvedSupabaseUrl : undefined;
-const supabaseAnonKey = resolvedSupabaseAnonKey;
-
 if (!supabaseUrl) {
   missingEnv.push('EXPO_PUBLIC_SUPABASE_URL (or SUPABASE_URL)');
-} else if (!isValidHttpUrl(supabaseUrl)) {
-  missingEnv.push('EXPO_PUBLIC_SUPABASE_URL must start with http(s)://');
 }
-if (!supabaseAnonKey) missingEnv.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)');
+if (!supabaseAnonKey) {
+  missingEnv.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)');
+}
+
+const summarizeDiagnostics = () =>
+  configDiagnostics
+    .map((diag) => {
+      const urlState = diag.hasUrl ? (diag.urlValid ? 'url:valid' : 'url:invalid') : 'url:missing';
+      const keyState = diag.hasAnonKey ? 'key:present' : 'key:missing';
+      return `${diag.source} (${urlState}, ${keyState})`;
+    })
+    .join(' | ');
 
 let supabaseClient: SupabaseClient;
 
@@ -111,10 +130,9 @@ if (missingEnv.length === 0 && supabaseUrl && supabaseAnonKey) {
     },
   });
 } else {
+  const missingList = missingEnv.length ? missingEnv.join(', ') : 'Unknown config failure';
   const message =
-    `[Supabase] Missing environment variables: ${missingEnv.join(
-      ', '
-    )}. Supabase features are disabled until they are provided.`;
+    `[Supabase] Missing environment variables: ${missingList}. Supabase features are disabled until they are provided. Diagnostics -> ${summarizeDiagnostics()}`;
   console.warn(message);
   // Create a proxy that throws a descriptive error if any Supabase method is invoked.
   supabaseClient = new Proxy({} as SupabaseClient, {
@@ -126,3 +144,7 @@ if (missingEnv.length === 0 && supabaseUrl && supabaseAnonKey) {
 
 export const supabase = supabaseClient;
 export const hasSupabaseConfig = missingEnv.length === 0;
+export const supabaseConfigInfo = {
+  source: supabaseConfigSource,
+  diagnostics: configDiagnostics,
+};
