@@ -4,12 +4,23 @@ import supabaseFallback from "./src/config/staticSupabase.json";
 
 const FALLBACK_SUPABASE_URL = supabaseFallback.url;
 const FALLBACK_SUPABASE_ANON_KEY = supabaseFallback.anonKey;
+const FALLBACK_WEB_ORIGIN = "https://albertoroca96.github.io";
 
 const sanitize = (value?: string | null): string | undefined => {
   if (!value) return undefined;
   const trimmed = value.trim();
   if (!trimmed || trimmed === "undefined" || trimmed === "null") return undefined;
   return trimmed;
+};
+
+const sanitizeOrigin = (value?: string | null): string | undefined => {
+  const clean = sanitize(value);
+  if (!clean) return undefined;
+  try {
+    return new URL(clean).origin;
+  } catch {
+    return undefined;
+  }
 };
 
 const APP_VERSION = "1.0.0";
@@ -74,6 +85,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const supabaseAnonKey =
     sanitize(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY) ??
     FALLBACK_SUPABASE_ANON_KEY;
+  const webOrigin =
+    sanitizeOrigin(process.env.EXPO_PUBLIC_WEB_ORIGIN ?? process.env.WEB_ORIGIN) ??
+    FALLBACK_WEB_ORIGIN;
 
   return {
     ...config,
@@ -106,7 +120,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             "Allow $(PRODUCT_NAME) to access your photos to attach store shelf images.",
         },
       ],
-      "expo-router",
+      [
+        "expo-router",
+        {
+          origin: webOrigin,
+        },
+      ],
       [
         "expo-build-properties",
         {
@@ -127,6 +146,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
       supabaseUrl,
       supabaseAnonKey,
+      webOrigin,
     },
     web: {
       bundler: "metro",
