@@ -13,7 +13,8 @@ A phone-first field app to capture retail audits: login, create/view submissions
    EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-public-key-from-settings-api>
    ```
    When running EAS builds, define the same two variables in `apps/mobile/eas.json` → `build.*.env` (already wired up) via the Expo dashboard. These are the **only** Supabase secrets the mobile app needs.
-3) Run `npx expo start --tunnel`. Metro prints a line like `"[Supabase] Runtime env check { url: 'https://prhhlv…', anonKey: 'eyJhbGc…W5c' }"`. If either value says `undefined`, fix your `.env` / EAS env before trying to sign in.
+   > Icon note: the latest RWS globe artwork that ships with builds lives at `apps/mobile/assets/logo.png` and is referenced by the Expo config + home screen.
+3) Run `npx expo start --tunnel`. Metro prints a line like `"[Supabase] Runtime env check { url: 'https://prhhlv…', anonKey: 'eyJhbGc…W5c' }". If either value says `undefined`, fix your `.env` / EAS env before trying to sign in.
 4) `npm run ios` / `npx expo start --tunnel` and scan with Expo Go or install the dev client.
 
 ## Testing real builds (Expo Go ≠ TestFlight)
