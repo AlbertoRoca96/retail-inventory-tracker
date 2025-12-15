@@ -1,6 +1,9 @@
 import type { ConfigContext, ExpoConfig } from "@expo/config";
 import "dotenv/config";
-import { FALLBACK_SUPABASE_ANON_KEY, FALLBACK_SUPABASE_URL } from "./src/config/staticSupabase";
+import supabaseFallback from "./src/config/staticSupabase.json";
+
+const FALLBACK_SUPABASE_URL = supabaseFallback.url;
+const FALLBACK_SUPABASE_ANON_KEY = supabaseFallback.anonKey;
 
 const sanitize = (value?: string | null): string | undefined => {
   if (!value) return undefined;
