@@ -78,15 +78,6 @@ export default function Menu() {
         
         <View style={styles.actionGrid}>
           <Button
-            title="📝 Create Form"
-            onPress={() => router.push('/form/new')}
-            variant="success"
-            size="lg"
-            fullWidth
-            accessibilityLabel="Create new submission form"
-          />
-          
-          <Button
             title="📊 View Submissions"
             onPress={() => router.push('/submissions')}
             variant="primary"
@@ -225,7 +216,7 @@ export default function Menu() {
 const styles = {
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: '#f4f6fb',
   },
   contentContainer: {
     flexGrow: 1,
@@ -254,6 +245,10 @@ const styles = {
     marginBottom: spacing.lg,
     width: '100%',
     maxWidth: 560,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.md,
   },
   lastSection: {
     marginBottom: spacing.xl,

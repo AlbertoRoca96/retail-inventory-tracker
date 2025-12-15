@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Image, ScrollView, Pressable, Platform, Alert } from 'react-native';
+import { View, Text, Image, ScrollView, Pressable, Platform, Alert, StyleSheet } from 'react-native';
+import Button from '../../src/components/Button';
 import { router, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
@@ -41,6 +42,20 @@ function priColor(n: number | null | undefined) {
   return n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
 }
 
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+
 function PriPill({ n }: { n: number | null | undefined }) {
   const label = String(n ?? 3);
   const bg = priColor(n ?? 3);
@@ -48,6 +63,20 @@ function PriPill({ n }: { n: number | null | undefined }) {
     <View
       accessible
       accessibilityLabel={`Priority ${label}`}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       style={{
         paddingHorizontal: 10,
         paddingVertical: 4,
@@ -57,11 +86,39 @@ function PriPill({ n }: { n: number | null | undefined }) {
         alignItems: 'center',
         justifyContent: 'center',
       }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
     >
       <Text {...textA11yProps} style={{ color: 'white', fontWeight: '800' }}>{label}</Text>
     </View>
   );
 }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
 
 function toCsv(r: Row) {
   const tags =
@@ -87,6 +144,20 @@ function toCsv(r: Row) {
   return cells.map(([k, v]) => `"${k}","${String(v).replace(/"/g, '""')}"`).join('\n');
 }
 
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+
 const isWeb = Platform.OS === 'web';
 
 function downloadCsvWeb(filename: string, text: string) {
@@ -98,14 +169,56 @@ function downloadCsvWeb(filename: string, text: string) {
     a.download = filename;
     a.click();
   }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
   setTimeout(() => URL.revokeObjectURL(url), 500);
 }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
 
 async function shareCsvNative(filename: string, text: string) {
   const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
   if (!dir) {
     throw new Error('Unable to access the document directory.');
   }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
 
   const target = `${dir}${filename}`;
   await FileSystem.writeAsStringAsync(target, text, {
@@ -122,10 +235,52 @@ async function shareCsvNative(filename: string, text: string) {
     } else {
       Alert.alert('Sharing unavailable', 'Unable to open the iOS share sheet on this device.');
     }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
   } finally {
     await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => undefined);
   }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
 }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
 
 export default function Submission() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -163,6 +318,20 @@ export default function Submission() {
         const { data } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
         dataRow = (data as Row) ?? null;
       }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       if (!dataRow) return;
       setRow(dataRow);
 
@@ -187,6 +356,20 @@ export default function Submission() {
       Alert.alert('Web only', 'Excel downloads are only available from the web dashboard for now.');
       return;
     }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
     const p2 = row.photo2_url || photo2Url || null;
@@ -210,7 +393,7 @@ export default function Submission() {
     });
   };
 
-  const share = async () => {
+  const shareCsv = async () => {
     const csv = toCsv(row);
 
     if (isWeb) {
@@ -227,43 +410,272 @@ export default function Submission() {
         } catch (err) {
           console.warn('Web share failed, falling back to download', err);
         }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       downloadCsvWeb('submission.csv', csv);
       return;
     }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
 
     try {
       await shareCsvNative('submission.csv', csv);
     } catch (error: any) {
       Alert.alert('Share failed', error?.message ?? 'Unable to create the CSV file.');
     }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
   };
 
   const tagsText = Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : '');
   const submittedBy = row.submitter_display_name || row.submitter_email || row.created_by || '';
 
-  const btnBg = highContrast ? '#1743b3' : colors.blue;
+  const saveCsvToFiles = async () => {
+    const csv = toCsv(row);
+    const fileName = `submission-${row.id || Date.now()}.csv`;
+    const dest = `${FileSystem.documentDirectory || FileSystem.cacheDirectory}${fileName}`;
+    await FileSystem.writeAsStringAsync(dest, csv, { encoding: FileSystem.EncodingType.UTF8 });
+    Alert.alert('CSV saved', `Saved to Files app → On My iPhone → ${fileName}`);
+  };
+
+  const photoUrls = [row.photo1_url || photo1Url, row.photo2_url || photo2Url].filter(Boolean) as string[];
+  const buildPdfPayload = () => ({
+    store_site: row.store_site || '',
+    date: row.date || '',
+    brand: row.brand || '',
+    store_location: row.store_location || '',
+    location: row.location || '',
+    conditions: row.conditions || '',
+    price_per_unit: String(row.price_per_unit ?? ''),
+    shelf_space: row.shelf_space || '',
+    on_shelf: String(row.on_shelf ?? ''),
+    tags: tagsText,
+    notes: row.notes || '',
+    priority_level: row.priority_level ? String(row.priority_level) : undefined,
+    photo_urls: photoUrls,
+  });
+
+  const savePdf = async () => {
+    try {
+      const mod = Platform.OS === 'web'
+        ? await import('../../src/lib/exportPdf.web')
+        : await import('../../src/lib/exportPdf.native');
+      const fn = (mod as any)?.downloadSubmissionPdf || (mod as any)?.default?.downloadSubmissionPdf;
+      if (typeof fn === 'function') {
+        await fn(buildPdfPayload());
+      }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+    } catch (err: any) {
+      Alert.alert('PDF failed', err?.message ?? 'Unable to generate PDF');
+    }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+  };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 as any }}>
+    <ScrollView style={{ flex: 1, backgroundColor: '#f4f6fb' }} contentContainerStyle={{ padding: 16, gap: 12 as any }}>
       <Head><title>Submission</title></Head>
 
-      <Text {...textA11yProps} style={titleStyle}>Submission</Text>
+      <Pressable
+        onPress={() => (typeof history !== 'undefined' ? history.back() : router.back())}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        style={{ alignSelf: 'flex-start', paddingVertical: 4 }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+      >
+        <Text {...textA11yProps} style={{ fontSize: 18, color: '#2563eb', fontWeight: '600' }}>← Back</Text>
+      </Pressable>
+
+      <View style={detailStyles.card}>
+        <Text {...textA11yProps} style={[titleStyle, { marginBottom: 8 }]}>Submission</Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
         <Text {...textA11yProps} style={labelStyle}>
           {row.store_location || row.store_site || ''}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
         </Text>
         <PriPill n={row.priority_level ?? 3} />
       </View>
 
       <Text {...textA11yProps} style={[bodyStyle, { color: '#475569' }]}>
         Submitted by: {submittedBy}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       </Text>
 
       {row.brand ? <Text {...textA11yProps} style={bodyStyle}>Brand: {row.brand}</Text> : null}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       {row.store_site ? <Text {...textA11yProps} style={bodyStyle}>Store site: {row.store_site}</Text> : null}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       {row.location ? <Text {...textA11yProps} style={bodyStyle}>Location: {row.location}</Text> : null}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       <Text {...textA11yProps} style={bodyStyle}>{row.date}</Text>
 
       <Text {...textA11yProps} style={bodyStyle}>Conditions: {row.conditions}</Text>
@@ -277,56 +689,278 @@ export default function Submission() {
         {photo1Url ? (
           <Image
             source={{ uri: photo1Url }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
             accessibilityLabel="Photo 1"
             style={{ flex: 1, height: 160, borderRadius: 12, borderWidth: 1, borderColor: '#111' }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
           />
         ) : null}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
         {photo2Url ? (
           <Image
             source={{ uri: photo2Url }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
             accessibilityLabel="Photo 2"
             style={{ flex: 1, height: 160, borderRadius: 12, borderWidth: 1, borderColor: '#111' }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
           />
         ) : null}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8 as any, marginTop: 4, flexWrap: 'wrap' }}>
         {isWeb ? (
-          <Pressable
+          <Button
+            title="Download Excel"
             onPress={downloadExcelWithPhotos}
-            accessibilityRole="button"
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+            variant="secondary"
+            fullWidth
             accessibilityLabel="Download Excel with photos"
-            style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight, flex: 1, minWidth: 200 }]}
-          >
-            <Text {...textA11yProps} style={theme.buttonText}>Download Excel</Text>
-          </Pressable>
+          />
         ) : null}
-        <Pressable
-          onPress={share}
-          accessibilityRole="button"
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+        <Button
+          title="Share CSV"
+          onPress={shareCsv}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+          variant="primary"
+          fullWidth
           accessibilityLabel="Share CSV"
-          style={[theme.button, { backgroundColor: btnBg, minHeight: targetMinHeight, flex: 1, minWidth: 120 }]}
-        >
-          <Text {...textA11yProps} style={theme.buttonText}>Share CSV</Text>
-        </Pressable>
-        <Pressable
+        />
+        <Button
+          title="Save CSV"
+          onPress={saveCsvToFiles}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+          variant="ghost"
+          fullWidth
+          accessibilityLabel="Save CSV to Files"
+        />
+        <Button
+          title="Save PDF"
+          onPress={savePdf}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+          variant="success"
+          fullWidth
+          accessibilityLabel="Save PDF copy"
+        />
+        <Button
+          title="💬 Chat"
           onPress={() => router.push(`/chat/${row.id}`)}
-          accessibilityRole="button"
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
+          variant="secondary"
+          fullWidth
           accessibilityLabel="Open discussion about this submission"
-          style={[theme.button, { backgroundColor: '#10b981', minHeight: targetMinHeight, flex: 1, minWidth: 100 }]}
-        >
-          <Text {...textA11yProps} style={theme.buttonText}>💬 Chat</Text>
-        </Pressable>
+        />
       </View>
 
       <Pressable
         onPress={() => (typeof history !== 'undefined' ? history.back() : router.back())}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
         accessibilityRole="button"
         accessibilityLabel="Exit"
         style={{ alignSelf: 'flex-end', marginTop: 10, minHeight: targetMinHeight, justifyContent: 'center' }}
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});
       >
         <Text {...textA11yProps} style={bodyStyle}>Exit</Text>
       </Pressable>
+      </View>
     </ScrollView>
   );
 }
+
+const detailStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+});

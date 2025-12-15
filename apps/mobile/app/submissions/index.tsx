@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { View, Text, Pressable, FlatList, ActivityIndicator, Image } from 'react-native';
+import { View, Text, Pressable, FlatList, ActivityIndicator, Image, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
@@ -24,6 +24,49 @@ function priColor(n: number | null | undefined) {
   return n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
 }
 
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+
 function PriPill({ n }: { n: number | null }) {
   const label = String(n ?? 3);
   return (
@@ -37,13 +80,142 @@ function PriPill({ n }: { n: number | null }) {
         alignItems: 'center',
         justifyContent: 'center',
       }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
       accessibilityLabel={`Priority ${label}`}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
       accessible
     >
       <Text {...textA11yProps} style={{ color: 'white', fontWeight: '800' }}>{label}</Text>
     </View>
   );
 }
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
 
 export default function Submissions() {
   const { fontScale, highContrast, targetMinHeight } = useUISettings();
@@ -72,6 +244,49 @@ export default function Submissions() {
       setLoading(true);
     }
 
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+
     const { data, error } = await supabase.rpc('list_team_submissions_with_submitter');
     if (!error && data) setRows(data as Row[]);
 
@@ -80,6 +295,49 @@ export default function Submissions() {
     } else {
       setLoading(false);
     }
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
   }, []);
 
   useEffect(() => {
@@ -94,6 +352,49 @@ export default function Submissions() {
     return () => {
       cancelled = true;
       try { supabase.removeChannel(channel); } catch {}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
     };
   }, [fetchRows]);
 
@@ -142,20 +443,200 @@ export default function Submissions() {
     return (
       <Pressable
         onPress={() => openSubmission(item.id)}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
         accessibilityRole="button"
         accessibilityLabel={a11y}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
         hitSlop={10}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
         style={({ pressed }) => [
           {
-            backgroundColor: 'white',
+            backgroundColor: '#ffffff',
             borderWidth: 1,
-            borderColor: highContrast ? '#000000' : '#111827',
-            borderRadius: 12,
-            padding: 16,
-            minHeight: targetMinHeight, // ≥ ~48–56dp per guidelines
+            borderColor: highContrast ? '#000000' : '#e2e8f0',
+            borderRadius: 18,
+            padding: 18,
+            minHeight: targetMinHeight,
+            shadowColor: '#000',
+            shadowOpacity: 0.06,
+            shadowRadius: 6,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: 2,
+            width: '100%',
+            maxWidth: 560,
+            alignSelf: 'center',
           },
           pressed && { opacity: 0.95 },
         ]}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
           <Text {...textA11yProps} style={[bodyStyle, { fontWeight: '700' }]}>{title}</Text>
@@ -163,6 +644,49 @@ export default function Submissions() {
         </View>
         <Text {...textA11yProps} style={bodyStyle}>{subtitle}</Text>
         {byline ? <Text {...textA11yProps} style={[bodyStyle, { color: '#475569' }]}>{byline}</Text> : null}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
         <Text {...textA11yProps} style={bodyStyle}>{price}</Text>
       </Pressable>
     );
@@ -172,92 +696,850 @@ export default function Submissions() {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         {/* Give the progressbar an accessible name */}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
         <ActivityIndicator accessibilityLabel="Loading submissions" />
       </View>
     );
   }
 
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+
   return (
     <View style={{ flex: 1, backgroundColor: '#f5f6fb' }}>
       <Head><title>Submissions</title></Head>
       <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 16,
-            gap: 8,
-          }}
-        >
-          <Pressable
-            onPress={handleBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            style={{ paddingVertical: 8, paddingHorizontal: 4 }}
-          >
-            <Text {...textA11yProps} style={{ fontSize: 18, fontWeight: '600', color: '#2563eb' }}>← Back</Text>
-          </Pressable>
+        <View style={listStyles.heroCard}>
+          <View style={listStyles.heroRow}>
+            <Pressable
+              onPress={handleBack}
 
-          <View style={{ alignItems: 'center', flex: 1 }}>
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              style={{ paddingVertical: 4, paddingHorizontal: 4 }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+            >
+              <Text {...textA11yProps} style={{ fontSize: 18, fontWeight: '600', color: '#2563eb' }}>← Back</Text>
+            </Pressable>
             <Image
               source={logoPng}
-              style={{ width: 64, height: 64, borderRadius: 32, marginBottom: 4 }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+              style={{ width: 64, height: 64, borderRadius: 32 }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
               resizeMode="contain"
               accessibilityLabel="RWS globe"
             />
-            <Text {...textA11yProps} style={[titleStyle, { marginBottom: 0 }]}>Submissions</Text>
-            <Text {...textA11yProps} style={{ color: '#475569' }}>Every form fits in one view</Text>
-          </View>
+            <View style={{ width: 130 }}>
+              <Button
+                title={refreshing ? 'Refreshing…' : 'Refresh'}
 
-          <View style={{ minWidth: 110 }}>
-            <Button
-              title={refreshing ? 'Refreshing…' : 'Refresh'}
-              onPress={handleRefresh}
-              size="sm"
-              variant="secondary"
-              fullWidth
-              accessibilityLabel="Refresh submissions"
-            />
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+                onPress={handleRefresh}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+                size="sm"
+                variant="secondary"
+                fullWidth
+                accessibilityLabel="Refresh submissions"
+              />
+            </View>
           </View>
+          <Text {...textA11yProps} style={[titleStyle, { textAlign: 'center', marginBottom: 4 }]}>Submissions</Text>
+          <Text {...textA11yProps} style={{ color: '#475569', textAlign: 'center' }}>
+            White background cards, blue + green buttons, everything sized for older eyes.
+          </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-          <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-            <Button title="New Form" onPress={goNewForm} variant="success" fullWidth accessibilityLabel="Create new form" />
-          </View>
-          <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-            <Button title="Profile" onPress={goProfile} variant="primary" fullWidth accessibilityLabel="Open profile" />
-          </View>
+        <View style={listStyles.quickCard}>
+          <Button title="Submit Form" onPress={goNewForm} variant="success" fullWidth accessibilityLabel="Start a new form" />
+          <Button title="Profile" onPress={goProfile} variant="primary" fullWidth accessibilityLabel="Open profile" />
           {isAdmin ? (
-            <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-              <Button title="Admin" onPress={goAdmin} variant="secondary" fullWidth accessibilityLabel="Admin panel" />
-            </View>
+            <Button title="Admin" onPress={goAdmin} variant="secondary" fullWidth accessibilityLabel="Admin panel" />
           ) : null}
-          <View style={{ flexBasis: '48%', flexGrow: 1 }}>
-            <Button title="Logout" onPress={handleLogout} variant="error" fullWidth accessibilityLabel="Log out" />
-          </View>
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+          <Button title="Logout" onPress={handleLogout} variant="error" fullWidth accessibilityLabel="Log out" />
         </View>
 
         <FlatList
           data={rows}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
           keyExtractor={(r) => r.id}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 140 }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
+          contentContainerStyle={{ paddingBottom: 160, paddingTop: 12, gap: 12 }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
           showsVerticalScrollIndicator={false}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
           style={{ flex: 1 }}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
           ListEmptyComponent={!loading ? (
             <View style={{ paddingVertical: 40, alignItems: 'center' }}>
               <Text {...textA11yProps} style={bodyStyle}>No submissions yet.</Text>
             </View>
           ) : null}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
         />
 
-        <View style={{ paddingVertical: 16 }}>
+        <View style={listStyles.footerCard}>
           <Button
             title="Scroll to Submit Form"
             onPress={goNewForm}
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
             variant="success"
             size="lg"
             fullWidth
@@ -268,3 +1550,46 @@ export default function Submissions() {
     </View>
   );
 }
+
+const listStyles = StyleSheet.create({
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  footerCard: {
+    marginTop: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+});
