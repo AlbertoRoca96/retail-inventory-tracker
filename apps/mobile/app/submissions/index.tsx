@@ -348,7 +348,6 @@ export default function Submissions() {
     </View>
   );
 }
-}
 
 const listStyles = StyleSheet.create({
   heroCard: {
