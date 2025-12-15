@@ -12,7 +12,7 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import Head from "expo-router/head";
 import { supabase } from "../../src/lib/supabase";
-import { textA11yProps, typography } from "../../src/theme";
+import { colors, textA11yProps, typography } from "../../src/theme";
 import { useUISettings } from "../../src/lib/uiSettings";
 import { useIsAdmin } from "../../src/hooks/useIsAdmin";
 import Button from "../../src/components/Button";
@@ -222,16 +222,15 @@ export default function Submissions() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         {/* Give the progressbar an accessible name */}
-
         <ActivityIndicator accessibilityLabel="Loading submissions" />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f5f6fb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.surfaceMuted }}>
       <Head>
         <title>Submissions</title>
       </Head>
@@ -246,7 +245,7 @@ export default function Submissions() {
             >
               <Text
                 {...textA11yProps}
-                style={{ fontSize: 18, fontWeight: "600", color: "#2563eb" }}
+                style={{ fontSize: 18, fontWeight: '600', color: colors.primary[600] }}
               >
                 ← Back
               </Text>
@@ -259,7 +258,7 @@ export default function Submissions() {
             />
             <View style={{ width: 130 }}>
               <Button
-                title={refreshing ? "Refreshing…" : "Refresh"}
+                title={refreshing ? 'Refreshing…' : 'Refresh'}
                 onPress={handleRefresh}
                 size="sm"
                 variant="secondary"
@@ -270,16 +269,15 @@ export default function Submissions() {
           </View>
           <Text
             {...textA11yProps}
-            style={[titleStyle, { textAlign: "center", marginBottom: 4 }]}
+            style={[titleStyle, { textAlign: 'center', marginBottom: 4 }]}
           >
             Submissions
           </Text>
           <Text
             {...textA11yProps}
-            style={{ color: "#475569", textAlign: "center" }}
+            style={{ color: colors.textMuted, textAlign: 'center' }}
           >
-            White background cards, blue + green buttons, everything sized for
-            older eyes.
+            White background cards, blue + green buttons, everything sized for older eyes.
           </Text>
         </View>
 
@@ -322,16 +320,12 @@ export default function Submissions() {
           keyExtractor={(r) => r.id}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           renderItem={renderItem}
-          contentContainerStyle={{
-            paddingBottom: 160,
-            paddingTop: 12,
-            gap: 12,
-          }}
+          contentContainerStyle={{ paddingBottom: 160, paddingTop: 12, gap: 12 }}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
           ListEmptyComponent={
             !loading ? (
-              <View style={{ paddingVertical: 40, alignItems: "center" }}>
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <Text {...textA11yProps} style={bodyStyle}>
                   No submissions yet.
                 </Text>
@@ -353,6 +347,7 @@ export default function Submissions() {
       </View>
     </View>
   );
+}
 }
 
 const listStyles = StyleSheet.create({

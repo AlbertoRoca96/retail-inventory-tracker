@@ -33,7 +33,7 @@ export default function Menu() {
     lineHeight: Math.round(typography.title.lineHeight * fontScale * 1.35),
     fontWeight: '800' as const,
     marginBottom: spacing.lg,
-    color: colors.primary[800],
+    color: colors.white,
     textAlign: 'center' as const,
   }), [fontScale]);
 
@@ -41,7 +41,7 @@ export default function Menu() {
     fontSize: Math.round(typography.body.fontSize * fontScale * 1.2),
     lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.2),
     fontWeight: '500' as const,
-    color: colors.gray[600],
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center' as const,
     marginBottom: spacing.xl,
   }), [fontScale]);
@@ -78,7 +78,16 @@ export default function Menu() {
         
         <View style={styles.actionGrid}>
           <Button
-            title="📊 View Submissions"
+            title="Create Form"
+            onPress={() => router.push('/form/new')}
+            variant="primary"
+            size="lg"
+            fullWidth
+            accessibilityLabel="Create new submission form"
+          />
+          
+          <Button
+            title="View Submissions"
             onPress={() => router.push('/submissions')}
             variant="primary"
             size="lg"
@@ -96,7 +105,7 @@ export default function Menu() {
         
         <View style={styles.actionGrid}>
           <Button
-            title="⚙️ Settings"
+            title="Settings"
             onPress={() => router.push('/account/settings')}
             variant="ghost"
             size="md"
@@ -106,7 +115,7 @@ export default function Menu() {
           
           {needsDisplayName && (
             <Button
-              title="👤 Set Display Name"
+              title="Set Display Name"
               onPress={() => router.push('/account/display-name')}
               variant="warning"
               size="md"
@@ -133,7 +142,7 @@ export default function Menu() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text {...textA11yProps} style={styles.sectionTitle}>
-              👑 Admin
+              Admin
             </Text>
             <View style={styles.adminBadge}>
               <Text style={styles.adminBadgeText}>ADMIN</Text>
@@ -142,7 +151,7 @@ export default function Menu() {
           
           <View style={styles.actionGrid}>
             <Button
-              title="🎛️ Admin Panel"
+              title="Admin Panel"
               onPress={() => router.push('/admin')}
               variant="secondary"
               size="md"
@@ -151,7 +160,7 @@ export default function Menu() {
             />
             
             <Button
-              title="📈 Metrics Dashboard"
+              title="Metrics Dashboard"
               onPress={() => router.push('/admin/metrics')}
               variant="ghost"
               size="md"
@@ -176,7 +185,7 @@ export default function Menu() {
       {/* Chat functionality */}
       <View style={[styles.section, styles.lastSection]}>
         <Button
-          title="💬 Chat"
+          title="Chat"
           onPress={() => router.push('/chat')}
           variant="primary"
           size="md"
@@ -188,7 +197,7 @@ export default function Menu() {
       {/* Logout Section */}
       <View style={[styles.section, styles.lastSection]}>
         <Button
-          title="🚪 Log Out"
+          title="Log Out"
           onPress={async () => {
             await supabase.auth.signOut().catch(() => {});
             router.replace('/');
@@ -216,7 +225,7 @@ export default function Menu() {
 const styles = {
   container: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
+    backgroundColor: colors.background,
   },
   contentContainer: {
     flexGrow: 1,
@@ -256,7 +265,7 @@ const styles = {
   sectionTitle: {
     fontSize: Math.round(typography.title.fontSize * 1.2),
     fontWeight: '700' as const,
-    color: colors.gray[800],
+    color: colors.text,
     marginBottom: spacing.md,
   },
   sectionHeader: {
@@ -297,12 +306,12 @@ const styles = {
   },
   footerText: {
     fontSize: typography.label.fontSize,
-    color: colors.gray[500],
+    color: colors.textMuted,
     fontWeight: '600' as const,
   },
   footerSubtext: {
     fontSize: Math.round(typography.label.fontSize * 0.8),
-    color: colors.gray[400],
+    color: colors.gray[500],
     marginTop: spacing.xs,
   },
 };

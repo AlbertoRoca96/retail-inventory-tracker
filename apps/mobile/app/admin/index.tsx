@@ -233,7 +233,7 @@ export default function AdminRoute() {
 const S = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: colors.gray 
+    backgroundColor: colors.surfaceMuted,
   },
   center: { 
     flex: 1, 
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
   roleMember: {
     ...typography.label,
     color: theme.colors.text,
-    backgroundColor: colors.gray,
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: theme.spacing(2),
     paddingVertical: theme.spacing(1),
     borderRadius: theme.radius.md,

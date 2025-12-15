@@ -1,26 +1,81 @@
 // apps/mobile/src/theme.ts
+
+const primary = {
+  50: '#eff6ff',
+  100: '#dbeafe',
+  200: '#bfdbfe',
+  300: '#93c5fd',
+  400: '#60a5fa',
+  500: '#3b82f6',
+  600: '#2563eb',
+  700: '#1d4ed8',
+  800: '#1e40af',
+  900: '#1e3a8a',
+} as const;
+
+const gray = {
+  50: '#f8fafc',
+  100: '#f1f5f9',
+  200: '#e2e8f0',
+  300: '#cbd5f5',
+  400: '#94a3b8',
+  500: '#64748b',
+  600: '#475569',
+  700: '#334155',
+  800: '#1f2937',
+  900: '#0f172a',
+} as const;
+
+const success = {
+  50: '#ecfdf5',
+  100: '#d1fae5',
+  200: '#a7f3d0',
+  400: '#34d399',
+  500: '#22c55e',
+  600: '#16a34a',
+  700: '#15803d',
+} as const;
+
+const warning = {
+  50: '#fffbeb',
+  100: '#fef3c7',
+  200: '#fde68a',
+  400: '#fbbf24',
+  500: '#f59e0b',
+  600: '#d97706',
+  700: '#b45309',
+} as const;
+
+const error = {
+  50: '#fef2f2',
+  100: '#fee2e2',
+  200: '#fecaca',
+  400: '#f87171',
+  500: '#ef4444',
+  600: '#dc2626',
+  700: '#b91c1c',
+} as const;
+
 export const colors = {
-  blue: '#2563eb',
-  gray: '#e5e7eb',
-  text: '#111827',
   white: '#ffffff',
-  red: '#dc2626',
-  black: '#000000',
-  green: '#16a34a',
-  success: '#16a34a',
-  warning: '#f59e0b', 
-  error: '#dc2626',
-  primary: {
-    600: '#2563eb',
-    700: '#1d4ed8',
-  },
-  gray: {
-    400: '#9ca3af',
-    700: '#374151',
-  },
-  border: '#e5e7eb',
+  black: '#0f172a',
+  text: '#0f172a',
+  textMuted: '#475569',
+  background: '#f8fafc',
+  surface: '#ffffff',
+  surfaceMuted: '#f1f5f9',
   card: '#ffffff',
-};
+  border: '#e2e8f0',
+  overlay: 'rgba(15, 23, 42, 0.08)',
+  primary,
+  gray,
+  success,
+  warning,
+  error,
+  blue: primary[600],
+  red: error[600],
+  green: success[600],
+} as const;
 
 // Readable type
 export const typography = {
@@ -95,8 +150,8 @@ export const theme = {
   radius: { md: 8, lg: 10, xl: 12 },
 
   input: {
-    backgroundColor: colors.white,
-    borderColor: '#111827',
+    backgroundColor: colors.surface,
+    borderColor: colors.gray[300],
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
@@ -105,7 +160,7 @@ export const theme = {
   },
 
   button: {
-    backgroundColor: colors.blue,
+    backgroundColor: colors.primary[600],
     paddingVertical: 12,
     paddingHorizontal: 20,
     minHeight: 48,

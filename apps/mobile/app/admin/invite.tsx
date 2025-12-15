@@ -157,7 +157,7 @@ export default function InviteUserRoute() {
 const S = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: colors.gray 
+    backgroundColor: colors.surfaceMuted,
   },
   center: { 
     flex: 1, 

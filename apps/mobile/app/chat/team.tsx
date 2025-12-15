@@ -260,7 +260,7 @@ export default function TeamChat() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray,
+    backgroundColor: colors.surfaceMuted,
   },
   centerContainer: {
     flex: 1,

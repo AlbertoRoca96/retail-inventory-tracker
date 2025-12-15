@@ -2,7 +2,7 @@
 
 import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+import { alertStorageUnavailable, resolveWritableDirectory } from './storageAccess';
 
 export type SubmissionPdf = {
   store_site: string;
@@ -45,8 +45,12 @@ async function toDataUri(url?: string | null, mime = 'image/jpeg'): Promise<stri
     // If it's not a file/content URI, download to cache first.
     if (!/^file:|^content:/i.test(url)) {
       const name = `img-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-      const target = (FileSystem.cacheDirectory || FileSystem.documentDirectory!) + name;
-      const { uri } = await FileSystem.downloadAsync(url, target);
+      const targetDir = resolveWritableDirectory(FileSystem, 'cache-first');
+      if (!targetDir) {
+        alertStorageUnavailable();
+        return null;
+      }
+      const { uri } = await FileSystem.downloadAsync(url, `${targetDir}${name}`);
       localPath = uri;
     }
 
@@ -140,7 +144,14 @@ export async function createSubmissionPdf(
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = opts.fileNamePrefix || 'submission';
   const fileName = `${prefix}-${iso}.pdf`;
-  const dest = `${FileSystem.documentDirectory}${fileName}`;
+
+  const writableDir = resolveWritableDirectory(FileSystem, 'documents-first');
+  if (!writableDir) {
+    alertStorageUnavailable();
+    return uri;
+  }
+
+  const dest = `${writableDir}${fileName}`;
 
   try {
     await FileSystem.copyAsync({ from: uri, to: dest });

@@ -320,7 +320,7 @@ export default function SubmissionChat() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray,
+    backgroundColor: colors.surfaceMuted,
   },
   centerContainer: {
     flex: 1,

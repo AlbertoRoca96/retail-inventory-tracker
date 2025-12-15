@@ -428,7 +428,7 @@ export default function AdminMetrics() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray,
+    backgroundColor: colors.surfaceMuted,
   },
   header: {
     paddingTop: theme.spacing(4),
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing(2),
   },
   tableRowStriped: {
-    backgroundColor: colors.gray,
+    backgroundColor: colors.surface,
   },
   tableCell: {
     ...typography.body,
