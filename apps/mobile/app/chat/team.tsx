@@ -249,7 +249,6 @@ export default function TeamChat() {
     </SafeAreaView>
   );
 }
-}
 
 const styles = StyleSheet.create({
   safe: {
