@@ -9,6 +9,7 @@ import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { theme, colors } from '../../src/theme';
 import LogoHeader from '../../src/components/LogoHeader';
+import Button from '../../src/components/Button';
 
 const isWeb = Platform.OS === 'web';
 
@@ -43,6 +44,19 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '700',
   },
+  adminCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  adminLabel: {
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 4,
+  },
 });
 
 export default function AccountSettings() {
@@ -53,6 +67,7 @@ export default function AccountSettings() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // UI accessibility settings (safe defaults if provider not mounted for some reason)
   const {
@@ -71,6 +86,33 @@ export default function AccountSettings() {
     const md = (user?.user_metadata || {}) as any;
     setDisplayName(md.display_name || user?.email?.split('@')[0] || '');
     setAvatarUrl(md.avatar_url || null);
+  }, [user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) {
+      setIsAdmin(false);
+      return;
+    }
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('team_members')
+          .select('is_admin')
+          .eq('user_id', user.id)
+          .eq('is_admin', true)
+          .limit(1)
+          .maybeSingle();
+        if (!active) return;
+        setIsAdmin(!error && !!data);
+      } catch (err) {
+        if (!active) return;
+        setIsAdmin(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [user?.id]);
 
   const pickAvatarNative = async () => {
@@ -201,6 +243,25 @@ export default function AccountSettings() {
           <Switch value={highContrast} onValueChange={setHighContrast} />
         </View>
       </View>
+
+      {isAdmin ? (
+        <View style={styles.adminCard}>
+          <Text style={styles.adminLabel}>ADMIN SHORTCUTS</Text>
+          <Button
+            title="Open Admin Panel"
+            onPress={() => router.push('/admin')}
+            fullWidth
+            accessibilityLabel="Open admin panel"
+          />
+          <Button
+            title="Metrics Dashboard"
+            variant="secondary"
+            onPress={() => router.push('/admin/metrics')}
+            fullWidth
+            accessibilityLabel="Open metrics dashboard"
+          />
+        </View>
+      ) : null}
 
       <Pressable
         onPress={save}
