@@ -147,7 +147,7 @@ export default function SubmissionChat() {
       ]}>
         <View style={styles.messageHeader}>
           <Text style={styles.senderName}>
-            {isMe ? 'You' : item.sender_name || 'Team Member'}
+            {isMe ? 'You' : item.sender_id?.slice(0, 8) || 'Team Member'}
           </Text>
           <Text style={styles.messageTime}>
             {new Date(item.created_at).toLocaleTimeString([], { 

@@ -1,11 +1,12 @@
 // apps/mobile/app/chat/team.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
+import LogoHeader from '../../src/components/LogoHeader';
 import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, type SubmissionMessage } from '../../src/lib/chat';
 
 export default function TeamChat() {
@@ -139,7 +140,7 @@ export default function TeamChat() {
       ]}>
         <View style={styles.messageHeader}>
           <Text style={styles.senderName}>
-            {isMe ? 'You' : item.sender_name || 'Team Member'}
+            {isMe ? 'You' : item.sender_id?.slice(0, 8) || 'Team Member'}
           </Text>
           <Text style={styles.messageTime}>
             {new Date(item.created_at).toLocaleTimeString([], { 
@@ -162,102 +163,99 @@ export default function TeamChat() {
       </View>
     );
   };
-
   if (!ready) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.title}>Loading...</Text>
-      </View>
+      <SafeAreaView style={styles.safe}>
+        <LogoHeader title="Team Chat" />
+        <View style={styles.centerContainer}>
+          <Text style={styles.subtitle}>Loading…</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!session?.user) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.title}>Team Chat</Text>
-        <Text style={styles.subtitle}>Please sign in to access team chat.</Text>
-        <View style={styles.buttonContainer}>
-          <Button 
-            title="Sign In"
-            onPress={() => router.replace('/login')}
-          />
+      <SafeAreaView style={styles.safe}>
+        <LogoHeader title="Team Chat" />
+        <View style={styles.centerContainer}>
+          <Text style={styles.subtitle}>Please sign in to access team chat.</Text>
+          <View style={styles.buttonContainer}>
+            <Button 
+              title="Sign In"
+              onPress={() => router.replace('/login')}
+            />
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.title} numberOfLines={1}>
-            {teamInfo?.name || 'Team'} Chat
-          </Text>
-          <Text style={styles.subtitle}>Internal team messages</Text>
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <Text style={styles.subtitle}>Loading messages...</Text>
-        </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          style={styles.messagesList}
-          contentContainerStyle={styles.messagesListContent}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {
-            flatListRef.current?.scrollToEnd({ animated: false });
-          }}
-        />
-      )}
-
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.inputContainer}
-      >
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.textInput}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            placeholder="Type a message..."
-            placeholderTextColor="#9CA3AF"
-            multiline
-            maxLength={1000}
-            editable={!sending}
-            accessibilityLabel="Message input"
+    <SafeAreaView style={styles.safe}>
+      <LogoHeader title="Team Chat" />
+      <View style={styles.container}>
+        {loading ? (
+          <View style={styles.centerContainer}>
+            <Text style={styles.subtitle}>Loading messages...</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            style={styles.messagesList}
+            contentContainerStyle={styles.messagesListContent}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }}
           />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              { opacity: sending || !newMessage.trim() ? 0.5 : 1 }
-            ]}
-            onPress={sendMessage}
-            disabled={sending || !newMessage.trim()}
-            accessibilityLabel="Send message"
-          >
-            <Text style={styles.sendButtonText}>
-              {sending ? '...' : 'Send'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+        )}
+
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.inputContainer}
+        >
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.textInput}
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Type a message..."
+              placeholderTextColor="#9CA3AF"
+              multiline
+              maxLength={1000}
+              editable={!sending}
+              accessibilityLabel="Message input"
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                { opacity: sending || !newMessage.trim() ? 0.5 : 1 }
+              ]}
+              onPress={sendMessage}
+              disabled={sending || !newMessage.trim()}
+              accessibilityLabel="Send message"
+            >
+              <Text style={styles.sendButtonText}>
+                {sending ? '...' : 'Send'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </SafeAreaView>
   );
+}
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.surfaceMuted,

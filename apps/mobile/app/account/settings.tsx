@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,8 +8,42 @@ import { supabase } from '../../src/lib/supabase';
 import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { theme, colors } from '../../src/theme';
+import LogoHeader from '../../src/components/LogoHeader';
 
 const isWeb = Platform.OS === 'web';
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  avatarBlock: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  avatar: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  changePhotoButton: {
+    backgroundColor: colors.accentBlue,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+  },
+  changePhotoText: {
+    color: colors.white,
+    fontWeight: '700',
+  },
+});
 
 export default function AccountSettings() {
   const { session } = useAuth();
@@ -98,39 +132,27 @@ export default function AccountSettings() {
   const labelSize = (simplifiedMode || largeText) ? 16 : 14;
   const inputHeight = (simplifiedMode || largeText) ? 52 : 44;
   const buttonMinHeight = simplifiedMode ? 56 : 48;
-  const btnBg = highContrast ? '#1743b3' : theme.colors.blue;
+  const btnBg = highContrast ? '#0f172a' : colors.accentBlue;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-      <Head><title>Account Settings</title></Head>
-
-      <Pressable
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        style={{ alignSelf: 'flex-start', paddingVertical: 4 }}
-      >
-        <Text style={{ fontSize: 18, color: '#2563eb', fontWeight: '600' }}>← Back</Text>
-      </Pressable>
-
-      <Text style={{ fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
-        Account Settings
-      </Text>
-
-      <View style={{ alignItems: 'center', gap: 8 }}>
-        <Image
-          source={{ uri: avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
-          style={{ width: 120, height: 120, borderRadius: 60, borderWidth: 1, borderColor: highContrast ? '#000' : '#111' }}
-        />
-        <Pressable
-          onPress={pickAvatar}
-          accessibilityRole="button"
-          accessibilityLabel="Change profile photo"
-          style={{ backgroundColor: btnBg, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Text style={{ color: colors.white, fontWeight: '700' }}>Change Photo</Text>
-        </Pressable>
-      </View>
+    <SafeAreaView style={styles.safe}>
+      <Head><title>Settings</title></Head>
+      <LogoHeader title="Settings" />
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.avatarBlock}>
+          <Image
+            source={{ uri: avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
+            style={styles.avatar}
+          />
+          <Pressable
+            onPress={pickAvatar}
+            accessibilityRole="button"
+            accessibilityLabel="Change profile photo"
+            style={styles.changePhotoButton}
+          >
+            <Text style={styles.changePhotoText}>Change Photo</Text>
+          </Pressable>
+        </View>
 
       <View>
         <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelSize }}>DISPLAY NAME</Text>
@@ -223,6 +245,7 @@ export default function AccountSettings() {
           />
         </div>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

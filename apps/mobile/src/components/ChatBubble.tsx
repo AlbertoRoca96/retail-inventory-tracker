@@ -190,7 +190,7 @@ export default function ChatBubble({
             </Text>
           </View>
           <Text style={styles.previewSender}>
-            {lastMessage.sender_name || 'Someone'}
+            {lastMessage.sender_id?.slice(0, 8) || 'Someone'}
           </Text>
           <Text style={styles.previewMessage} numberOfLines={2}>
             {lastMessage.body}

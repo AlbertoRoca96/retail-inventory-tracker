@@ -7,7 +7,7 @@ import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import Banner from '../../src/components/Banner';
 
-type Member = { user_id: string; is_admin: boolean; display_name?: string | null; email?: string | null };
+type Member = { user_id: string; is_admin: boolean };
 type TeamInfo = { id: string; name: string };
 
 export default function AdminRoute() {
@@ -44,40 +44,17 @@ export default function AdminRoute() {
         setTeamName(tm?.teams?.name ?? null);
         setIsAdmin(!!tm?.is_admin);
 
-        // 2) If I have a team, load all members with their names
+        // 2) If I have a team, load all members
         if (tid) {
-          // Use the existing function that gets display names
-          const { data: membersWithNames, error: mErr } = await supabase
-            .rpc('team_users_with_names', { p_team_id: tid });
-          
-          if (mErr) {
-            console.error('admin: members load failed', mErr);
-            // Fallback to basic member list
-            const { data: mem, error: basicErr } = await supabase
-              .from('team_members')
-              .select('user_id,is_admin')
-              .eq('team_id', tid)
-              .order('is_admin', { ascending: false });
-            if (!basicErr) {
-              setMembers(mem || []);
-            }
-          } else {
-            // Combine the names with admin status
-            const memberMap = new Map((membersWithNames || []).map((m: any) => [m.user_id, m]));
-            const { data: adminStatus } = await supabase
-              .from('team_members')
-              .select('user_id,is_admin')
-              .eq('team_id', tid);
-            
-            const membersWithAdminInfo = (adminStatus || []).map((admin: any) => ({
-              user_id: admin.user_id,
-              is_admin: admin.is_admin,
-              display_name: memberMap.get(admin.user_id)?.display_name,
-              email: memberMap.get(admin.user_id)?.email,
-            }));
-            
-            setMembers(membersWithAdminInfo);
+          const { data: memRows, error: memErr } = await supabase
+            .from('team_members')
+            .select('user_id,is_admin')
+            .eq('team_id', tid)
+            .order('is_admin', { ascending: false });
+          if (memErr) {
+            console.error('admin: members load failed', memErr);
           }
+          setMembers(memRows || []);
         }
       } catch (error) {
         console.error('admin: load error', error);
@@ -181,10 +158,7 @@ export default function AdminRoute() {
                   <View key={m.user_id} style={[S.memberRow, index === members.length - 1 && S.memberRowLast ]}>
                     <View style={S.memberInfo}>
                       <Text style={styles.memberName}>
-                        {m.display_name || m.email || 'Unknown User'}
-                      </Text>
-                      <Text style={styles.memberEmail}>
-                        {m.email && m.display_name !== m.email ? m.email : ''}
+                        {m.user_id}
                       </Text>
                     </View>
                     <View style={S.roleBadge}>

@@ -1,16 +1,20 @@
 // apps/mobile/src/theme.ts
 
+const logoBlue = '#0F5DFF';
+const logoGreen = '#00B37E';
+const logoGold = '#D4AF37';
+
 const primary = {
-  50: '#eff6ff',
-  100: '#dbeafe',
-  200: '#bfdbfe',
-  300: '#93c5fd',
-  400: '#60a5fa',
-  500: '#3b82f6',
-  600: '#2563eb',
-  700: '#1d4ed8',
-  800: '#1e40af',
-  900: '#1e3a8a',
+  50: '#e8f0ff',
+  100: '#cddfff',
+  200: '#a1c3ff',
+  300: '#74a6ff',
+  400: '#4688ff',
+  500: '#2070ff',
+  600: logoBlue,
+  700: '#0c4ed8',
+  800: '#0836a3',
+  900: '#051f6b',
 } as const;
 
 const gray = {
@@ -27,13 +31,13 @@ const gray = {
 } as const;
 
 const success = {
-  50: '#ecfdf5',
-  100: '#d1fae5',
-  200: '#a7f3d0',
-  400: '#34d399',
-  500: '#22c55e',
-  600: '#16a34a',
-  700: '#15803d',
+  50: '#e5fff6',
+  100: '#b8ffe5',
+  200: '#8cfed4',
+  400: '#4fedb3',
+  500: '#24d89c',
+  600: logoGreen,
+  700: '#008c65',
 } as const;
 
 const warning = {
@@ -61,20 +65,23 @@ export const colors = {
   black: '#0f172a',
   text: '#0f172a',
   textMuted: '#475569',
-  background: '#f8fafc',
+  background: '#ffffff',
   surface: '#ffffff',
-  surfaceMuted: '#f1f5f9',
+  surfaceMuted: '#f5f5f5',
   card: '#ffffff',
   border: '#e2e8f0',
   overlay: 'rgba(15, 23, 42, 0.08)',
+  accentBlue: logoBlue,
+  accentGreen: logoGreen,
+  accentGold: logoGold,
   primary,
   gray,
   success,
   warning,
   error,
-  blue: primary[600],
+  blue: logoBlue,
   red: error[600],
-  green: success[600],
+  green: logoGreen,
 } as const;
 
 // Readable type
@@ -160,7 +167,7 @@ export const theme = {
   },
 
   button: {
-    backgroundColor: colors.primary[600],
+    backgroundColor: colors.accentBlue,
     paddingVertical: 12,
     paddingHorizontal: 20,
     minHeight: 48,

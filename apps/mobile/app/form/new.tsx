@@ -6,12 +6,14 @@ import React, {
   useCallback,
   memo,
 } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Image, Platform, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Image, Platform, StyleSheet, SafeAreaView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 
-import { uploadPhotosAndGetUrls } from '../../src/lib/supabaseHelpers';
+import LogoHeader from '../../src/components/LogoHeader';
+import { colors } from '../../src/theme';
+import { uploadPhotosAndGetPathsAndUrls } from '../../src/lib/supabaseHelpers';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { loadUserDefaults, saveUserDefaults } from '../../src/lib/preferences';
@@ -114,15 +116,8 @@ const getDefaultValues = (): FormValues => ({
 
 const formStyles = StyleSheet.create({
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 16,
+    paddingVertical: 8,
     gap: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
 });
 
@@ -763,12 +758,6 @@ export default function NewFormScreen() {
     if (clearDraft) clearDraftLocal();
   };
 
-  const onClearAll = () => {
-    resetForm(true);
-    saveDraftLocal({ ...getDefaultValues(), photos: [] });
-    setBanner({ kind: 'success', text: 'Cleared all saved fields & photos.' });
-  };
-
   const onDownloadPdf = async () => {
     if (!pdfReady) return;
     try {
@@ -786,10 +775,17 @@ export default function NewFormScreen() {
     }
   };
 
-  const buildSubmissionRow = useCallback((v: FormValues, effectiveTeamId: string, uploadedUrls: string[]) => {
+  const buildSubmissionRow = useCallback((
+    v: FormValues,
+    effectiveTeamId: string,
+    uploads: { path: string; publicUrl: string }[]
+  ) => {
     return {
       user_id: uid || null,
+      created_by: uid || null,
       team_id: effectiveTeamId,
+      group_id: null,
+      status: 'submitted',
       store_site: v.storeSite || null,
       location: v.location || null,
       brand: v.brand || null,
@@ -801,8 +797,10 @@ export default function NewFormScreen() {
       on_shelf: safeNumber(v.onShelf),
       tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
       notes: v.notes || null,
-      photo1_url: uploadedUrls[0] ?? null,
-      photo2_url: uploadedUrls[1] ?? null,
+      photo1_url: uploads[0]?.publicUrl ?? null,
+      photo2_url: uploads[1]?.publicUrl ?? null,
+      photo1_path: uploads[0]?.path ?? null,
+      photo2_path: uploads[1]?.path ?? null,
       priority_level: Number(v.priorityLevel) || 3,
     };
   }, [uid]);
@@ -823,11 +821,10 @@ export default function NewFormScreen() {
 
       setBanner({ kind: 'info', text: 'Uploading photos…' });
 
-      const uploadedUrls = await uploadPhotosAndGetUrls(uid || 'anon', photos);
+      const uploadedAssets = await uploadPhotosAndGetPathsAndUrls(uid || 'anon', photos);
 
-      // FIX: per-index fallback so both photos always export
       const excelPhotoUrls = photos
-        .map((p, i) => (uploadedUrls?.[i] ?? p.uri))
+        .map((p, i) => uploadedAssets[i]?.publicUrl ?? p.uri)
         .filter(Boolean);
 
       let insertError: any = null;
@@ -851,7 +848,7 @@ export default function NewFormScreen() {
           throw new Error('No team found for this user. Ask an admin to add you to a team.');
         }
 
-        const row = buildSubmissionRow(v, effectiveTeamId, uploadedUrls || []);
+        const row = buildSubmissionRow(v, effectiveTeamId, uploadedAssets || []);
 
         if (!isOnline && autoQueueWhenOffline) {
           enqueueSubmission(row);
@@ -1017,15 +1014,17 @@ export default function NewFormScreen() {
   const currentPri = (isWeb ? formRef.current.priorityLevel : nVals.priorityLevel) || '3';
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: '#f5f6fb' }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-      keyboardShouldPersistTaps="always"
-    >
-      {/* ✨ NEW: proper document <title> for web */}
-      <Head><title>Create New Form</title></Head>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <LogoHeader title="Create Form" />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="always"
+      >
+        {/* ✨ NEW: proper document <title> for web */}
+        <Head><title>Create New Form</title></Head>
 
-      <View style={formStyles.card}>
+        <View style={formStyles.card}>
         <Text style={{ fontSize: Math.round(20 * fontScale), fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
           Create New Form
         </Text>
@@ -1316,13 +1315,6 @@ export default function NewFormScreen() {
 
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <Pressable
-          onPress={onSave}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
-        >
-          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Save</Text>
-        </Pressable>
-
-        <Pressable
           onPress={onSubmit}
           disabled={busy}
           style={{
@@ -1331,15 +1323,41 @@ export default function NewFormScreen() {
             paddingVertical: buttonPadV,
             borderRadius: 10,
             alignItems: 'center',
-            minHeight: targetMinHeight, justifyContent: 'center',
+            minHeight: targetMinHeight,
+            justifyContent: 'center',
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>{busy ? 'Submitting…' : 'Submit'}</Text>
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>
+            {busy ? 'Submitting…' : 'Submit'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onSave}
+          style={{
+            flex: 1,
+            backgroundColor: '#e5e7eb',
+            paddingVertical: buttonPadV,
+            borderRadius: 10,
+            alignItems: 'center',
+            minHeight: targetMinHeight,
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Save</Text>
         </Pressable>
 
         <Pressable
           onPress={() => router.back()}
-          style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
+          style={{
+            flex: 1,
+            backgroundColor: '#f3f4f6',
+            paddingVertical: buttonPadV,
+            borderRadius: 10,
+            alignItems: 'center',
+            minHeight: targetMinHeight,
+            justifyContent: 'center',
+          }}
         >
           <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Exit</Text>
         </Pressable>
@@ -1366,24 +1384,6 @@ export default function NewFormScreen() {
           </Text>
         </View>
       ) : null}
-
-      <View style={{ marginTop: 12, flexDirection: 'row', gap: 12 }}>
-        <Pressable
-          onPress={onClearAll}
-          style={{
-            flex: 1,
-            backgroundColor: '#f3f4f6',
-            paddingVertical: buttonPadV,
-            borderRadius: 10,
-            alignItems: 'center',
-            borderWidth: 1,
-            borderColor: '#d1d5db',
-            minHeight: targetMinHeight, justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Clear (wipe saved fields & photos)</Text>
-        </Pressable>
-      </View>
 
       <View style={{ marginTop: 16 }}>
         <Pressable
@@ -1432,6 +1432,7 @@ export default function NewFormScreen() {
           />
         </div>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

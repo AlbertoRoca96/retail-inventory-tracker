@@ -26,6 +26,7 @@ type Row = {
   created_at: string;
   created_by: string;
   team_id: string;
+  status: string | null;
 
   date: string | null;
   store_site: string | null;
@@ -45,9 +46,6 @@ type Row = {
   photo2_path?: string | null;
 
   priority_level?: number | null;
-
-  submitter_email?: string | null;
-  submitter_display_name?: string | null;
 };
 
 function priColor(n: number | null | undefined) {
@@ -89,7 +87,7 @@ function toCsv(r: Row) {
     ['TAGS', tags],
     ['NOTES', r.notes ?? ''],
     ['PRIORITY LEVEL', r.priority_level ?? ''],
-    ['SUBMITTED BY', r.submitter_display_name || r.submitter_email || r.created_by || ''],
+    ['SUBMITTED BY', r.created_by || ''],
     ['PHOTO 1', r.photo1_url ?? r.photo1_path ?? ''],
     ['PHOTO 2', r.photo2_url ?? r.photo2_path ?? ''],
   ];
@@ -138,14 +136,16 @@ export default function Submission() {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const rpc = await supabase.rpc('get_submission_with_submitter', { sub_id: id as any });
-      const r = Array.isArray(rpc.data) ? (rpc.data[0] as Row) : (rpc.data as Row | null);
-
-      let dataRow: Row | null = r ?? null;
-      if (!dataRow) {
-        const { data } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
-        dataRow = (data as Row) ?? null;
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) {
+        console.error('submission detail load failed', error);
+        return;
       }
+      const dataRow = (data as Row) ?? null;
       if (!dataRow) return;
       setRow(dataRow);
 
@@ -196,45 +196,63 @@ export default function Submission() {
 
   const shareSubmission = async () => {
     const csv = toCsv(row);
+    const fileName = `submission-${row.id || Date.now()}.csv`;
 
     if (Platform.OS === 'web') {
       const canUseNavigatorShare =
-        typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function' && typeof File !== 'undefined';
+        typeof navigator !== 'undefined' &&
+        typeof (navigator as any).share === 'function' &&
+        typeof File !== 'undefined';
 
       if (canUseNavigatorShare) {
-        const file = new File([csv], 'submission.csv', { type: 'text/csv' });
-        await (navigator as any).share({
-          title: 'Submission',
-          text: 'See attached CSV',
-          files: [file],
-        }).catch(() => {});
-      } else {
-        downloadCsvWeb('submission.csv', csv);
+        try {
+          const file = new File([csv], fileName, { type: 'text/csv' });
+          await (navigator as any).share({
+            title: 'Submission',
+            text: 'See attached CSV',
+            files: [file],
+          });
+          return;
+        } catch (err) {
+          console.warn('Web share failed, falling back to download', err);
+        }
       }
+
+      downloadCsvWeb(fileName, csv);
       return;
     }
 
     try {
-      await shareCsvNative(csv, `submission-${row.id}.csv`);
-    } catch {
-      Alert.alert('Share failed', 'Unable to open the share sheet on this device.');
+      await shareCsvNative(csv, fileName);
+    } catch (err: any) {
+      Alert.alert('Share failed', err?.message ?? 'Unable to open the share sheet on this device.');
     }
   };
 
   const saveCsvToFiles = async () => {
     const csv = toCsv(row);
-    const dir = resolveWritableDirectory(FileSystem, 'documents-first');
-    if (!dir) {
-      alertStorageUnavailable();
+    const fileName = `submission-${row.id || Date.now()}.csv`;
+
+    if (Platform.OS === 'web') {
+      downloadCsvWeb(fileName, csv);
       return;
     }
 
-    const fileName = `submission-${row.id || Date.now()}.csv`;
-    const target = `${dir}${fileName}`;
-    await FileSystem.writeAsStringAsync(target, csv, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-    Alert.alert('CSV saved', `Saved to Files → ${fileName}`);
+    try {
+      const dir = resolveWritableDirectory(FileSystem, 'documents-first');
+      if (!dir) {
+        alertStorageUnavailable();
+        return;
+      }
+
+      const target = `${dir}${fileName}`;
+      await FileSystem.writeAsStringAsync(target, csv, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      Alert.alert('CSV saved', `Saved to Files → ${fileName}`);
+    } catch (err: any) {
+      Alert.alert('Save failed', err?.message ?? 'Unable to save CSV on this device.');
+    }
   };
 
   const tagsText = Array.isArray(row.tags)
@@ -242,9 +260,10 @@ export default function Submission() {
     : typeof row.tags === 'string'
       ? row.tags
       : '';
-  const submittedBy = row.submitter_display_name || row.submitter_email || row.created_by || '';
+  const submittedBy = row.created_by || '';
 
   const photoUrls = [row.photo1_url || photo1Url, row.photo2_url || photo2Url].filter(Boolean) as string[];
+  const csvSaveLabel = Platform.OS === 'web' ? 'Download CSV' : 'Save CSV';
   const buildPdfPayload = () => ({
     store_site: row.store_site || '',
     date: row.date || '',
@@ -269,6 +288,9 @@ export default function Submission() {
       const fn = (mod as any)?.downloadSubmissionPdf || (mod as any)?.default?.downloadSubmissionPdf;
       if (typeof fn === 'function') {
         await fn(buildPdfPayload());
+        if (Platform.OS === 'web') {
+          Alert.alert('PDF downloaded', 'Check your downloads folder for the PDF file.');
+        }
       }
     } catch (err: any) {
       Alert.alert('PDF failed', err?.message ?? 'Unable to generate PDF');
@@ -358,11 +380,11 @@ export default function Submission() {
             accessibilityLabel="Share submission CSV"
           />
           <Button
-            title="Save CSV"
+            title={csvSaveLabel}
             onPress={saveCsvToFiles}
             variant="ghost"
             fullWidth
-            accessibilityLabel="Save CSV to Files"
+            accessibilityLabel={Platform.OS === 'web' ? 'Download CSV file' : 'Save CSV to Files'}
           />
           <Button
             title="Save PDF"

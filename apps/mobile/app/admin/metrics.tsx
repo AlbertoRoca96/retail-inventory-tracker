@@ -67,11 +67,7 @@ export default function AdminMetrics() {
   const [daily,   setDaily]   = useState<DayRow[]>([]);
   const [ytd,     setYtd]     = useState<number>(0);
 
-  // Helper to turn RPC row into a nice label
-  const labelForUser = (u: any): string => {
-    const name = u.display_name || (u.email ? u.email.split('@')[0] : u.user_id);
-    return u.email && name !== u.email ? `${name} (${u.email})` : name;
-  };
+    const labelForUserId = (id: string) => (id ? `${id.slice(0, 8)}…` : 'User');
 
   // Load all teams I admin + default date range
   useEffect(() => {
@@ -116,14 +112,15 @@ export default function AdminMetrics() {
 
       const seen = new Map<string, UserOpt>();
       for (const t of adminTeams) {
-        const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: t.id });
-        if (error || !data) continue;
-        for (const u of data as any[]) {
-          const id = u.user_id as string;
-          if (!seen.has(id)) {
-            seen.set(id, { id, label: labelForUser(u) });
-          }
-        }
+        const { data } = await supabase
+          .from('team_members')
+          .select('user_id')
+          .eq('team_id', t.id);
+        (data || []).forEach((row: any) => {
+          const id = row.user_id as string;
+          if (!id || seen.has(id)) return;
+          seen.set(id, { id, label: labelForUserId(id) });
+        });
       }
       const list = [{ id: '', label: 'All users' }]
         .concat(Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label)));
@@ -137,11 +134,14 @@ export default function AdminMetrics() {
       setUserFilter(null); // reset whenever team changes
       if (!teamId) { setTeamUsers([]); return; }
 
-      const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: teamId });
+      const { data, error } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('team_id', teamId);
       if (!error && data) {
         const opts: UserOpt[] = [{ id: '', label: 'All users' }].concat(
-          (data as any[])
-            .map((u) => ({ id: u.user_id as string, label: labelForUser(u) }))
+          data
+            .map((u: any) => ({ id: u.user_id as string, label: labelForUserId(u.user_id) }))
             .sort((a, b) => a.label.localeCompare(b.label))
         );
         setTeamUsers(opts);
