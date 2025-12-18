@@ -13,9 +13,11 @@
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
         "EXPO_USE_HERMES": "false",
-        "EXPO_POD_INSTALL_ARGS": "--repo-update"
+        "EXPO_POD_INSTALL_ARGS": "--repo-update",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
-    },
+    }
+  },
     "preview": {
       "node": "20.19.4",
       "distribution": "internal",
@@ -28,7 +30,8 @@
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
         "EXPO_USE_HERMES": "false",
-        "EXPO_POD_INSTALL_ARGS": "--repo-update"
+        "EXPO_POD_INSTALL_ARGS": "--repo-update",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
     "production": {
@@ -41,9 +44,10 @@
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
         "EXPO_USE_HERMES": "false",
-        "EXPO_POD_INSTALL_ARGS": "--repo-update"
+        "EXPO_POD_INSTALL_ARGS": "--repo-update",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
-    }
+    },
   },
   "submit": {
     "preview": {
