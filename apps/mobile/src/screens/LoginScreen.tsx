@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../hooks/useAuth';
 import { colors } from '../theme';
+import { adminUserExists, hasSupabaseAdmin } from '../lib/supabaseAdmin';
 import Button from '../components/Button';
 
 // Statically reference your logo at apps/mobile/assets/logo.png.
@@ -118,7 +119,7 @@ const styles = StyleSheet.create({
  *   If you ever *still* see a halo, the remaining white is baked inside the PNG—trim and re-export.
  */
 export default function LoginScreen() {
-  const { signIn, resetPassword, demo } = useAuth();
+  const { signIn, signUp, resetPassword, demo } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -141,15 +142,15 @@ export default function LoginScreen() {
   const passwordTrim = useMemo(() => password, [password]);
 
   const wrap =
-    <T extends (...a: any[]) => Promise<any>>(fn: T) =>
+    <T extends (...a: any[]) => Promise<string | void>>(fn: T) =>
     async (...a: Parameters<T>) => {
       if (busy) return;
       setBusy(true);
       setError(null);
       setInfo(null);
       try {
-        await fn(...a);
-        setInfo('Check your inbox if applicable.');
+        const message = await fn(...a);
+        if (message) setInfo(message);
       } catch (e: any) {
         setError(e?.message ?? 'Something went wrong');
       } finally {
@@ -159,12 +160,36 @@ export default function LoginScreen() {
 
   const onSignIn = wrap(async () => {
     if (!emailTrim || !passwordTrim) throw new Error('Email & password required');
+
+    let userExists: boolean | null = null;
+    if (hasSupabaseAdmin) {
+      try {
+        userExists = await adminUserExists(emailTrim);
+      } catch (err) {
+        console.warn('Account lookup failed', err);
+      }
+    }
+
+    if (userExists === false) {
+      try {
+        await signUp(emailTrim, passwordTrim);
+      } catch (err: any) {
+        if (typeof err?.message === 'string' && err.message.toLowerCase().includes('already registered')) {
+          await signIn(emailTrim, passwordTrim);
+          return;
+        }
+        throw err;
+      }
+      return 'Account created! Check your email to confirm, then log in.';
+    }
+
     await signIn(emailTrim, passwordTrim);
   });
 
   const onForgot = wrap(async () => {
     if (!emailTrim) throw new Error('Email required');
     await resetPassword(emailTrim);
+    return 'Password reset link sent. Check your inbox.';
   });
 
   // Enter-to-submit ergonomics on web:

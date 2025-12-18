@@ -148,3 +148,4 @@ export const supabaseConfigInfo = {
   source: supabaseConfigSource,
   diagnostics: configDiagnostics,
 };
+export const resolvedSupabaseUrl = supabaseUrl;
