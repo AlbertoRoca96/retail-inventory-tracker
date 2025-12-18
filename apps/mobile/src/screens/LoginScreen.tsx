@@ -4,9 +4,8 @@ import { View, Text, TextInput, Pressable, Platform, KeyboardAvoidingView, Scrol
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../hooks/useAuth';
-import { colors, theme } from '../theme';
+import { colors } from '../theme';
 import Button from '../components/Button';
-import LogoHeader from '../components/LogoHeader';
 
 // Statically reference your logo at apps/mobile/assets/logo.png.
 // If the file is missing, Metro will error at build time.
@@ -22,79 +21,64 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 48,
   },
   logoWrap: {
     alignItems: 'center',
-    marginBottom: 12,
     width: '100%',
+    marginBottom: 24,
   },
-  logoCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderWidth: 3,
-    borderColor: colors.accentGold,
+  logoSquare: {
+    width: 200,
+    height: 200,
+    borderRadius: 32,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.white,
   },
   logo: {
-    width: '90%',
-    height: '90%',
+    width: '92%',
+    height: '92%',
   },
   logoFallback: {
-    fontSize: 32,
+    fontSize: 48,
     fontWeight: '800',
     color: colors.text,
   },
-  welcome: {
-    marginTop: 16,
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  subtitle: {
-    marginTop: 4,
-    fontSize: 16,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  formCard: {
+  form: {
     width: '100%',
     maxWidth: 420,
-    borderWidth: 2,
-    borderColor: colors.accentGold,
-    borderRadius: 28,
-    padding: 24,
     gap: 20,
-    backgroundColor: colors.white,
   },
   input: {
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.accentGold,
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     fontSize: 18,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.white,
+    color: colors.text,
   },
   passwordWrapper: {
     position: 'relative',
   },
   passwordInput: {
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.accentGold,
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingRight: 56,
     fontSize: 18,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.white,
+    color: colors.text,
   },
   eyeButton: {
     position: 'absolute',
-    right: 14,
+    right: 18,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
@@ -200,7 +184,6 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LogoHeader showBack showSettings settingsColor={colors.text} backColor={colors.text} />
       <KeyboardAvoidingView
         style={{ flex: 1, width: '100%' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -211,26 +194,26 @@ export default function LoginScreen() {
         >
           <View style={styles.logoWrap}>
             {logoOk ? (
-              <View style={styles.logoCircle}>
+              <View style={styles.logoSquare}>
                 <Image
                   source={logoPng}
                   style={styles.logo}
                   resizeMode="contain"
-                  accessibilityLabel="RWS globe"
+                  accessibilityRole="image"
+                  accessibilityLabel="RWS logo"
                   onError={() => setLogoOk(false)}
                 />
               </View>
             ) : (
               <Text style={styles.logoFallback}>RWS</Text>
             )}
-            <Text style={styles.welcome}>Welcome back</Text>
-            <Text style={styles.subtitle}>Sign in with your store email and password</Text>
           </View>
 
-          <View style={styles.formCard}>
+          <View style={styles.form}>
             <TextInput
               ref={emailRef}
               placeholder="Email"
+              placeholderTextColor={colors.textMuted}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -248,6 +231,7 @@ export default function LoginScreen() {
               <TextInput
                 ref={pwRef}
                 placeholder="Password"
+                placeholderTextColor={colors.textMuted}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPw}
