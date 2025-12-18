@@ -444,7 +444,7 @@ export default function NewFormScreen() {
   const labelFontSize = Math.round(14 * (simplifiedMode || largeText ? 1.15 : 1) * fontScale);
   const bodyFontSize = Math.round(14 * (largeText ? 1.1 : 1) * fontScale);
   const buttonPadV = simplifiedMode ? 14 : 12;
-  const btnBlue = highContrast ? '#1743b3' : '#2563eb';
+  const btnBlue = highContrast ? '#1743b3' : '#5ba3f8';
 
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
@@ -1263,9 +1263,9 @@ export default function NewFormScreen() {
       {/* NEW: PRIORITY LEVEL */}
       <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>PRIORITY LEVEL</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-        <PriBtn label="1" active={currentPri === '1'} color="#ef4444" onPress={() => setPriority('1')} />
-        <PriBtn label="2" active={currentPri === '2'} color="#f59e0b" onPress={() => setPriority('2')} />
-        <PriBtn label="3" active={currentPri === '3'} color="#22c55e" onPress={() => setPriority('3')} />
+        <PriBtn label="1" active={currentPri === '1'} color="#da291c" onPress={() => setPriority('1')} />
+        <PriBtn label="2" active={currentPri === '2'} color="#eeba2b" onPress={() => setPriority('2')} />
+        <PriBtn label="3" active={currentPri === '3'} color="#99e169" onPress={() => setPriority('3')} />
       </View>
 
       <Text style={{ fontWeight: '700', marginBottom: 8, fontSize: labelFontSize }}>PHOTOS</Text>
@@ -1283,7 +1283,7 @@ export default function NewFormScreen() {
                 position: 'absolute',
                 top: -6,
                 right: -6,
-                backgroundColor: '#ef4444',
+                backgroundColor: '#da291c',
                 borderRadius: 12,
                 paddingHorizontal: 6,
                 paddingVertical: 2,
@@ -1351,7 +1351,7 @@ export default function NewFormScreen() {
           onPress={() => router.back()}
           style={{
             flex: 1,
-            backgroundColor: '#f3f4f6',
+            backgroundColor: '#da291c',
             paddingVertical: buttonPadV,
             borderRadius: 10,
             alignItems: 'center',
@@ -1359,7 +1359,7 @@ export default function NewFormScreen() {
             justifyContent: 'center',
           }}
         >
-          <Text style={{ fontWeight: '700', fontSize: bodyFontSize }}>Exit</Text>
+          <Text style={{ fontWeight: '700', fontSize: bodyFontSize, color: '#ffffff' }}>Exit</Text>
         </Pressable>
       </View>
 

@@ -72,8 +72,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 2,
+    borderColor: colors.accentGold,
     borderRadius: 16,
     paddingHorizontal: 18,
     paddingVertical: 14,
@@ -84,8 +84,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   passwordInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 2,
+    borderColor: colors.accentGold,
     borderRadius: 16,
     paddingHorizontal: 18,
     paddingVertical: 14,
@@ -286,13 +286,13 @@ export default function LoginScreen() {
 
             <View style={styles.primaryButtonWrapper}>
               <Button
-                title={busy ? 'Logging in…' : 'Login'}
+                title={busy ? 'Logging in…' : 'Log In'}
                 onPress={onSignIn}
                 disabled={busy}
                 fullWidth
                 size="lg"
                 variant="primary"
-                accessibilityLabel="Login"
+                accessibilityLabel="Log In"
               />
             </View>
           </View>

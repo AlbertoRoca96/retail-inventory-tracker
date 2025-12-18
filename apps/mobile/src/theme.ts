@@ -1,20 +1,20 @@
 // apps/mobile/src/theme.ts
 
-const logoBlue = '#0F5DFF';
-const logoGreen = '#00B37E';
-const logoGold = '#D4AF37';
+const logoBlue = '#5ba3f8';
+const logoGreen = '#99e169';
+const logoGold = '#eeba2b';
 
 const primary = {
-  50: '#e8f0ff',
-  100: '#cddfff',
-  200: '#a1c3ff',
-  300: '#74a6ff',
-  400: '#4688ff',
-  500: '#2070ff',
+  50: '#f0f7ff',
+  100: '#dcecff',
+  200: '#b8d8ff',
+  300: '#93c3ff',
+  400: '#6faefa',
+  500: '#4999f4',
   600: logoBlue,
-  700: '#0c4ed8',
-  800: '#0836a3',
-  900: '#051f6b',
+  700: '#3f8fe8',
+  800: '#2c70ba',
+  900: '#1b4a7a',
 } as const;
 
 const gray = {
@@ -31,33 +31,33 @@ const gray = {
 } as const;
 
 const success = {
-  50: '#e5fff6',
-  100: '#b8ffe5',
-  200: '#8cfed4',
-  400: '#4fedb3',
-  500: '#24d89c',
+  50: '#f2fce8',
+  100: '#e0f7c5',
+  200: '#c4ef96',
+  400: '#a8e466',
+  500: '#8fd842',
   600: logoGreen,
-  700: '#008c65',
+  700: '#6ea84f',
 } as const;
 
 const warning = {
-  50: '#fffbeb',
-  100: '#fef3c7',
-  200: '#fde68a',
-  400: '#fbbf24',
-  500: '#f59e0b',
-  600: '#d97706',
-  700: '#b45309',
+  50: '#fff9ec',
+  100: '#fff1cc',
+  200: '#ffe299',
+  400: '#ffd066',
+  500: '#ffbf33',
+  600: logoGold,
+  700: '#c38b1e',
 } as const;
 
 const error = {
-  50: '#fef2f2',
-  100: '#fee2e2',
-  200: '#fecaca',
-  400: '#f87171',
-  500: '#ef4444',
-  600: '#dc2626',
-  700: '#b91c1c',
+  50: '#fff0ed',
+  100: '#ffd9d2',
+  200: '#ffb3a6',
+  400: '#ff7a66',
+  500: '#f24a30',
+  600: '#da291c',
+  700: '#a31812',
 } as const;
 
 export const colors = {

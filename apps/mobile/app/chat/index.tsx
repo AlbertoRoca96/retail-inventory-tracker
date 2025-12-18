@@ -210,6 +210,7 @@ export default function ChatOverview() {
         <Button
           title="New Chat"
           onPress={() => router.push('/chat/team')}
+          variant="primary"
           accessibilityLabel="Open team-wide chat"
         />
       </View>

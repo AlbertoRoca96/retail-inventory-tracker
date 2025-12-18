@@ -11,33 +11,29 @@ const TILE_DATA = [
   {
     key: 'form',
     title: 'New Form',
-    subtitle: 'Capture a visit',
     icon: 'create-outline' as const,
-    color: colors.accentBlue,
+    color: '#5ba3f8',
     onPress: () => router.push('/form/new'),
   },
   {
     key: 'submissions',
     title: 'View Submissions',
-    subtitle: 'Review history',
     icon: 'checkmark-done-outline' as const,
-    color: colors.accentBlue,
+    color: '#5ba3f8',
     onPress: () => router.push('/submissions'),
   },
   {
     key: 'chat',
     title: 'Chat',
-    subtitle: 'Coordinate with team',
     icon: 'chatbubble-ellipses-outline' as const,
-    color: colors.accentGreen,
+    color: '#99e169',
     onPress: () => router.push('/chat'),
   },
   {
     key: 'logout',
-    title: 'Logout',
-    subtitle: 'Sign out safely',
+    title: 'Log Out',
     icon: 'log-out-outline' as const,
-    color: '#1f2937',
+    color: '#da291c',
     onPress: async () => {
       await supabase.auth.signOut().catch(() => {});
       router.replace('/login');
@@ -56,19 +52,17 @@ export default function Menu() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Choose an action</Text>
         <View style={styles.grid}>
           {TILE_DATA.map((item) => (
             <Pressable
               key={item.key}
               onPress={item.onPress}
-              style={[styles.tile, { borderColor: item.color }]}
+              style={[styles.tile, { backgroundColor: item.color }]}
             >
-              <View style={[styles.iconCircle, { backgroundColor: item.color }]}>
+              <View style={styles.iconCircle}>
                 <Ionicons name={item.icon} size={28} color={colors.white} />
               </View>
               <Text style={styles.tileTitle}>{item.title}</Text>
-              <Text style={styles.tileSubtitle}>{item.subtitle}</Text>
             </Pressable>
           ))}
         </View>
@@ -87,12 +81,6 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 24,
   },
-  title: {
-    ...typography.title,
-    textAlign: 'center',
-    color: colors.text,
-    marginTop: 8,
-  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -101,27 +89,25 @@ const styles = StyleSheet.create({
   },
   tile: {
     width: '48%',
-    borderWidth: 2,
     borderRadius: 24,
-    padding: 20,
-    backgroundColor: colors.white,
-    gap: 10,
-  },
-  iconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    gap: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+  },
+  iconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   tileTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
-  },
-  tileSubtitle: {
-    fontSize: 13,
-    color: colors.textMuted,
+    color: colors.white,
+    textAlign: 'center',
   },
 });

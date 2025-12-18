@@ -91,7 +91,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
-    name: "Retail Inventory Tracker",
+    name: "RWS",
     slug: "retail-inventory-tracker",
     icon: "./assets/app-icon.png",
     splash: {

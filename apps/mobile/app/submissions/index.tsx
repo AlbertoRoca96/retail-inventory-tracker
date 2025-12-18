@@ -32,7 +32,7 @@ interface Row {
 }
 
 function priColor(n: number | null | undefined) {
-  return n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
+  return n === 1 ? '#da291c' : n === 2 ? '#eeba2b' : '#99e169';
 }
 
 function PriPill({ n }: { n: number | null }) {

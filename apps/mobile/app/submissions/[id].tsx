@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   StyleSheet,
+  SafeAreaView,
 } from 'react-native';
 import Button from '../../src/components/Button';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,6 +19,7 @@ import { useUISettings } from '../../src/lib/uiSettings';
 import { shareCsvNative } from '../../src/lib/shareCsv';
 import { resolveWritableDirectory, alertStorageUnavailable } from '../../src/lib/storageAccess';
 import * as FileSystem from 'expo-file-system';
+import LogoHeader from '../../src/components/LogoHeader';
 
 const isWeb = Platform.OS === 'web';
 
@@ -49,7 +51,7 @@ type Row = {
 };
 
 function priColor(n: number | null | undefined) {
-  return n === 1 ? '#ef4444' : n === 2 ? '#f59e0b' : '#22c55e';
+  return n === 1 ? '#da291c' : n === 2 ? '#eeba2b' : '#99e169';
 }
 
 function PriPill({ n }: { n: number | null | undefined }) {
@@ -298,26 +300,16 @@ export default function Submission() {
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.surfaceMuted }}
-      contentContainerStyle={{ padding: 16, gap: 12 as any }}
-    >
+    <SafeAreaView style={styles.safe}>
       <Head>
         <title>Submission</title>
       </Head>
-
-      <Pressable
-        onPress={() => (typeof history !== 'undefined' ? history.back() : router.back())}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        style={styles.backButton}
+      <LogoHeader title="Submission" />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.surfaceMuted }}
+        contentContainerStyle={{ padding: 16, gap: 12 as any }}
       >
-        <Text {...textA11yProps} style={styles.backButtonText}>
-          ← Back
-        </Text>
-      </Pressable>
-
-      <View style={styles.card}>
+        <View style={styles.card}>
         <Text {...textA11yProps} style={[titleStyle, { marginBottom: 8 }]}>
           Submission
         </Text>
@@ -382,7 +374,7 @@ export default function Submission() {
           <Button
             title={csvSaveLabel}
             onPress={saveCsvToFiles}
-            variant="ghost"
+            variant="primary"
             fullWidth
             accessibilityLabel={Platform.OS === 'web' ? 'Download CSV file' : 'Save CSV to Files'}
           />
@@ -396,7 +388,7 @@ export default function Submission() {
           <Button
             title="Open Chat"
             onPress={() => router.push(`/chat/${row.id}`)}
-            variant="secondary"
+            variant="success"
             fullWidth
             accessibilityLabel="Open discussion about this submission"
           />
@@ -405,17 +397,22 @@ export default function Submission() {
         <Button
           title="Exit"
           onPress={() => (typeof history !== 'undefined' ? history.back() : router.back())}
-          variant="ghost"
+          variant="error"
           size="sm"
           fullWidth
           accessibilityLabel="Exit submission"
         />
       </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   card: {
     backgroundColor: colors.card,
     borderRadius: 24,
@@ -426,15 +423,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-  },
-  backButtonText: {
-    fontSize: 18,
-    color: colors.primary[600],
-    fontWeight: '600',
   },
   priorityPill: {
     paddingHorizontal: 10,
