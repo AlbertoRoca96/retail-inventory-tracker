@@ -9,11 +9,6 @@
       "ios": {
         "developmentClient": true
       },
-      "hooks": {
-        "pre-build": {
-          "command": "npm run bump:build"
-        }
-      },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
@@ -30,11 +25,6 @@
         "image": "latest"
       },
       "ios": {},
-      "hooks": {
-        "pre-build": {
-          "command": "npm run bump:build"
-        }
-      },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
@@ -48,11 +38,6 @@
       "distribution": "store",
       "ios": {
         "image": "latest"
-      },
-      "hooks": {
-        "pre-build": {
-          "command": "npm run bump:build"
-        }
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
@@ -74,6 +59,11 @@
         "ascAppId": "6756455733",
         "appleId": "alroca308@gmail.com"
       }
+    }
+  },
+  "hooks": {
+    "pre-build": {
+      "command": "npm run bump:build"
     }
   }
 }
