@@ -50,6 +50,8 @@ const ensureAndroidBounds = (value: number): number => {
 
 const GENERATED_META_PATH = path.resolve(__dirname, ".generated", "build-meta.json");
 
+const isEasBuild = process.env.EAS_BUILD === "true";
+
 type BuildMeta = { ios: string; android: number };
 type GlobalWithBuildMeta = typeof globalThis & {
   __retailInventoryBuildMeta?: BuildMeta;
@@ -112,6 +114,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     sanitizeOrigin(process.env.EXPO_PUBLIC_WEB_ORIGIN ?? process.env.WEB_ORIGIN) ??
     FALLBACK_WEB_ORIGIN;
 
+  const iosBuildNumber = isEasBuild ? undefined : (envIosBuild ?? generatedMeta.ios ?? autoMeta.ios);
+  const androidVersionCode = ensureAndroidBounds(
+    envAndroidBuild ?? generatedMeta.android ?? autoMeta.android
+  );
+
   return {
     ...config,
     name: "RWS",
@@ -137,7 +144,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: true,
       icon: "./assets/app-icon.png",
       bundleIdentifier: "io.github.albertoroca96.retailinventorytracker",
-      buildNumber: iosBuildNumber,
+      ...(iosBuildNumber ? { buildNumber: iosBuildNumber } : {}),
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
