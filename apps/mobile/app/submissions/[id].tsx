@@ -425,10 +425,10 @@ export default function Submission() {
           />
           <Button
             title="Open Chat"
-            onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, team: row.team_id ?? '' } })}
+            onPress={() => router.push('/chat/team')}
             variant="success"
             fullWidth
-            accessibilityLabel="Open discussion about this submission"
+            accessibilityLabel="Open team chat"
           />
         </View>
 

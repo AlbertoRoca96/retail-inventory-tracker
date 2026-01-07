@@ -611,14 +611,6 @@ export default function NewFormScreen() {
   }, []);
 
   useEffect(() => {
-    if (!keyboardMetrics.visible) return;
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [keyboardMetrics.visible, keyboardMetrics.height]);
-
-  useEffect(() => {
     if (!hydrated) return;
     const cur = getValues();
     // Only prefill if fields are blank-ish (avoid clobbering user's in-progress input)
