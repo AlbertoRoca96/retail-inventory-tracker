@@ -3,6 +3,7 @@ alter table public.teams        enable row level security;
 alter table public.team_members enable row level security;
 alter table public.submissions  enable row level security;
 alter table public.submission_messages enable row level security;
+alter table public.direct_messages enable row level security;
 
 -- Lightweight view used by policies
 create or replace view public.v_user_teams as
@@ -171,5 +172,36 @@ using (
     where tm.team_id = submission_messages.team_id
       and tm.user_id = auth.uid()
       and tm.is_admin = true
+  )
+);
+
+-- ========== Direct Messages ==========
+
+drop  policy if exists "participants can read dms" on public.direct_messages;
+create policy     "participants can read dms"
+on public.direct_messages
+for select
+to authenticated
+using (
+  (sender_id = auth.uid() or recipient_id = auth.uid())
+  and team_id in (select team_id from public.v_user_teams where user_id = auth.uid())
+);
+
+drop  policy if exists "team members can send dms" on public.direct_messages;
+create policy     "team members can send dms"
+on public.direct_messages
+for insert
+to authenticated
+with check (
+  sender_id = auth.uid()
+  and exists (
+    select 1 from public.team_members tm
+    where tm.team_id = direct_messages.team_id
+      and tm.user_id = auth.uid()
+  )
+  and exists (
+    select 1 from public.team_members tm
+    where tm.team_id = direct_messages.team_id
+      and tm.user_id = direct_messages.recipient_id
   )
 );

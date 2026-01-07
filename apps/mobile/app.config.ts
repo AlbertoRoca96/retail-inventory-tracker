@@ -1,5 +1,7 @@
 import type { ConfigContext, ExpoConfig } from "@expo/config";
 import "dotenv/config";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import supabaseFallback from "./src/config/staticSupabase.json";
 
 const FALLBACK_SUPABASE_URL = supabaseFallback.url;
@@ -46,12 +48,29 @@ const ensureAndroidBounds = (value: number): number => {
   return Math.min(Math.max(value, 1), ANDROID_VERSION_CODE_MAX);
 };
 
+const GENERATED_META_PATH = path.resolve(__dirname, ".generated", "build-meta.json");
+
 type BuildMeta = { ios: string; android: number };
 type GlobalWithBuildMeta = typeof globalThis & {
   __retailInventoryBuildMeta?: BuildMeta;
 };
 
-const resolveBuildMeta = (): BuildMeta => {
+const readGeneratedBuildMeta = (): Partial<BuildMeta> => {
+  try {
+    const raw = fs.readFileSync(GENERATED_META_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+    const ios = sanitizeNumericString(parsed?.iosBuildNumber);
+    const android = sanitizeInteger(parsed?.androidVersionCode);
+    return {
+      ios: ios,
+      android: android ? ensureAndroidBounds(android) : undefined,
+    };
+  } catch {
+    return {};
+  }
+};
+
+const resolveAutoBuildMeta = (): BuildMeta => {
   const globalScope = globalThis as GlobalWithBuildMeta;
   if (globalScope.__retailInventoryBuildMeta) {
     return globalScope.__retailInventoryBuildMeta;
@@ -74,9 +93,13 @@ const envIosBuild =
 const envAndroidBuild =
   sanitizeInteger(process.env.ANDROID_VERSION_CODE ?? process.env.EXPO_ANDROID_VERSION_CODE) ?? undefined;
 
-const autoMeta = resolveBuildMeta();
-const iosBuildNumber = envIosBuild ?? autoMeta.ios;
-const androidVersionCode = ensureAndroidBounds(envAndroidBuild ?? autoMeta.android);
+const generatedMeta = readGeneratedBuildMeta();
+const autoMeta = resolveAutoBuildMeta();
+
+const iosBuildNumber = envIosBuild ?? generatedMeta.ios ?? autoMeta.ios;
+const androidVersionCode = ensureAndroidBounds(
+  envAndroidBuild ?? generatedMeta.android ?? autoMeta.android
+);
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const supabaseUrl =

@@ -113,6 +113,21 @@ create index if not exists submission_messages_sender_idx on public.submission_m
 create index if not exists submission_messages_created_idx on public.submission_messages(created_at);
 create index if not exists submission_messages_reply_to_idx on public.submission_messages(reply_to_id);
 
+-- Direct (1:1) messages to support teammate DMs
+create table if not exists public.direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  sender_id uuid not null,
+  recipient_id uuid not null,
+  body text not null,
+  attachment_url text,
+  attachment_type text check (attachment_type in ('image','csv','pdf','excel') or attachment_type is null)
+);
+
+create index if not exists direct_messages_team_idx on public.direct_messages(team_id, created_at desc);
+create index if not exists direct_messages_participant_idx on public.direct_messages(sender_id, recipient_id, created_at desc);
+
 -- Trigger to automatically update updated_at
 drop trigger if exists update_submission_messages_updated_at on public.submission_messages;
 create trigger update_submission_messages_updated_at

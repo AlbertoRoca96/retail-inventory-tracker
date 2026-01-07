@@ -10,14 +10,18 @@ import Input from '../../src/components/Input';
 import { fetchSubmissionMessages, sendSubmissionMessage, sendCsvAttachmentMessage, subscribeToSubmissionMessages, type SubmissionMessage } from '../../src/lib/chat';
 
 export default function SubmissionChat() {
-  const { id: submissionId } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; team?: string }>();
+  const submissionId = params.id;
+  const initialTeamParam = typeof params.team === 'string' && params.team.length ? params.team : null;
   const { session, ready } = useAuth();
   const [messages, setMessages] = useState<SubmissionMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [submissionInfo, setSubmissionInfo] = useState<any>(null);
-  const [teamInfo, setTeamInfo] = useState<{ id: string; name: string } | null>(null);
+  const [teamInfo, setTeamInfo] = useState<{ id: string; name: string | null } | null>(
+    initialTeamParam ? { id: initialTeamParam, name: null } : null
+  );
   
   const flatListRef = useRef<FlatList>(null);
   const subscriptionRef = useRef<any>(null);
@@ -41,18 +45,19 @@ export default function SubmissionChat() {
         .from('submissions')
         .select(`
           id,
+          team_id,
           date,
           store_location,
           store_site,
           brand,
-          teams!inner(name)
+          teams!inner(id,name)
         `)
         .eq('id', submissionId)
         .single();
       
       if (data) {
         setSubmissionInfo(data);
-        setTeamInfo({ id: data.teams?.id || '', name: data.teams?.name || 'Unknown Team' });
+        setTeamInfo({ id: data.team_id, name: data.teams?.name || 'Unknown Team' });
       }
     } catch (error) {
       console.error('Error loading submission info:', error);
@@ -103,16 +108,24 @@ export default function SubmissionChat() {
   }, [submissionId]);
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !teamInfo || sending) return;
+    if (sending) return;
+    const trimmed = newMessage.trim();
+    if (!trimmed) return;
+
+    const resolvedTeamId = teamInfo?.id ?? submissionInfo?.team_id ?? initialTeamParam;
+    if (!resolvedTeamId) {
+      Alert.alert('Team not ready', 'Still loading the team for this submission. Please try again momentarily.');
+      return;
+    }
 
     try {
       setSending(true);
       
       const result = await sendSubmissionMessage({
-        team_id: teamInfo.id,
+        team_id: resolvedTeamId,
         submission_id: submissionId,
-        body: newMessage.trim(),
-        is_internal: false, // This is submission chat
+        body: trimmed,
+        is_internal: false,
       });
       
       if (!result.success) {

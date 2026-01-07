@@ -29,7 +29,7 @@ export function LogoHeader({
   backColor = '#1f2937',
   title,
   subtitle,
-  logoSize = 60,
+  logoSize = 94,
   style,
 }: LogoHeaderProps) {
   const router = useRouter();

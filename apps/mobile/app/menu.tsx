@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, SafeAreaView, StyleSheet, Pressable } from 'react-native';
+import { View, Text, SafeAreaView, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
@@ -48,10 +48,7 @@ export default function Menu() {
         <title>Menu - Retail Inventory Tracker</title>
       </Head>
       <LogoHeader showBack={false} showSettings settingsColor={colors.text} />
-      <ScrollView
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.content}>
         <View style={styles.grid}>
           {TILE_DATA.map((item) => (
             <Pressable
@@ -60,13 +57,13 @@ export default function Menu() {
               style={[styles.tile, { backgroundColor: item.color }]}
             >
               <View style={styles.iconCircle}>
-                <Ionicons name={item.icon} size={28} color={colors.white} />
+                <Ionicons name={item.icon} size={32} color={colors.white} />
               </View>
               <Text style={styles.tileTitle}>{item.title}</Text>
             </Pressable>
           ))}
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -76,37 +73,46 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  contentContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 24,
+  content: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    justifyContent: 'space-evenly',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 16,
+    alignContent: 'space-between',
+    rowGap: 20,
+    flexGrow: 1,
   },
   tile: {
     width: '48%',
-    borderRadius: 24,
-    paddingVertical: 28,
-    paddingHorizontal: 16,
-    gap: 12,
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingVertical: 32,
+    gap: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 270,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   iconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   tileTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.white,
     textAlign: 'center',
   },

@@ -6,8 +6,9 @@ import React, {
   useCallback,
   memo,
 } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Image, Platform, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Image, Platform, StyleSheet, SafeAreaView, Keyboard, KeyboardAvoidingView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 
@@ -182,6 +183,7 @@ type WebFieldProps = {
   placeholder?: string;
   multiline?: boolean;
   inputMode?: 'text' | 'decimal';
+  labelAdornment?: React.ReactNode;
   formKey: number;
   formRef: React.MutableRefObject<FormValues>;
   touched: Record<keyof FormValues, boolean>;
@@ -197,6 +199,7 @@ const WebField = memo(function WebField({
   placeholder,
   multiline,
   inputMode,
+  labelAdornment,
   formKey,
   formRef,
   touched,
@@ -219,7 +222,10 @@ const WebField = memo(function WebField({
 
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <Text style={{ fontWeight: '700', fontSize: labelFontSize }}>{label}</Text>
+        {labelAdornment ? <View style={{ marginLeft: 12 }}>{labelAdornment}</View> : null}
+      </View>
       {multiline ? (
         <textarea
           key={`${name}-${formKey}`}
@@ -288,6 +294,7 @@ type NativeFieldProps = {
   placeholder?: string;
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric' | 'email-address';
+  labelAdornment?: React.ReactNode;
   value: string;
   setValue: (s: string) => void;
   touched: Record<keyof FormValues, boolean>;
@@ -303,6 +310,7 @@ const NativeField = memo(function NativeField({
   placeholder,
   multiline,
   keyboardType,
+  labelAdornment,
   value,
   setValue,
   touched,
@@ -323,7 +331,10 @@ const NativeField = memo(function NativeField({
 
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontWeight: '700', marginBottom: 6, fontSize: labelFontSize }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <Text style={{ fontWeight: '700', fontSize: labelFontSize }}>{label}</Text>
+        {labelAdornment ? <View style={{ marginLeft: 12 }}>{labelAdornment}</View> : null}
+      </View>
       <TextInput
         value={value}
         onFocus={typingStart}
@@ -339,6 +350,9 @@ const NativeField = memo(function NativeField({
         autoCorrect={false}
         autoCapitalize="none"
         keyboardType={keyboardType}
+        blurOnSubmit={!multiline}
+        returnKeyType={multiline ? 'default' : 'done'}
+        onSubmitEditing={!multiline ? () => Keyboard.dismiss() : undefined}
         style={{
           backgroundColor: 'white',
           borderWidth: 1,
@@ -365,6 +379,7 @@ type FieldProps = {
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric' | 'email-address';
   inputMode?: 'text' | 'decimal';
+  labelAdornment?: React.ReactNode;
   formKey: number;
   formRef: React.MutableRefObject<FormValues>;
   onEdit: () => void;
@@ -384,6 +399,7 @@ const Field = memo(function Field({
   multiline,
   keyboardType,
   inputMode,
+  labelAdornment,
   formKey,
   formRef,
   onEdit,
@@ -404,6 +420,7 @@ const Field = memo(function Field({
       inputMode={inputMode}
       formKey={formKey}
       formRef={formRef}
+      labelAdornment={labelAdornment}
       touched={touched}
       setTouched={setTouched}
       onEdit={onEdit}
@@ -417,6 +434,7 @@ const Field = memo(function Field({
       placeholder={placeholder}
       multiline={multiline}
       keyboardType={keyboardType}
+      labelAdornment={labelAdornment}
       value={nVals[name] ?? ''}
       setValue={(s) => setNVals((prev) => ({ ...prev, [name]: s ?? '' }))}
       touched={touched}
@@ -482,6 +500,7 @@ export default function NewFormScreen() {
   const [formKey, setFormKey] = useState(0);
 
   const [pdfReady, setPdfReady] = useState<PdfPayload | null>(null);
+  const [geoBusy, setGeoBusy] = useState(false);
 
   // After-submit: prompt to remember defaults
   const [showRememberPrompt, setShowRememberPrompt] = useState(false);
@@ -489,6 +508,9 @@ export default function NewFormScreen() {
 
   const camInputRef = useRef<HTMLInputElement | null>(null);
   const libInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
+
+  const [keyboardMetrics, setKeyboardMetrics] = useState({ visible: false, height: 0 });
 
   const isTypingRef = useRef(false);
   const typingStart = useCallback(() => { isTypingRef.current = true; }, []);
@@ -576,6 +598,27 @@ export default function NewFormScreen() {
 
   // Secondary prefill: in case team selection arrives after mount and no draft exists
   useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardMetrics({ visible: true, height: e.endCoordinates?.height ?? 0 });
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardMetrics({ visible: false, height: 0 });
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!keyboardMetrics.visible) return;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [keyboardMetrics.visible, keyboardMetrics.height]);
+
+  useEffect(() => {
     if (!hydrated) return;
     const cur = getValues();
     // Only prefill if fields are blank-ish (avoid clobbering user's in-progress input)
@@ -634,6 +677,17 @@ export default function NewFormScreen() {
   const getValues = useCallback((): FormValues => {
     return isWeb ? { ...formRef.current } : { ...nVals };
   }, [nVals]);
+
+  const updateFieldValue = useCallback((name: keyof FormValues, value: string) => {
+    if (isWeb) {
+      formRef.current[name] = value;
+      setFormKey((k) => k + 1);
+    } else {
+      setNVals((prev) => ({ ...prev, [name]: value }));
+    }
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    scheduleAutosave();
+  }, [isWeb, scheduleAutosave, setNVals, setTouched, setFormKey]);
 
   const validate = useCallback((v: FormValues): ValidationErrors => {
     const e: ValidationErrors = {};
@@ -960,6 +1014,50 @@ export default function NewFormScreen() {
     scheduleAutosave();
   };
 
+  const fillAddressFromLocation = useCallback(async () => {
+    try {
+      setGeoBusy(true);
+      if (!isWeb) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setBanner({ kind: 'error', text: 'Location permission denied' });
+          return;
+        }
+      }
+
+      const getCoords = async () => {
+        if (isWeb && typeof navigator !== 'undefined' && navigator.geolocation) {
+          return await new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+              (err) => reject(err),
+              { enableHighAccuracy: true, timeout: 10000 }
+            );
+          });
+        }
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      };
+
+      const coords = await getCoords();
+      const places = await Location.reverseGeocodeAsync(coords);
+      const first = places[0];
+      const formatted = first
+        ? [first.name, first.street, first.city, first.region, first.postalCode]
+            .filter(Boolean)
+            .join(', ')
+        : `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
+
+      updateFieldValue('storeLocation', formatted);
+      setBanner({ kind: 'success', text: 'Address filled from GPS' });
+    } catch (err: any) {
+      console.warn('geo lookup failed', err);
+      setBanner({ kind: 'error', text: err?.message || 'Unable to fetch GPS address' });
+    } finally {
+      setGeoBusy(false);
+    }
+  }, [updateFieldValue, isWeb, setBanner]);
+
   const PriBtn = ({ label, active, onPress, color }: { label: string; active: boolean; onPress: () => void; color: string }) => (
     <Pressable
       onPress={onPress}
@@ -1013,13 +1111,22 @@ export default function NewFormScreen() {
 
   const currentPri = (isWeb ? formRef.current.priorityLevel : nVals.priorityLevel) || '3';
 
+  const scrollBottomPadding = 32 + (keyboardMetrics.visible ? keyboardMetrics.height + 64 : 0);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <LogoHeader title="Create Form" />
-      <ScrollView
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-        keyboardShouldPersistTaps="always"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      >
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: scrollBottomPadding }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         {/* ✨ NEW: proper document <title> for web */}
         <Head><title>Create New Form</title></Head>
@@ -1055,7 +1162,7 @@ export default function NewFormScreen() {
             Save these as your defaults for this store/team?
           </Text>
           <Text style={{ color: '#92400e', marginBottom: 12, fontSize: statusFontSize }}>
-            We can remember Store Site, Store Location, and Brand to prefill next time.
+            We can remember Store Name, Store Address, and Brand to prefill next time.
           </Text>
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <Pressable onPress={rememberNow} style={{ flex: 1, backgroundColor: '#16a34a', paddingVertical: buttonPadV, borderRadius: 8, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}>
@@ -1115,7 +1222,7 @@ export default function NewFormScreen() {
       ) : null}
 
       <Field
-        name="storeSite" label="STORE SITE"
+        name="storeSite" label="STORE NAME"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1128,7 +1235,23 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="storeLocation" label="STORE LOCATION"
+        name="storeLocation" label="STORE ADDRESS"
+        labelAdornment={
+          <Pressable
+            onPress={fillAddressFromLocation}
+            disabled={geoBusy}
+            style={{
+              backgroundColor: geoBusy ? '#cbd5f5' : '#1d4ed8',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+              {geoBusy ? 'Locating…' : 'Use GPS'}
+            </Text>
+          </Pressable>
+        }
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1141,7 +1264,7 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="location" label="LOCATIONS"
+        name="location" label="ITEM LOCATION IN STORE"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1182,7 +1305,7 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="conditions" label="CONDITIONS"
+        name="conditions" label="SHELF CONDITIONS"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1208,7 +1331,7 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="shelfSpace" label="SHELF SPACE"
+        name="shelfSpace" label="TOTAL SHELF SPACE"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1221,7 +1344,7 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="onShelf" label="ON SHELF"
+        name="onShelf" label="ITEMS ON SHELF"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1234,7 +1357,7 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="tags" label="TAGS"
+        name="tags" label="TAGS UP BY ITEM"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}
@@ -1433,6 +1556,24 @@ export default function NewFormScreen() {
         </div>
       ) : null}
       </ScrollView>
+      {keyboardMetrics.visible ? (
+        <Pressable
+          onPress={() => Keyboard.dismiss()}
+          style={{
+            position: 'absolute',
+            left: 24,
+            right: 24,
+            bottom: Math.max(keyboardMetrics.height + 16, 24),
+            backgroundColor: '#111827',
+            borderRadius: 999,
+            alignItems: 'center',
+            paddingVertical: 12,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700' }}>Done</Text>
+        </Pressable>
+      ) : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

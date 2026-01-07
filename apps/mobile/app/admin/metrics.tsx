@@ -1,16 +1,86 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable, Platform, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
-import { getMonthlyCounts, getDailyCounts, getYTDTotal } from '../../src/lib/analytics';
+import { getMonthlyCounts, getDailyCounts, getYTDTotal, fetchSubmissionsInRange } from '../../src/lib/analytics';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
+import LogoHeader from '../../src/components/LogoHeader';
+import { Svg, Path, Circle } from 'react-native-svg';
 
 type MonthRow = { month_start: string; submitted: number; cumulative: number };
 type DayRow   = { day: string; submitted: number };
 
 const isWeb = Platform.OS === 'web';
+const PIE_COLORS = ['#5ba3f8', '#99e169', '#eeba2b', '#da291c', '#7c3aed', '#14b8a6'];
+
+const polarToCartesian = (center: number, radius: number, angle: number) => ({
+  x: center + radius * Math.cos(angle - Math.PI / 2),
+  y: center + radius * Math.sin(angle - Math.PI / 2),
+});
+
+const describeArc = (center: number, radius: number, startAngle: number, endAngle: number) => {
+  const start = polarToCartesian(center, radius, endAngle);
+  const end = polarToCartesian(center, radius, startAngle);
+  const largeArc = endAngle - startAngle <= Math.PI ? 0 : 1;
+  return `M ${center} ${center} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 0 ${end.x} ${end.y} Z`;
+};
+
+const PieChartCard = ({
+  data,
+  subtitle,
+}: {
+  data: { label: string; count: number }[];
+  subtitle: string;
+}) => {
+  const total = data.reduce((sum, item) => sum + item.count, 0) || 1;
+  let cumulative = 0;
+  const size = 220;
+  const radius = size / 2 - 8;
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.white }]}>
+      <Text style={styles.sectionHeader}>Team Contribution</Text>
+      <Text style={{ ...typography.body, color: '#6b7280', marginBottom: theme.spacing(2) }}>{subtitle}</Text>
+      {data.length === 0 ? (
+        <Text style={styles.emptyState}>No submissions in this range.</Text>
+      ) : (
+        <View style={{ alignItems: 'center', gap: theme.spacing(3) }}>
+          <Svg width={size} height={size}>
+            {data.map((item, index) => {
+              const startAngle = cumulative * 2 * Math.PI;
+              const slice = item.count / total;
+              cumulative += slice;
+              const endAngle = cumulative * 2 * Math.PI;
+              const path = describeArc(size / 2, radius, startAngle, endAngle);
+              const color = PIE_COLORS[index % PIE_COLORS.length];
+              return <Path key={item.label} d={path} fill={color} stroke="#fff" strokeWidth={1} />;
+            })}
+            <Circle cx={size / 2} cy={size / 2} r={radius * 0.45} fill={colors.surfaceMuted} />
+          </Svg>
+          <View style={{ width: '100%', gap: 8 }}>
+            {data.map((item, index) => {
+              const color = PIE_COLORS[index % PIE_COLORS.length];
+              const percent = ((item.count / total) * 100).toFixed(1);
+              return (
+                <View key={`${item.label}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 14, height: 14, borderRadius: 8, backgroundColor: color }} />
+                    <Text style={{ ...typography.body, fontWeight: '600' }}>{item.label}</Text>
+                  </View>
+                  <Text style={{ ...typography.body, color: '#6b7280' }}>
+                    {item.count} • {percent}%
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+};
 
 // ---- Date helpers ----
 function toISO(d: Date) { return d.toISOString().slice(0, 10); }
@@ -66,8 +136,11 @@ export default function AdminMetrics() {
   const [monthly, setMonthly] = useState<MonthRow[]>([]);
   const [daily,   setDaily]   = useState<DayRow[]>([]);
   const [ytd,     setYtd]     = useState<number>(0);
+  const [userBreakdown, setUserBreakdown] = useState<{ user_id: string; count: number }[]>([]);
 
-    const labelForUserId = (id: string) => (id ? `${id.slice(0, 8)}…` : 'User');
+  const fallbackUserLabel = (id?: string | null) => (id ? `${id.slice(0, 8)}…` : 'User');
+  const labelFromRosterRow = (row?: { display_name?: string | null; email?: string | null; user_id?: string }) =>
+    (row?.display_name && row.display_name.trim()) || row?.email || fallbackUserLabel(row?.user_id ?? '');
 
   // Load all teams I admin + default date range
   useEffect(() => {
@@ -112,14 +185,15 @@ export default function AdminMetrics() {
 
       const seen = new Map<string, UserOpt>();
       for (const t of adminTeams) {
-        const { data } = await supabase
-          .from('team_members')
-          .select('user_id')
-          .eq('team_id', t.id);
+        const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: t.id });
+        if (error) {
+          console.error('metrics allUsers roster failed', error);
+          continue;
+        }
         (data || []).forEach((row: any) => {
           const id = row.user_id as string;
           if (!id || seen.has(id)) return;
-          seen.set(id, { id, label: labelForUserId(id) });
+          seen.set(id, { id, label: labelFromRosterRow(row) });
         });
       }
       const list = [{ id: '', label: 'All users' }]
@@ -131,23 +205,21 @@ export default function AdminMetrics() {
   // Load users for the currently selected team (or reset when viewing "all teams")
   useEffect(() => {
     (async () => {
-      setUserFilter(null); // reset whenever team changes
+      setUserFilter(null);
       if (!teamId) { setTeamUsers([]); return; }
 
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('user_id')
-        .eq('team_id', teamId);
-      if (!error && data) {
-        const opts: UserOpt[] = [{ id: '', label: 'All users' }].concat(
-          data
-            .map((u: any) => ({ id: u.user_id as string, label: labelForUserId(u.user_id) }))
-            .sort((a, b) => a.label.localeCompare(b.label))
-        );
-        setTeamUsers(opts);
-      } else {
+      const { data, error } = await supabase.rpc('team_users_with_names', { p_team_id: teamId });
+      if (error) {
+        console.error('metrics teamUsers roster failed', error);
         setTeamUsers([{ id: '', label: 'All users' }]);
+        return;
       }
+      const opts: UserOpt[] = [{ id: '', label: 'All users' }].concat(
+        (data || [])
+          .map((row: any) => ({ id: row.user_id as string, label: labelFromRosterRow(row) }))
+          .sort((a, b) => a.label.localeCompare(b.label))
+      );
+      setTeamUsers(opts);
     })();
   }, [teamId]);
 
@@ -161,15 +233,24 @@ export default function AdminMetrics() {
 
       // Monthly respects UI range; Daily shows current month through “tomorrow” (end-exclusive).
       const now = new Date();
-      const [m, d, totalYtd] = await Promise.all([
+      const [m, d, totalYtd, rowsForPie] = await Promise.all([
         getMonthlyCounts(rangeStart, rangeEnd, filters),
         getDailyCounts(monthStart(now), tomorrow(now), filters),
         getYTDTotal(now, filters),
+        fetchSubmissionsInRange(rangeStart, rangeEnd, filters),
       ]);
+
+      const breakdownMap = new Map<string, number>();
+      rowsForPie.forEach((row) => {
+        if (!row.created_by) return;
+        breakdownMap.set(row.created_by, (breakdownMap.get(row.created_by) || 0) + 1);
+      });
+      const breakdownList = Array.from(breakdownMap.entries()).map(([user_id, count]) => ({ user_id, count }));
 
       setMonthly(m);
       setDaily(d);
       setYtd(totalYtd);
+      setUserBreakdown(teamId ? breakdownList : []);
       setLoading(false);
     })();
   }, [teamId, rangeStart, rangeEnd, userFilter]);
@@ -200,7 +281,21 @@ export default function AdminMetrics() {
   // Which list to show in the User dropdown?
   const userOptions = teamId ? (teamUsers.length ? teamUsers : [{ id: '', label: 'All users' }]) : (allUsers.length ? allUsers : [{ id: '', label: 'All users' }]);
 
+  const pieChartData = teamId
+    ? userBreakdown
+        .slice()
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6)
+        .map((entry, index) => ({
+          label: userOptions.find((u) => u.id === entry.user_id)?.label ?? fallbackUserLabel(entry.user_id),
+          count: entry.count,
+          color: PIE_COLORS[index % PIE_COLORS.length],
+        }))
+    : [];
+
   return (
+    <SafeAreaView style={styles.safe}>
+      <LogoHeader title="Metrics" />
     <View style={styles.container}>
       <ScrollView
         style={{ flex: 1 }}
@@ -313,6 +408,20 @@ export default function AdminMetrics() {
               </View>
             </View>
 
+            {teamId ? (
+              <PieChartCard
+                data={pieChartData}
+                subtitle="Share of submissions by teammate in the selected range"
+              />
+            ) : (
+              <View style={[styles.card, { backgroundColor: colors.white }]}> 
+                <Text style={styles.sectionHeader}>Team Contribution</Text>
+                <Text style={styles.emptyState}>
+                  Select a specific team to view the submission pie chart.
+                </Text>
+              </View>
+            )}
+
             {/* Monthly Breakdown Card */}
             <View style={[styles.card, { backgroundColor: colors.white }]}>
               <Text style={styles.sectionHeader}>Monthly Breakdown</Text>
@@ -422,10 +531,15 @@ export default function AdminMetrics() {
         )}
       </ScrollView>
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.surfaceMuted,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.surfaceMuted,

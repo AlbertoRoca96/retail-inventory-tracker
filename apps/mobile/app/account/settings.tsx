@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, Image, Platform, Switch, ScrollView, SafeAreaView, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 import * as ImagePicker from 'expo-image-picker';
@@ -66,6 +66,7 @@ export default function AccountSettings() {
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -115,23 +116,66 @@ export default function AccountSettings() {
     };
   }, [user?.id]);
 
-  const pickAvatarNative = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
-    });
-    if (res.canceled || !res.assets?.length) return;
-    const a = res.assets[0];
-    const url = await uploadAvatarAndGetPublicUrl(
-      user!.id,
-      {
-        uri: a.uri,
-        fileName: a.fileName || 'avatar.jpg',
-        mimeType: a.mimeType || 'image/jpeg',
+  const ensureMediaPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow photo library access to update your profile photo.');
+      return false;
+    }
+    return true;
+  };
+
+  const persistProfile = async (
+    overrides?: { displayName?: string; avatarUrl?: string | null },
+    opts: { silent?: boolean } = {}
+  ) => {
+    if (!user) return;
+    if (!opts.silent) setBusy(true);
+    setMsg(null);
+    const nextDisplayName = overrides?.displayName ?? displayName;
+    const nextAvatar = overrides?.avatarUrl ?? avatarUrl;
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        display_name: nextDisplayName || null,
+        avatar_url: nextAvatar || null,
       },
-      'avatars'
-    );
-    if (url) setAvatarUrl(url);
+    });
+    if (!opts.silent) setBusy(false);
+    if (error) {
+      setMsg(error.message);
+    } else {
+      setMsg(opts.silent ? 'Photo updated' : 'Saved');
+    }
+  };
+
+  const pickAvatarNative = async () => {
+    if (!(await ensureMediaPermission())) return;
+    setPhotoBusy(true);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      const url = await uploadAvatarAndGetPublicUrl(
+        user!.id,
+        {
+          uri: a.uri,
+          fileName: a.fileName || 'avatar.jpg',
+          mimeType: a.mimeType || 'image/jpeg',
+        },
+        'avatars'
+      );
+      if (url) {
+        setAvatarUrl(url);
+        await persistProfile({ avatarUrl: url }, { silent: true });
+      }
+    } catch (error: any) {
+      Alert.alert('Photo upload failed', error?.message || 'Unable to update avatar right now.');
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
   const pickAvatarWeb = () => {
@@ -140,33 +184,42 @@ export default function AccountSettings() {
 
   const handleWebFile = async (f?: File | null) => {
     if (!user || !f) return;
-    const url = await uploadAvatarAndGetPublicUrl(
-      user.id,
-      {
-        uri: URL.createObjectURL(f),
-        fileName: f.name || 'avatar.jpg',
-        mimeType: f.type || 'image/jpeg',
-      },
-      'avatars'
-    );
-    if (url) setAvatarUrl(url);
+    setPhotoBusy(true);
+    const tempUri = URL.createObjectURL(f);
+    try {
+      const url = await uploadAvatarAndGetPublicUrl(
+        user.id,
+        {
+          uri: tempUri,
+          fileName: f.name || 'avatar.jpg',
+          mimeType: f.type || 'image/jpeg',
+          blob: f,
+        },
+        'avatars'
+      );
+      if (url) {
+        setAvatarUrl(url);
+        await persistProfile({ avatarUrl: url }, { silent: true });
+      }
+    } catch (error: any) {
+      Alert.alert('Photo upload failed', error?.message || 'Unable to update avatar right now.');
+    } finally {
+      URL.revokeObjectURL(tempUri);
+      setPhotoBusy(false);
+      if (webFileRef.current) {
+        webFileRef.current.value = '';
+      }
+    }
   };
 
   const pickAvatar = async () => {
-    if (!user) return;
+    if (!user || photoBusy) return;
     if (isWeb) return pickAvatarWeb();
     return pickAvatarNative();
   };
 
   const save = async () => {
-    if (!user) return;
-    setBusy(true);
-    setMsg(null);
-    const { error } = await supabase.auth.updateUser({
-      data: { display_name: displayName || null, avatar_url: avatarUrl || null },
-    });
-    setBusy(false);
-    setMsg(error ? error.message : 'Saved');
+    await persistProfile();
   };
 
   // accessibility-aware sizing
@@ -188,11 +241,12 @@ export default function AccountSettings() {
           />
           <Pressable
             onPress={pickAvatar}
+            disabled={photoBusy}
             accessibilityRole="button"
             accessibilityLabel="Change profile photo"
-            style={styles.changePhotoButton}
+            style={[styles.changePhotoButton, photoBusy && { opacity: 0.6 }]}
           >
-            <Text style={styles.changePhotoText}>Change Photo</Text>
+            <Text style={styles.changePhotoText}>{photoBusy ? 'Uploading…' : 'Change Photo'}</Text>
           </Pressable>
         </View>
 

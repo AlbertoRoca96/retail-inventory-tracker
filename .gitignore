@@ -16,5 +16,6 @@ build/
 .env
 apps/mobile/.env
 apps/mobile/.env.local
+apps/mobile/.generated/
 apps/mobile/android/
 apps/mobile/ios/

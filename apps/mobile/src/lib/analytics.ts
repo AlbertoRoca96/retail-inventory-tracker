@@ -7,7 +7,7 @@ type Filters = { userId?: string | null; teamId?: string | null };
 
 const toISODate = (d: string | Date) => (typeof d === 'string' ? d : new Date(d).toISOString().slice(0, 10));
 
-async function fetchSubmissionsInRange(start: string | Date, end: string | Date, filters: Filters) {
+export async function fetchSubmissionsInRange(start: string | Date, end: string | Date, filters: Filters) {
   const startIso = `${toISODate(start)}T00:00:00Z`;
   const endIso = `${toISODate(end)}T23:59:59Z`;
   let query = supabase

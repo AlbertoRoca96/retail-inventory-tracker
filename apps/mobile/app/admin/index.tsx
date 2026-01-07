@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, ScrollView, Platform } from 'react-native';
-import { router } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet, ScrollView, Platform, SafeAreaView } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import Banner from '../../src/components/Banner';
+import LogoHeader from '../../src/components/LogoHeader';
 
-type Member = { user_id: string; is_admin: boolean };
+type Member = { user_id: string; is_admin: boolean; display_name?: string | null; email?: string | null };
 type TeamInfo = { id: string; name: string };
 
 export default function AdminRoute() {
@@ -18,53 +19,79 @@ export default function AdminRoute() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      if (!session?.user) return;
-      setLoading(true);
-      
-      try {
-        // 1) Get my admin team(s) with team names
-        const { data: tm, error: tmErr } = await supabase
-          .from('team_members')
-          .select('team_id,is_admin,teams(name)')
-          .eq('user_id', session.user.id)
-          .eq('is_admin', true)
-          .limit(1)
-          .maybeSingle();
+  const shortTeamId = teamId ? `${teamId.slice(0, 4)}…${teamId.slice(-4)}` : '—';
 
-        if (tmErr) {
-          console.error('admin: team_members lookup failed', tmErr);
-          setLoading(false);
-          return;
-        }
+  const loadAdminData = useCallback(async () => {
+    if (!ready || !session?.user) return;
+    setLoading(true);
 
-        const tid = tm?.team_id ?? null;
-        setTeamId(tid);
-        setTeamName(tm?.teams?.name ?? null);
-        setIsAdmin(!!tm?.is_admin);
+    try {
+      const { data: tm, error: tmErr } = await supabase
+        .from('team_members')
+        .select('team_id,is_admin,teams(name)')
+        .eq('user_id', session.user.id)
+        .eq('is_admin', true)
+        .limit(1)
+        .maybeSingle();
 
-        // 2) If I have a team, load all members
-        if (tid) {
-          const { data: memRows, error: memErr } = await supabase
+      if (tmErr) {
+        console.error('admin: team_members lookup failed', tmErr);
+        setLoading(false);
+        return;
+      }
+
+      const tid = tm?.team_id ?? null;
+      setTeamId(tid);
+      setTeamName(tm?.teams?.name ?? null);
+      setIsAdmin(!!tm?.is_admin);
+
+      if (tid) {
+        const [{ data: memRows, error: memErr }, { data: roster, error: rosterErr }] = await Promise.all([
+          supabase
             .from('team_members')
             .select('user_id,is_admin')
             .eq('team_id', tid)
-            .order('is_admin', { ascending: false });
-          if (memErr) {
-            console.error('admin: members load failed', memErr);
-          }
-          setMembers(memRows || []);
+            .order('is_admin', { ascending: false }),
+          supabase.rpc('team_users_with_names', { p_team_id: tid }),
+        ]);
+        if (memErr) {
+          console.error('admin: members load failed', memErr);
         }
-      } catch (error) {
-        console.error('admin: load error', error);
-      } finally {
-        setLoading(false);
+        if (rosterErr) {
+          console.error('admin: roster lookup failed', rosterErr);
+        }
+        const nameMap = new Map<string, { display: string | null; email: string | null }>();
+        (roster || []).forEach((row: any) => {
+          nameMap.set(row.user_id, {
+            display: row.display_name ?? row.email ?? row.user_id,
+            email: row.email ?? null,
+          });
+        });
+        const enriched = (memRows || []).map((m: any) => {
+          const info = nameMap.get(m.user_id);
+          return {
+            user_id: m.user_id,
+            is_admin: m.is_admin,
+            display_name: info?.display ?? m.user_id,
+            email: info?.email ?? null,
+          };
+        });
+        setMembers(enriched);
+      } else {
+        setMembers([]);
       }
-    };
-
-    if (ready && session?.user) load();
+    } catch (error) {
+      console.error('admin: load error', error);
+    } finally {
+      setLoading(false);
+    }
   }, [ready, session?.user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAdminData();
+    }, [loadAdminData])
+  );
 
   if (!ready) return <View style={S.center}><ActivityIndicator /></View>;
   if (!session?.user) {
@@ -104,7 +131,9 @@ export default function AdminRoute() {
   }
 
   return (
-    <View style={S.container}>
+    <SafeAreaView style={S.safe}>
+      <LogoHeader title="Admin Dashboard" subtitle={teamName || undefined} />
+      <View style={S.container}>
       <ScrollView 
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: theme.spacing(8) }}
@@ -135,7 +164,7 @@ export default function AdminRoute() {
               <View style={S.infoRow}>
                 <Text style={styles.labelText}>Team ID:</Text>
                 <Text style={[styles.valueText, { color: '#6b7280', fontFamily: 'monospace', fontSize: 12 }]}>
-                  {teamId?.substring(0, 8)}...
+                  {shortTeamId}
                 </Text>
               </View>
               <View style={S.infoRow}>
@@ -154,20 +183,28 @@ export default function AdminRoute() {
                   No team members found.
                 </Text>
               ) : (
-                members.map((m, index) => (
-                  <View key={m.user_id} style={[S.memberRow, index === members.length - 1 && S.memberRowLast ]}>
-                    <View style={S.memberInfo}>
-                      <Text style={styles.memberName}>
-                        {m.user_id}
-                      </Text>
-                    </View>
-                    <View style={S.roleBadge}>
-                      <Text style={m.is_admin ? styles.roleAdmin : styles.roleMember}>
-                        {m.is_admin ? 'ADMIN' : 'MEMBER'}
-                      </Text>
-                    </View>
+                <>
+                  <View style={S.memberHeader}>
+                    <Text style={styles.memberHeaderLabel}>Member</Text>
+                    <Text style={styles.memberHeaderLabel}>Role</Text>
                   </View>
-                ))
+                  {members.map((m, index) => (
+                    <View key={m.user_id} style={[S.memberRow, index === members.length - 1 && S.memberRowLast ]}>
+                      <View style={S.memberInfo}>
+                        <Text style={styles.memberName}>
+                          {m.display_name || m.user_id}
+                        </Text>
+                        {m.email ? <Text style={styles.memberEmail}>{m.email}</Text> : null}
+                        <Text style={styles.memberId}>{m.user_id.slice(0, 8)}…</Text>
+                      </View>
+                      <View style={S.roleBadge}>
+                        <Text style={m.is_admin ? styles.roleAdmin : styles.roleMember}>
+                          {m.is_admin ? 'ADMIN' : 'MEMBER'}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </>
               )}
             </View>
 
@@ -200,11 +237,16 @@ export default function AdminRoute() {
           </View>
         )}
       </ScrollView>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const S = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.surfaceMuted,
+  },
   container: { 
     flex: 1, 
     backgroundColor: colors.surfaceMuted,
@@ -250,6 +292,15 @@ const S = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: theme.spacing(2),
+  },
+  memberHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: theme.spacing(2),
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    marginBottom: theme.spacing(2),
   },
   memberRow: {
     flexDirection: 'row',
@@ -324,6 +375,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 11,
     marginTop: 2,
+  },
+  memberHeaderLabel: {
+    ...typography.label,
+    color: '#6b7280',
+    fontSize: 12,
+    letterSpacing: 0.6,
   },
   roleAdmin: {
     ...typography.label,
