@@ -60,10 +60,5 @@
         "appleId": "alroca308@gmail.com"
       }
     }
-  },
-  "hooks": {
-    "pre-build": {
-      "command": "npm run bump:build"
-    }
   }
 }
