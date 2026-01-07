@@ -207,11 +207,19 @@ export default function ChatOverview() {
       )}
 
       <View style={styles.quickActions}>
+        <Text style={styles.quickActionsTitle}>Start a new chat</Text>
         <Button
-          title="New Chat"
+          title="New Team Chat"
           onPress={() => router.push('/chat/team')}
           variant="primary"
-          accessibilityLabel="Open team-wide chat"
+          accessibilityLabel="Open the team-wide chat room"
+        />
+        <View style={{ height: theme.spacing(2) }} />
+        <Button
+          title="Message a Team Member"
+          onPress={() => router.push(teamInfo?.id ? `/chat/direct?team=${teamInfo.id}` : '/chat/direct')}
+          variant="secondary"
+          accessibilityLabel="Start a direct message with a teammate"
         />
       </View>
     </SafeAreaView>
@@ -303,5 +311,12 @@ const styles = StyleSheet.create({
     padding: theme.spacing(3),
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  quickActionsTitle: {
+    ...typography.label,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing(2),
+    letterSpacing: 0.6,
   },
 });

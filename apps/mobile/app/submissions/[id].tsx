@@ -9,12 +9,13 @@ import {
   Alert,
   StyleSheet,
   SafeAreaView,
+  Linking,
 } from 'react-native';
 import Button from '../../src/components/Button';
 import { router, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
-import { colors, typography, textA11yProps } from '../../src/theme';
+import { colors, typography, textA11yProps, theme } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { shareCsvNative } from '../../src/lib/shareCsv';
 import { resolveWritableDirectory, alertStorageUnavailable } from '../../src/lib/storageAccess';
@@ -117,6 +118,7 @@ export default function Submission() {
   const [row, setRow] = useState<Row | null>(null);
   const [photo1Url, setPhoto1Url] = useState<string | null>(null);
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const titleStyle = useMemo(() => ({
     fontSize: Math.round(typography.title.fontSize * fontScale * 1.05),
@@ -134,6 +136,16 @@ export default function Submission() {
     fontSize: Math.round(typography.body.fontSize * fontScale * 1.06),
     lineHeight: Math.round(typography.body.lineHeight * fontScale * 1.06),
   }), [fontScale]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const flash = (kind: 'success' | 'error', text: string) => {
+    setToast({ kind, text });
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -154,7 +166,7 @@ export default function Submission() {
       const resolveSigned = async (path?: string | null) => {
         if (!path) return null;
         const tryBucket = async (bucket: string) => {
-          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60, { download: true });
+          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, { download: false });
           return error ? null : data?.signedUrl ?? null;
         };
         return (await tryBucket('submissions')) || (await tryBucket('photos'));
@@ -194,6 +206,7 @@ export default function Submission() {
       notes: row.notes || '',
       photo_urls: photos,
     });
+    flash('success', 'Excel downloaded');
   };
 
   const shareSubmission = async () => {
@@ -214,6 +227,7 @@ export default function Submission() {
             text: 'See attached CSV',
             files: [file],
           });
+          flash('success', 'Share sheet opened');
           return;
         } catch (err) {
           console.warn('Web share failed, falling back to download', err);
@@ -221,13 +235,17 @@ export default function Submission() {
       }
 
       downloadCsvWeb(fileName, csv);
+      flash('success', 'CSV downloaded');
       return;
     }
 
     try {
       await shareCsvNative(csv, fileName);
+      flash('success', 'Share sheet opened');
+      Alert.alert('Share', 'Pick an app to send your CSV.');
     } catch (err: any) {
       Alert.alert('Share failed', err?.message ?? 'Unable to open the share sheet on this device.');
+      flash('error', 'Could not open share sheet');
     }
   };
 
@@ -237,6 +255,7 @@ export default function Submission() {
 
     if (Platform.OS === 'web') {
       downloadCsvWeb(fileName, csv);
+      flash('success', 'CSV downloaded');
       return;
     }
 
@@ -252,8 +271,10 @@ export default function Submission() {
         encoding: FileSystem.EncodingType.UTF8,
       });
       Alert.alert('CSV saved', `Saved to Files → ${fileName}`);
+      flash('success', 'CSV saved to Files');
     } catch (err: any) {
       Alert.alert('Save failed', err?.message ?? 'Unable to save CSV on this device.');
+      flash('error', 'Unable to save CSV');
     }
   };
 
@@ -291,11 +312,16 @@ export default function Submission() {
       if (typeof fn === 'function') {
         await fn(buildPdfPayload());
         if (Platform.OS === 'web') {
-          Alert.alert('PDF downloaded', 'Check your downloads folder for the PDF file.');
+          flash('success', 'PDF downloaded');
+          Alert.alert('PDF ready', 'Check your downloads folder for the exported PDF.');
+        } else {
+          flash('success', 'PDF saved');
+          Alert.alert('PDF ready', 'Saved to the Files app.');
         }
       }
     } catch (err: any) {
       Alert.alert('PDF failed', err?.message ?? 'Unable to generate PDF');
+      flash('error', 'Unable to generate PDF');
     }
   };
 
@@ -305,10 +331,11 @@ export default function Submission() {
         <title>Submission</title>
       </Head>
       <LogoHeader title="Submission" />
-      <ScrollView
-        style={{ flex: 1, backgroundColor: colors.surfaceMuted }}
-        contentContainerStyle={{ padding: 16, gap: 12 as any }}
-      >
+      <View style={styles.body}>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.surfaceMuted }}
+          contentContainerStyle={{ padding: 16, gap: 12 as any }}
+        >
         <View style={styles.card}>
         <Text {...textA11yProps} style={[titleStyle, { marginBottom: 8 }]}>
           Submission
@@ -337,21 +364,32 @@ export default function Submission() {
         <Text {...textA11yProps} style={bodyStyle}>Tags: {tagsText}</Text>
         <Text {...textA11yProps} style={bodyStyle}>Notes: {row.notes}</Text>
 
-        <View style={{ flexDirection: 'row', gap: 12 as any }}>
-          {photo1Url ? (
-            <Image
-              source={{ uri: photo1Url }}
-              accessibilityLabel="Photo 1"
-              style={styles.photo}
-            />
-          ) : null}
-          {photo2Url ? (
-            <Image
-              source={{ uri: photo2Url }}
-              accessibilityLabel="Photo 2"
-              style={styles.photo}
-            />
-          ) : null}
+        <View>
+          <Text {...textA11yProps} style={[labelStyle, { marginTop: 12 }]}>Photos</Text>
+          {photoUrls.length === 0 ? (
+            <Text {...textA11yProps} style={[bodyStyle, { color: colors.textMuted }]}>No photos attached.</Text>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.photoRow}
+            >
+              {photoUrls.map((uri, index) => (
+                <Pressable
+                  key={`${uri}-${index}`}
+                  onPress={() => Linking.openURL(uri)}
+                  style={[
+                    styles.photoWrapper,
+                    index === photoUrls.length - 1 && { marginRight: 0 },
+                  ]}
+                  accessibilityLabel={`Open photo ${index + 1}`}
+                >
+                  <Image source={{ uri }} style={styles.photo} />
+                  <Text style={styles.photoBadge}>Photo {index + 1}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         <View style={styles.actionsGrid}>
@@ -403,7 +441,19 @@ export default function Submission() {
           accessibilityLabel="Exit submission"
         />
       </View>
-      </ScrollView>
+        </ScrollView>
+        {toast ? (
+          <View
+            style={[
+              styles.toast,
+              toast.kind === 'success' ? styles.toastSuccess : styles.toastError,
+              styles.toastFloating,
+            ]}
+          >
+            <Text style={styles.toastText}>{toast.text}</Text>
+          </View>
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -412,6 +462,9 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  body: {
+    flex: 1,
   },
   card: {
     backgroundColor: colors.card,
@@ -437,15 +490,54 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '800',
   },
+  photoRow: {
+    paddingVertical: 8,
+    paddingRight: 8,
+  },
+  photoWrapper: {
+    marginRight: 12,
+    alignItems: 'center',
+  },
   photo: {
-    flex: 1,
+    width: 180,
     height: 160,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#111',
   },
+  photoBadge: {
+    ...typography.label,
+    color: colors.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+  },
   actionsGrid: {
     flexDirection: 'column',
     gap: 12,
+  },
+  toast: {
+    borderRadius: theme.radius.lg,
+    padding: 12,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  toastSuccess: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#34d399',
+  },
+  toastError: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#f87171',
+  },
+  toastText: {
+    ...typography.body,
+    textAlign: 'center',
+    color: colors.text,
+  },
+  toastFloating: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
   },
 });

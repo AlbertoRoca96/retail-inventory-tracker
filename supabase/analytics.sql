@@ -134,7 +134,10 @@ as $$
   select
     tm.user_id,
     coalesce(
-      (u.raw_user_meta_data->>'display_name'),
+      nullif(btrim((u.user_metadata->>'display_name')), ''),
+      nullif(btrim((u.user_metadata->>'full_name')), ''),
+      nullif(btrim((u.raw_user_meta_data->>'display_name')), ''),
+      nullif(btrim((u.raw_user_meta_data->>'full_name')), ''),
       split_part(u.email, '@', 1),     -- fallback to left part of email
       u.email                           -- final fallback
     ) as display_name,

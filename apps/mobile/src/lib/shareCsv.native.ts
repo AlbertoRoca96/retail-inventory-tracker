@@ -12,7 +12,7 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
     const safeDir = resolveWritableDirectory(FileSystem, 'documents-first');
     if (!safeDir) {
       alertStorageUnavailable();
-      return;
+      throw new Error('No writable directory available for CSV export');
     }
 
     const safeName = sanitizeFileName(fileName);

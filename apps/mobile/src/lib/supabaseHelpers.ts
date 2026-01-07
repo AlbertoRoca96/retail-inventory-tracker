@@ -4,6 +4,7 @@ export type PhotoLike = {
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
+  blob?: Blob | null;
 };
 
 /** Returns public URLs for up to 2 uploaded photos */
@@ -20,8 +21,7 @@ export async function uploadPhotosAndGetUrls(
     const ext = (p.fileName?.split('.').pop() || 'jpg').toLowerCase();
     const path = `${uid}/${Date.now()}-${i}.${ext}`;
 
-    const res = await fetch(p.uri);
-    const blob = await res.blob();
+    const blob = p.blob ?? (await (await fetch(p.uri)).blob());
 
     const { error } = await supabase.storage.from(bucket).upload(path, blob, {
       upsert: true,
@@ -49,8 +49,7 @@ export async function uploadPhotosAndGetPathsAndUrls(
     const ext = (p.fileName?.split('.').pop() || 'jpg').toLowerCase();
     const path = `${uid}/${Date.now()}-${i}.${ext}`;
 
-    const res = await fetch(p.uri);
-    const blob = await res.blob();
+    const blob = p.blob ?? (await (await fetch(p.uri)).blob());
 
     const { error } = await supabase.storage.from(bucket).upload(path, blob, {
       upsert: true,
@@ -74,16 +73,39 @@ export async function uploadAvatarAndGetPublicUrl(
 
   const ext = (file.fileName?.split('.').pop() || 'jpg').toLowerCase();
   const path = `${uid}/avatar.${ext}`;
+  const blob = file.blob ?? (await (await fetch(file.uri)).blob());
+  const mimeType = file.mimeType || blob.type || 'image/jpeg';
 
-  const res = await fetch(file.uri);
-  const blob = await res.blob();
+  const candidates = Array.from(
+    new Set(
+      [bucket, 'avatars', 'profile-photos', 'photos']
+        .filter(Boolean)
+    )
+  );
 
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
-    upsert: true,
-    contentType: file.mimeType || blob.type || 'image/jpeg',
-  });
-  if (error) return null;
+  let lastError: any = null;
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-  return data.publicUrl || null;
+  for (const target of candidates) {
+    try {
+      const { error } = await supabase.storage.from(target).upload(path, blob, {
+        upsert: true,
+        contentType: mimeType,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from(target).getPublicUrl(path);
+      if (data?.publicUrl) {
+        return data.publicUrl;
+      }
+    } catch (error) {
+      lastError = error;
+      if (__DEV__) {
+        console.warn('[avatar upload]', target, error);
+      }
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+  return null;
 }
