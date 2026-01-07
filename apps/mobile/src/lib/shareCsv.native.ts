@@ -9,14 +9,19 @@ function sanitizeFileName(name: string) {
 export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
   try {
     const FileSystem = await import('expo-file-system');
-    const safeDir = resolveWritableDirectory(FileSystem, 'documents-first');
-    if (!safeDir) {
+
+    // Try Documents first (so it behaves like the web export), then fall back to cache.
+    let baseDir = resolveWritableDirectory(FileSystem, 'documents-first');
+    if (!baseDir) {
+      baseDir = resolveWritableDirectory(FileSystem, 'cache-first');
+    }
+    if (!baseDir) {
       alertStorageUnavailable();
       throw new Error('No writable directory available for CSV export');
     }
 
     const safeName = sanitizeFileName(fileName);
-    const filePath = `${safeDir}${safeName}`;
+    const filePath = `${baseDir}${safeName}`;
 
     await FileSystem.writeAsStringAsync(filePath, csv, {
       encoding: FileSystem.EncodingType.UTF8,
