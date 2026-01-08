@@ -205,3 +205,49 @@ with check (
       and tm.user_id = direct_messages.recipient_id
   )
 );
+
+-- ========== Storage: Avatars bucket ==========
+-- Allow all authenticated users to read avatars (so rosters/settings can show photos)
+drop policy if exists "read avatars bucket" on storage.objects;
+create policy "read avatars bucket"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'avatars'
+);
+
+-- Allow users to upload/update/delete only files inside <uid>/...
+drop policy if exists "upload avatars bucket" on storage.objects;
+create policy "upload avatars bucket"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'avatars'
+  and auth.uid()::text = split_part(name, '/', 1)
+);
+
+drop policy if exists "update avatars bucket" on storage.objects;
+create policy "update avatars bucket"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'avatars'
+  and auth.uid()::text = split_part(name, '/', 1)
+)
+with check (
+  bucket_id = 'avatars'
+  and auth.uid()::text = split_part(name, '/', 1)
+);
+
+drop policy if exists "delete avatars bucket" on storage.objects;
+create policy "delete avatars bucket"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'avatars'
+  and auth.uid()::text = split_part(name, '/', 1)
+);
