@@ -70,42 +70,30 @@ export async function uploadAvatarAndGetPublicUrl(
   bucket = 'avatars'
 ): Promise<string | null> {
   if (!file?.uri) return null;
+  if (!uid) throw new Error('uploadAvatar requires a user id');
 
   const ext = (file.fileName?.split('.').pop() || 'jpg').toLowerCase();
   const path = `${uid}/avatar.${ext}`;
   const blob = file.blob ?? (await (await fetch(file.uri)).blob());
   const mimeType = file.mimeType || blob.type || 'image/jpeg';
+  const targetBucket = bucket || 'avatars';
 
-  const candidates = Array.from(
-    new Set(
-      [bucket, 'avatars', 'profile-photos', 'photos']
-        .filter(Boolean)
-    )
-  );
+  if (__DEV__) {
+    console.log('[avatar upload] bucket', targetBucket, 'path', path, 'mime', mimeType);
+  }
 
-  let lastError: any = null;
+  const { error } = await supabase.storage.from(targetBucket).upload(path, blob, {
+    upsert: true,
+    contentType: mimeType,
+  });
 
-  for (const target of candidates) {
-    try {
-      const { error } = await supabase.storage.from(target).upload(path, blob, {
-        upsert: true,
-        contentType: mimeType,
-      });
-      if (error) throw error;
-      const { data } = supabase.storage.from(target).getPublicUrl(path);
-      if (data?.publicUrl) {
-        return data.publicUrl;
-      }
-    } catch (error) {
-      lastError = error;
-      if (__DEV__) {
-        console.warn('[avatar upload]', target, error);
-      }
+  if (error) {
+    if (__DEV__) {
+      console.warn('[avatar upload] failed', { bucket: targetBucket, path, error });
     }
+    throw error;
   }
 
-  if (lastError) {
-    throw lastError;
-  }
-  return null;
+  const { data } = supabase.storage.from(targetBucket).getPublicUrl(path);
+  return data?.publicUrl ?? null;
 }
