@@ -1,3 +1,5 @@
+import { Buffer } from 'buffer';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from './supabase';
 
 export type PhotoLike = {
@@ -48,6 +50,32 @@ export async function uploadAvatarAndGetPublicUrl(
   });
 }
 
+async function blobFromUri(uri: string, mimeType?: string | null) {
+  try {
+    const response = await fetch(uri);
+    const fetchedBlob = await response.blob();
+    if (fetchedBlob && fetchedBlob.size > 0) {
+      return fetchedBlob;
+    }
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[storage upload] fetch fallback', error);
+    }
+  }
+
+  // Fallback to reading via FileSystem (needed on some iOS builds when fetch returns empty)
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const buffer = Buffer.from(base64, 'base64');
+    return new Blob([buffer], { type: mimeType || 'application/octet-stream' });
+  } catch (fsError) {
+    if (__DEV__) {
+      console.warn('[storage upload] filesystem fallback failed', fsError);
+    }
+    throw fsError;
+  }
+}
+
 export async function uploadFileToStorage({
   bucket,
   path,
@@ -60,10 +88,10 @@ export async function uploadFileToStorage({
   if (!photo?.uri && !photo?.blob) {
     throw new Error('uploadFileToStorage requires a uri or blob');
   }
-  const blob = photo.blob ?? (await (await fetch(photo.uri!)).blob());
+  const blob = photo.blob ?? (await blobFromUri(photo.uri!, photo.mimeType));
   const guessedType = photo.mimeType || blob.type || guessMimeType(path) || 'application/octet-stream';
   if (__DEV__) {
-    console.log('[storage upload]', bucket, path, guessedType);
+    console.log('[storage upload]', bucket, path, guessedType, blob.size);
   }
   const { error } = await supabase.storage.from(bucket).upload(path, blob, {
     upsert: true,
