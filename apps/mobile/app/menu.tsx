@@ -47,11 +47,11 @@ export default function Menu() {
   const insets = useSafeAreaInsets();
 
   const tileHeight = useMemo(() => {
-    const headerAllowance = 180; // header + logo space
-    const paddingAllowance = 48; // page padding
+    const headerAllowance = 160; // header + logo space
+    const paddingAllowance = 32; // page padding
     const usable = height - insets.top - insets.bottom - headerAllowance - paddingAllowance;
-    const twoRowHeight = usable / 2 - 10; // minus row gap
-    return Math.max(180, twoRowHeight);
+    const rowGap = 16;
+    return Math.max(160, usable / 2 - rowGap);
   }, [height, insets.top, insets.bottom]);
 
   return (
@@ -87,28 +87,27 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    justifyContent: 'space-evenly',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
   grid: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignContent: 'space-between',
-    rowGap: 20,
+    rowGap: 16,
     columnGap: 16,
-    flexGrow: 1,
   },
   tile: {
     flexBasis: '48%',
-    borderRadius: 28,
+    borderRadius: 24,
     paddingHorizontal: 18,
-    paddingVertical: 32,
+    paddingVertical: 28,
     gap: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 220,
+    minHeight: 200,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 6,

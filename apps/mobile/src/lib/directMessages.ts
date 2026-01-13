@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getSignedStorageUrl, uploadFileToStorage } from './supabaseHelpers';
+import { getSignedStorageUrl } from './supabaseHelpers';
 import { generateUuid } from './uuid';
 
 export type DirectMessage = {
@@ -20,9 +20,32 @@ function participantsFilter(selfId: string, peerId: string) {
   return `${a},${b}`;
 }
 
+function parseSupabaseStorageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!/supabase\.co$/i.test(parsed.hostname)) return null;
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const objectIndex = parts.indexOf('object');
+    if (objectIndex === -1 || parts.length < objectIndex + 3) return null;
+    const bucket = parts[objectIndex + 2];
+    const key = parts.slice(objectIndex + 3).join('/');
+    if (!bucket || !key) return null;
+    return { bucket, key, hasToken: parsed.searchParams.has('token') };
+  } catch {
+    return null;
+  }
+}
+
 async function resolveDirectAttachment(path?: string | null) {
   if (!path) return null;
-  if (/^https?:/i.test(path)) return path;
+  if (/^https?:/i.test(path)) {
+    const parsed = parseSupabaseStorageUrl(path);
+    if (parsed && !parsed.hasToken) {
+      const signed = await getSignedStorageUrl(parsed.bucket, parsed.key, 60 * 60 * 4);
+      if (signed) return signed;
+    }
+    return path;
+  }
   const buckets = ['chat', 'submission-csvs'];
   for (const bucket of buckets) {
     const signed = await getSignedStorageUrl(bucket, path, 60 * 60 * 4);
@@ -60,21 +83,25 @@ export async function fetchDirectMessages(
 }
 
 export async function sendDirectMessage(options: {
+  id?: string;
   teamId: string;
   recipientId: string;
   body: string;
+  attachmentPath?: string | null;
   attachmentUrl?: string | null;
   attachmentType?: 'image' | 'csv' | 'pdf' | 'excel' | null;
 }): Promise<{ success: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Not authenticated' };
   try {
+    const messageId = options.id ?? generateUuid();
     const { error } = await supabase.from('direct_messages').insert({
+      id: messageId,
       team_id: options.teamId,
       sender_id: user.id,
       recipient_id: options.recipientId,
       body: options.body,
-      attachment_url: options.attachmentUrl ?? null,
+      attachment_url: options.attachmentPath ?? options.attachmentUrl ?? null,
       attachment_type: options.attachmentType ?? null,
     });
     if (error) throw error;
@@ -109,11 +136,15 @@ export function subscribeToDirectMessages(
       if (payload.eventType === 'INSERT' && !isParticipant(next)) return;
       if (payload.eventType === 'UPDATE' && !isParticipant(next)) return;
       if (payload.eventType === 'DELETE' && !isParticipant(prev)) return;
-      callback({
-        eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
-        new: next,
-        old: prev,
-      });
+      (async () => {
+        const hydratedNew = await hydrateDirectMessage(next);
+        const hydratedOld = await hydrateDirectMessage(prev);
+        callback({
+          eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+          new: hydratedNew,
+          old: hydratedOld,
+        });
+      })();
     })
     .subscribe();
   return channel;

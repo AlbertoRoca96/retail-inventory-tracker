@@ -146,12 +146,19 @@ export async function createSubmissionPdf(
   const prefix = opts.fileNamePrefix || 'submission';
   const fileName = `${prefix}-${iso}.pdf`;
 
-  const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  const candidateDirs = [
+    FileSystem.cacheDirectory,
+    FileSystem.documentDirectory,
+    (FileSystem as any).temporaryDirectory,
+    'file:///tmp/',
+  ];
+  const baseDir = candidateDirs.find((dir): dir is string => typeof dir === 'string' && dir.length > 0) || null;
   if (!baseDir) {
     alertStorageUnavailable();
     return uri;
   }
-  const exportDir = `${baseDir}exports/pdf/`;
+  const normalizedBase = baseDir.endsWith('/') ? baseDir : `${baseDir}/`;
+  const exportDir = `${normalizedBase}exports/pdf/`;
   try {
     const info = await FileSystem.getInfoAsync(exportDir);
     if (!info.exists) {

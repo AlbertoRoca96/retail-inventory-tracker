@@ -1,6 +1,6 @@
 // apps/mobile/src/lib/shareCsv.native.ts
 import { Platform } from 'react-native';
-import { alertStorageUnavailable } from './storageAccess';
+import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-z0-9_.-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'submission.csv';
@@ -11,28 +11,22 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
   try {
     const FileSystemModule = await import('expo-file-system');
     const FileSystem: typeof import('expo-file-system') = (FileSystemModule as any)?.default ?? FileSystemModule;
-    const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-    if (!baseDir) {
+
+    const exportDir =
+      (await ensureExportDirectory(FileSystem, 'csv', 'documents-first')) ??
+      (await ensureExportDirectory(FileSystem, 'csv', 'cache-first'));
+
+    if (!exportDir) {
       alertStorageUnavailable();
-      throw new Error('No cache directory available for CSV export');
+      throw new Error('Files storage unavailable on this device. Please enable Files access.');
     }
-    const exportDir = `${baseDir}exports/csv/`;
     if (debug) {
       console.log('[shareCsvNative] platform', Platform.OS, {
         cacheDirectory: FileSystem.cacheDirectory,
         documentDirectory: FileSystem.documentDirectory,
+        temporaryDirectory: (FileSystem as any).temporaryDirectory,
         exportDir,
       });
-    }
-    try {
-      const info = await FileSystem.getInfoAsync(exportDir);
-      if (!info.exists) {
-        await FileSystem.makeDirectoryAsync(exportDir, { intermediates: true });
-      }
-    } catch (dirErr) {
-      if (debug) {
-        console.warn('[shareCsvNative] unable to ensure export dir', exportDir, dirErr);
-      }
     }
 
     const safeName = sanitizeFileName(fileName);

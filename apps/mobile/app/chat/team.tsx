@@ -174,10 +174,6 @@ export default function TeamChat() {
         result.message.attachment_signed_url = attachmentSignedUrl;
       }
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to send message');
-      }
-
       setNewMessage('');
       setPendingPhoto(null);
 

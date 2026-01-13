@@ -22,9 +22,32 @@ export type SubmissionMessage = {
 // Note: updated_at excluded because column doesn't exist in database
 const MESSAGE_COLUMNS = 'id, team_id, submission_id, sender_id, body, is_internal, attachment_path, attachment_type, is_revised, created_at';
 
+function parseSupabaseStorageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!/supabase\.co$/i.test(parsed.hostname)) return null;
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const objectIndex = parts.indexOf('object');
+    if (objectIndex === -1 || parts.length < objectIndex + 3) return null;
+    const bucket = parts[objectIndex + 2];
+    const key = parts.slice(objectIndex + 3).join('/');
+    if (!bucket || !key) return null;
+    return { bucket, key, hasToken: parsed.searchParams.has('token') };
+  } catch {
+    return null;
+  }
+}
+
 async function resolveAttachmentUrl(path?: string | null, type?: string | null) {
   if (!path) return null;
-  if (/^https?:/i.test(path)) return path;
+  if (/^https?:/i.test(path)) {
+    const parsed = parseSupabaseStorageUrl(path);
+    if (parsed && !parsed.hasToken) {
+      const signed = await getSignedStorageUrl(parsed.bucket, parsed.key, 60 * 60 * 4);
+      if (signed) return signed;
+    }
+    return path;
+  }
   const buckets: string[] = [];
   if (type === 'csv') {
     buckets.push('submission-csvs');

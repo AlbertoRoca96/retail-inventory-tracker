@@ -133,17 +133,26 @@ export default function DirectConversation() {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
-      const uploads = await uploadPhotosAndGetPathsAndUrls(session!.user.id, [
-        { uri: asset.uri, fileName: asset.fileName || 'dm-photo.jpg', mimeType: asset.mimeType || 'image/jpeg' },
-      ]);
-      const uploaded = uploads[0];
-      if (!uploaded) throw new Error('Upload failed');
+      const messageId = generateUuid();
+      const safeExt = (asset.fileName?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+      const safeName = (asset.fileName || `dm-photo-${Date.now()}.${safeExt}`).replace(/[^a-z0-9_.-]/gi, '-');
+      const storagePath = `teams/${teamId}/messages/${messageId}/${safeName}`;
+      const uploaded = await uploadFileToStorage({
+        bucket: 'chat',
+        path: storagePath,
+        photo: {
+          uri: asset.uri,
+          fileName: safeName,
+          mimeType: asset.mimeType || 'image/jpeg',
+        },
+      });
       const body = newMessage.trim() || 'Shared a photo';
       const resultSend = await sendDirectMessage({
+        id: messageId,
         teamId,
         recipientId: peerId,
         body,
-        attachmentUrl: uploaded.publicUrl,
+        attachmentPath: uploaded.path,
         attachmentType: 'image',
       });
       if (!resultSend.success) throw new Error(resultSend.error || 'Unable to send photo');
