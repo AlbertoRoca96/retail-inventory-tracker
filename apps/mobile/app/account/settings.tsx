@@ -5,7 +5,7 @@ import Head from 'expo-router/head';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../src/hooks/useAuth';
 import { supabase } from '../../src/lib/supabase';
-import { uploadAvatarAndGetPublicUrl } from '../../src/lib/supabaseHelpers';
+import { uploadAvatarAndGetPublicUrl, getSignedStorageUrl } from '../../src/lib/supabaseHelpers';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { theme, colors } from '../../src/theme';
 import LogoHeader from '../../src/components/LogoHeader';
@@ -18,10 +18,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  scroll: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 48,
     gap: 16,
+    flexGrow: 1,
+    alignItems: 'stretch',
   },
   avatarBlock: {
     alignItems: 'center',
@@ -64,6 +69,7 @@ export default function AccountSettings() {
   const user = session?.user || null;
 
   const [displayName, setDisplayName] = useState('');
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -84,10 +90,64 @@ export default function AccountSettings() {
   const webFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    const md = (user?.user_metadata || {}) as any;
-    setDisplayName(md.display_name || user?.email?.split('@')[0] || '');
-    setAvatarUrl(md.avatar_url || null);
+    if (!user?.id) {
+      setDisplayName('');
+      setAvatarPath(null);
+      setAvatarUrl(null);
+      return;
+    }
+    let cancelled = false;
+    const bootstrap = async () => {
+      const md = (user.user_metadata || {}) as any;
+      const fallbackName = md.display_name || user.email?.split('@')[0] || '';
+      setDisplayName((prev) => prev || fallbackName);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('display_name, avatar_path')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!error && data) {
+          setDisplayName(data.display_name ?? fallbackName);
+          setAvatarPath(data.avatar_path ?? null);
+          if (!data.avatar_path) {
+            setAvatarUrl(null);
+          }
+        } else {
+          setAvatarPath(null);
+          setAvatarUrl(null);
+          setDisplayName((prev) => prev || fallbackName);
+        }
+      } catch {
+        if (!cancelled) {
+          setAvatarPath(null);
+          setAvatarUrl(null);
+        }
+      }
+    };
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!avatarPath) {
+      setAvatarUrl(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const signed = await getSignedStorageUrl('avatars', avatarPath, 60 * 60 * 4);
+      if (!cancelled) {
+        setAvatarUrl(signed);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [avatarPath]);
 
   useEffect(() => {
     let active = true;
@@ -126,25 +186,32 @@ export default function AccountSettings() {
   };
 
   const persistProfile = async (
-    overrides?: { displayName?: string; avatarUrl?: string | null },
+    overrides?: { displayName?: string; avatarPath?: string | null },
     opts: { silent?: boolean } = {}
   ) => {
     if (!user) return;
     if (!opts.silent) setBusy(true);
     setMsg(null);
     const nextDisplayName = overrides?.displayName ?? displayName;
-    const nextAvatar = overrides?.avatarUrl ?? avatarUrl;
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        display_name: nextDisplayName || null,
-        avatar_url: nextAvatar || null,
-      },
-    });
+    const nextAvatarPath = overrides?.avatarPath ?? avatarPath;
+    const { error } = await supabase
+      .from('profiles')
+      .upsert(
+        {
+          id: user.id,
+          email: user.email,
+          display_name: nextDisplayName || null,
+          avatar_path: nextAvatarPath || null,
+        },
+        { onConflict: 'id' }
+      );
     if (!opts.silent) setBusy(false);
     if (error) {
       setMsg(error.message);
     } else {
       setMsg(opts.silent ? 'Photo updated' : 'Saved');
+      setDisplayName(nextDisplayName);
+      setAvatarPath(nextAvatarPath ?? null);
     }
   };
 
@@ -158,7 +225,7 @@ export default function AccountSettings() {
       });
       if (res.canceled || !res.assets?.length) return;
       const a = res.assets[0];
-      const url = await uploadAvatarAndGetPublicUrl(
+      const uploaded = await uploadAvatarAndGetPublicUrl(
         user!.id,
         {
           uri: a.uri,
@@ -167,9 +234,12 @@ export default function AccountSettings() {
         },
         'avatars'
       );
-      if (url) {
-        setAvatarUrl(url);
-        await persistProfile({ avatarUrl: url }, { silent: true });
+      if (uploaded) {
+        setAvatarPath(uploaded.path);
+        if (uploaded.publicUrl) {
+          setAvatarUrl(uploaded.publicUrl);
+        }
+        await persistProfile({ avatarPath: uploaded.path }, { silent: true });
       }
     } catch (error: any) {
       Alert.alert('Photo upload failed', error?.message || 'Unable to update avatar right now.');
@@ -187,7 +257,7 @@ export default function AccountSettings() {
     setPhotoBusy(true);
     const tempUri = URL.createObjectURL(f);
     try {
-      const url = await uploadAvatarAndGetPublicUrl(
+      const uploaded = await uploadAvatarAndGetPublicUrl(
         user.id,
         {
           uri: tempUri,
@@ -197,9 +267,12 @@ export default function AccountSettings() {
         },
         'avatars'
       );
-      if (url) {
-        setAvatarUrl(url);
-        await persistProfile({ avatarUrl: url }, { silent: true });
+      if (uploaded) {
+        setAvatarPath(uploaded.path);
+        if (uploaded.publicUrl) {
+          setAvatarUrl(uploaded.publicUrl);
+        }
+        await persistProfile({ avatarPath: uploaded.path }, { silent: true });
       }
     } catch (error: any) {
       Alert.alert('Photo upload failed', error?.message || 'Unable to update avatar right now.');
@@ -233,7 +306,12 @@ export default function AccountSettings() {
     <SafeAreaView style={styles.safe}>
       <Head><title>Settings</title></Head>
       <LogoHeader title="Settings" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
         <View style={styles.avatarBlock}>
           <Image
             source={{ uri: avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
@@ -329,6 +407,7 @@ export default function AccountSettings() {
           alignItems: 'center',
           minHeight: buttonMinHeight,
           justifyContent: 'center',
+          alignSelf: 'stretch',
         }}
       >
         <Text style={{ color: colors.white, fontWeight: '700' }}>{busy ? 'Saving…' : 'Save'}</Text>
@@ -338,7 +417,7 @@ export default function AccountSettings() {
         onPress={() => router.back()}
         accessibilityRole="button"
         accessibilityLabel="Exit"
-        style={{ alignSelf: 'center', marginTop: 8, minHeight: 44, justifyContent: 'center' }}
+        style={{ alignSelf: 'stretch', marginTop: 8, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
       >
         <Text>Exit</Text>
       </Pressable>

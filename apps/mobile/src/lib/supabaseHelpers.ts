@@ -7,11 +7,15 @@ export type PhotoLike = {
   blob?: Blob | null;
 };
 
-async function getPublicOrSignedUrl(bucket: string, path: string): Promise<string | null> {
+export async function getSignedStorageUrl(
+  bucket: string,
+  path: string,
+  expiresInSeconds = 60 * 60 * 24 * 7
+): Promise<string | null> {
   try {
     const { data, error } = await supabase.storage
       .from(bucket)
-      .createSignedUrl(path, 60 * 60 * 24 * 7, { download: false });
+      .createSignedUrl(path, expiresInSeconds, { download: false });
     if (!error && data?.signedUrl) {
       return data.signedUrl;
     }
@@ -45,7 +49,7 @@ export async function uploadPhotosAndGetUrls(
       contentType: p.mimeType || blob.type || 'image/jpeg',
     });
     if (!error) {
-      const accessible = await getPublicOrSignedUrl(bucket, path);
+      const accessible = await getSignedStorageUrl(bucket, path);
       if (accessible) {
         urls.push(accessible);
       }
@@ -75,7 +79,7 @@ export async function uploadPhotosAndGetPathsAndUrls(
       contentType: p.mimeType || blob.type || 'image/jpeg',
     });
     if (!error) {
-      const accessible = await getPublicOrSignedUrl(bucket, path);
+      const accessible = await getSignedStorageUrl(bucket, path);
       if (accessible) {
         out.push({ path, publicUrl: accessible });
       }
@@ -89,7 +93,7 @@ export async function uploadAvatarAndGetPublicUrl(
   uid: string,
   file: PhotoLike,
   bucket = 'avatars'
-): Promise<string | null> {
+): Promise<{ path: string; publicUrl: string | null } | null> {
   if (!file?.uri) return null;
   if (!uid) throw new Error('uploadAvatar requires a user id');
 
@@ -115,6 +119,6 @@ export async function uploadAvatarAndGetPublicUrl(
     throw error;
   }
 
-  const accessible = await getPublicOrSignedUrl(targetBucket, path);
-  return accessible;
+  const publicUrl = await getSignedStorageUrl(targetBucket, path);
+  return { path, publicUrl };
 }
