@@ -11,7 +11,8 @@ import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import LogoHeader from '../../src/components/LogoHeader';
 import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, type SubmissionMessage } from '../../src/lib/chat';
-import { uploadPhotosAndGetPathsAndUrls, type PhotoLike } from '../../src/lib/supabaseHelpers';
+import { uploadFileToStorage, type PhotoLike } from '../../src/lib/supabaseHelpers';
+import { generateUuid } from '../../src/lib/uuid';
 
 export default function TeamChat() {
   const { session, ready } = useAuth();
@@ -135,29 +136,43 @@ export default function TeamChat() {
 
     try {
       setSending(true);
-      let attachmentUrl: string | null = null;
+      const messageId = generateUuid();
+      let attachmentPath: string | null = null;
       let attachmentType: SubmissionMessage['attachment_type'] | null = null;
+      let attachmentSignedUrl: string | null = null;
 
       if (pendingPhoto) {
         setUploadingImage(true);
-        const uploads = await uploadPhotosAndGetPathsAndUrls(session!.user.id, [pendingPhoto]);
-        const uploaded = uploads[0];
-        if (!uploaded) {
-          throw new Error('Unable to upload photo');
-        }
-        attachmentUrl = uploaded.publicUrl;
+        const safeExt = (pendingPhoto.fileName?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+        const safeName = (pendingPhoto.fileName || `team-chat-${Date.now()}.${safeExt}`).replace(/[^a-z0-9_.-]/gi, '-');
+        const storagePath = `teams/${teamInfo.id}/messages/${messageId}/${safeName}`;
+        const uploaded = await uploadFileToStorage({
+          bucket: 'chat',
+          path: storagePath,
+          photo: pendingPhoto,
+        });
+        attachmentPath = uploaded.path;
+        attachmentSignedUrl = uploaded.publicUrl;
         attachmentType = 'image';
       }
 
       const body = trimmed || (attachmentType ? 'Shared a photo' : '');
       const result = await sendSubmissionMessage({
+        id: messageId,
         team_id: teamInfo.id,
         submission_id: null,
         body,
         is_internal: true,
-        attachment_path: attachmentUrl ?? undefined,
+        attachment_path: attachmentPath ?? undefined,
         attachment_type: attachmentType ?? undefined,
       });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send message');
+      }
+      if (result.message && attachmentSignedUrl) {
+        result.message.attachment_signed_url = attachmentSignedUrl;
+      }
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to send message');
@@ -226,18 +241,21 @@ export default function TeamChat() {
           </Text>
         </View>
         <Text style={styles.messageBody}>{item.body}</Text>
-        {item.attachment_type && item.attachment_path ? (
+        {item.attachment_type && (item.attachment_signed_url || item.attachment_path) ? (
           item.attachment_type === 'image' ? (
             <TouchableOpacity
               style={styles.imageAttachment}
-              onPress={() => Linking.openURL(item.attachment_path!)}
+              onPress={() => Linking.openURL((item.attachment_signed_url || item.attachment_path)!)}
             >
-              <Image source={{ uri: item.attachment_path }} style={styles.chatImage} />
+              <Image
+                source={{ uri: item.attachment_signed_url || item.attachment_path || undefined }}
+                style={styles.chatImage}
+              />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={styles.attachmentInfo}
-              onPress={() => Linking.openURL(item.attachment_path!)}
+              onPress={() => Linking.openURL((item.attachment_signed_url || item.attachment_path)!)}
             >
               <Text style={styles.attachmentText}>
                 📎 {item.attachment_type.toUpperCase()} attachment

@@ -1,6 +1,6 @@
 // apps/mobile/src/lib/shareCsv.native.ts
-import { Platform, Share } from 'react-native';
-import { alertStorageUnavailable, resolveWritableDirectory } from './storageAccess';
+import { Platform } from 'react-native';
+import { alertStorageUnavailable } from './storageAccess';
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-z0-9_.-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'submission.csv';
@@ -11,38 +11,32 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
   try {
     const FileSystemModule = await import('expo-file-system');
     const FileSystem: typeof import('expo-file-system') = (FileSystemModule as any)?.default ?? FileSystemModule;
-    const directories = {
-      documentDirectory: FileSystem.documentDirectory,
-      cacheDirectory: FileSystem.cacheDirectory,
-    };
-    if (debug) {
-      console.log('[shareCsvNative] platform', Platform.OS, directories);
-    }
-
-    // Try Documents first (so it behaves like the web export), then fall back to cache.
-    let baseDir = resolveWritableDirectory(FileSystem, 'documents-first');
-    if (!baseDir) {
-      baseDir = resolveWritableDirectory(FileSystem, 'cache-first');
-    }
+    const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
     if (!baseDir) {
       alertStorageUnavailable();
-      throw new Error('No writable directory available for CSV export');
+      throw new Error('No cache directory available for CSV export');
     }
-
-    // Ensure the directory exists (especially when using cache-first)
+    const exportDir = `${baseDir}exports/csv/`;
+    if (debug) {
+      console.log('[shareCsvNative] platform', Platform.OS, {
+        cacheDirectory: FileSystem.cacheDirectory,
+        documentDirectory: FileSystem.documentDirectory,
+        exportDir,
+      });
+    }
     try {
-      const info = await FileSystem.getInfoAsync(baseDir);
+      const info = await FileSystem.getInfoAsync(exportDir);
       if (!info.exists) {
-        await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true });
+        await FileSystem.makeDirectoryAsync(exportDir, { intermediates: true });
       }
     } catch (dirErr) {
       if (debug) {
-        console.warn('[shareCsvNative] unable to ensure directory', baseDir, dirErr);
+        console.warn('[shareCsvNative] unable to ensure export dir', exportDir, dirErr);
       }
     }
 
     const safeName = sanitizeFileName(fileName);
-    const filePath = `${baseDir}${safeName}`;
+    const filePath = `${exportDir}${safeName}`;
 
     if (debug) {
       console.log('[shareCsvNative] writing CSV', filePath, `(${csv.length} chars)`);
@@ -63,25 +57,28 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
       Sharing = null;
     }
 
-    const sharingAvailable = Sharing ? await Sharing.isAvailableAsync() : false;
+    const info = await FileSystem.getInfoAsync(filePath);
+    if (debug) {
+      console.log('[shareCsvNative] file info', info);
+    }
+
+    if (!Sharing) {
+      throw new Error('Sharing module unavailable');
+    }
+    const sharingAvailable = await Sharing.isAvailableAsync();
     if (debug) {
       console.log('[shareCsvNative] sharing available?', sharingAvailable);
     }
-
-    if (sharingAvailable && Sharing) {
-      await Sharing.shareAsync(filePath, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Share submission CSV',
-        UTI: 'public.comma-separated-values-text',
-      });
-      return;
+    if (!sharingAvailable) {
+      throw new Error('Sharing is not available on this device');
     }
 
-    await Share.share({
-      title: 'Share submission CSV',
-      message: 'Submission data attached as CSV.',
-      url: filePath,
+    await Sharing.shareAsync(filePath, {
+      mimeType: 'text/csv',
+      dialogTitle: 'Share submission CSV',
+      UTI: 'public.comma-separated-values-text',
     });
+    return;
   } catch (error) {
     if (debug) {
       console.warn('[shareCsvNative] failed', error);

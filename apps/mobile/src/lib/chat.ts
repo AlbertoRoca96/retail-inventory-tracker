@@ -1,5 +1,7 @@
 // apps/mobile/src/lib/chat.ts
 import { supabase } from './supabase';
+import { getSignedStorageUrl, uploadFileToStorage } from './supabaseHelpers';
+import { generateUuid } from './uuid';
 
 // Types for chat functionality
 export type SubmissionMessage = {
@@ -12,12 +14,45 @@ export type SubmissionMessage = {
   is_internal: boolean;
   attachment_path?: string | null;
   attachment_type?: 'csv' | 'image' | 'pdf' | 'excel' | null;
+  attachment_signed_url?: string | null;
   is_revised: boolean;
 };
 
 // Fixed message columns - no auth.users joins to avoid PGRST100 errors
 // Note: updated_at excluded because column doesn't exist in database
 const MESSAGE_COLUMNS = 'id, team_id, submission_id, sender_id, body, is_internal, attachment_path, attachment_type, is_revised, created_at';
+
+async function resolveAttachmentUrl(path?: string | null, type?: string | null) {
+  if (!path) return null;
+  if (/^https?:/i.test(path)) return path;
+  const buckets: string[] = [];
+  if (type === 'csv') {
+    buckets.push('submission-csvs');
+  }
+  buckets.push('chat', 'submissions', 'photos');
+  const tried = new Set<string>();
+  for (const bucket of buckets) {
+    if (tried.has(bucket)) continue;
+    tried.add(bucket);
+    const signed = await getSignedStorageUrl(bucket, path, 60 * 60 * 4);
+    if (signed) return signed;
+  }
+  return null;
+}
+
+async function hydrateMessageAttachment(message?: SubmissionMessage | null) {
+  if (!message) return undefined;
+  const signed = await resolveAttachmentUrl(message.attachment_path, message.attachment_type);
+  return {
+    ...message,
+    attachment_signed_url: signed ?? (message.attachment_path ?? null),
+  };
+}
+
+async function hydrateMessages(rows: SubmissionMessage[]) {
+  const hydrated = await Promise.all(rows.map((row) => hydrateMessageAttachment(row)));
+  return hydrated.filter(Boolean) as SubmissionMessage[];
+}
 
 export type ChatRoom = {
   team_id: string;
@@ -29,6 +64,7 @@ export type ChatRoom = {
 };
 
 export type NewMessage = {
+  id?: string;
   team_id: string;
   submission_id?: string | null;
   body: string;
@@ -57,7 +93,7 @@ export async function fetchSubmissionMessages(
 
     if (error) throw error;
 
-    return { messages: data || [] };
+    return { messages: await hydrateMessages((data || []) as SubmissionMessage[]) };
   } catch (error) {
     console.error('Error fetching submission messages:', error);
     return { messages: [], error: error instanceof Error ? error.message : 'Unknown error' };
@@ -85,7 +121,7 @@ export async function fetchTeamMessages(
 
     if (error) throw error;
 
-    return { messages: data || [] };
+    return { messages: await hydrateMessages((data || []) as SubmissionMessage[]) };
   } catch (error) {
     console.error('Error fetching team messages:', error);
     return { messages: [], error: error instanceof Error ? error.message : 'Unknown error' };
@@ -188,11 +224,15 @@ export function subscribeToSubmissionMessages(
         filter: `submission_id=eq.${submissionId}`,
       },
       (payload) => {
-        callback({
-          eventType: payload.eventType,
-          new: payload.new as SubmissionMessage,
-          old: payload.old as SubmissionMessage,
-        });
+        (async () => {
+          const next = await hydrateMessageAttachment(payload.new as SubmissionMessage);
+          const prev = await hydrateMessageAttachment(payload.old as SubmissionMessage);
+          callback({
+            eventType: payload.eventType,
+            new: next,
+            old: prev,
+          });
+        })();
       }
     )
     .subscribe();
@@ -220,11 +260,15 @@ export function subscribeToTeamMessages(
         filter: `team_id=eq.${teamId},is_internal=eq.true`,
       },
       (payload) => {
-        callback({
-          eventType: payload.eventType,
-          new: payload.new as SubmissionMessage,
-          old: payload.old as SubmissionMessage,
-        });
+        (async () => {
+          const next = await hydrateMessageAttachment(payload.new as SubmissionMessage);
+          const prev = await hydrateMessageAttachment(payload.old as SubmissionMessage);
+          callback({
+            eventType: payload.eventType,
+            new: next,
+            old: prev,
+          });
+        })();
       }
     )
     .subscribe();

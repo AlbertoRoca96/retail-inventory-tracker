@@ -10,7 +10,8 @@ import { supabase } from '../../../src/lib/supabase';
 import { colors, theme, typography } from '../../../src/theme';
 import LogoHeader from '../../../src/components/LogoHeader';
 import { DirectMessage, fetchDirectMessages, sendDirectMessage, subscribeToDirectMessages } from '../../../src/lib/directMessages';
-import { uploadPhotosAndGetPathsAndUrls } from '../../../src/lib/supabaseHelpers';
+import { uploadFileToStorage } from '../../../src/lib/supabaseHelpers';
+import { generateUuid } from '../../../src/lib/uuid';
 
 export default function DirectConversation() {
   const params = useLocalSearchParams<{ id: string; team?: string }>();
@@ -163,12 +164,15 @@ export default function DirectConversation() {
           {isMe ? 'You' : peerName}
         </Text>
         <Text style={[styles.messageBody, { color: isMe ? colors.white : colors.text }]}>{item.body}</Text>
-        {item.attachment_type === 'image' && item.attachment_url ? (
+        {item.attachment_type === 'image' && (item.attachment_signed_url || item.attachment_url) ? (
           <TouchableOpacity
             style={styles.attachmentPreview}
-            onPress={() => Linking.openURL(item.attachment_url!)}
+            onPress={() => Linking.openURL((item.attachment_signed_url || item.attachment_url)!)}
           >
-            <Image source={{ uri: item.attachment_url }} style={styles.attachmentImage} />
+            <Image
+              source={{ uri: item.attachment_signed_url || item.attachment_url || undefined }}
+              style={styles.attachmentImage}
+            />
           </TouchableOpacity>
         ) : null}
         <Text style={[styles.timestamp, { color: isMe ? '#e0f2fe' : '#94a3b8' }]}>

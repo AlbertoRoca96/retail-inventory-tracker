@@ -18,8 +18,6 @@ import { supabase } from '../../src/lib/supabase';
 import { colors, typography, textA11yProps, theme } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { shareCsvNative } from '../../src/lib/shareCsv';
-import { resolveWritableDirectory, alertStorageUnavailable } from '../../src/lib/storageAccess';
-import * as FileSystem from 'expo-file-system';
 import LogoHeader from '../../src/components/LogoHeader';
 
 const isWeb = Platform.OS === 'web';
@@ -260,31 +258,9 @@ export default function Submission() {
     }
 
     try {
-      let dir = resolveWritableDirectory(FileSystem, 'documents-first');
-      if (!dir) {
-        dir = resolveWritableDirectory(FileSystem, 'cache-first');
-      }
-      if (!dir) {
-        alertStorageUnavailable();
-        return;
-      }
-
-      try {
-        const info = await FileSystem.getInfoAsync(dir);
-        if (!info.exists) {
-          await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-        }
-      } catch {}
-
-      const target = `${dir}${fileName}`;
-      await FileSystem.writeAsStringAsync(target, csv, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      Alert.alert('CSV saved', Platform.OS === 'ios'
-        ? 'Find it in Files → On My iPhone → RWS.'
-        : 'Saved to app storage (see Files/My Files).'
-      );
-      flash('success', 'CSV saved to Files');
+      await shareCsvNative(csv, fileName);
+      flash('success', 'Share sheet opened');
+      Alert.alert('Save CSV', 'Choose "Save to Files" in the share sheet to keep a copy.');
     } catch (err: any) {
       Alert.alert('Save failed', err?.message ?? 'Unable to save CSV on this device.');
       flash('error', 'Unable to save CSV');
@@ -328,8 +304,8 @@ export default function Submission() {
           flash('success', 'PDF downloaded');
           Alert.alert('PDF ready', 'Check your downloads folder for the exported PDF.');
         } else {
-          flash('success', 'PDF saved');
-          Alert.alert('PDF ready', 'Saved to the Files app.');
+          flash('success', 'Share sheet opened');
+          Alert.alert('PDF ready', 'Choose "Save to Files" to keep a copy.');
         }
       }
     } catch (err: any) {

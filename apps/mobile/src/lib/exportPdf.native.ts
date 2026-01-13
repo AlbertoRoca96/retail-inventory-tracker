@@ -146,29 +146,25 @@ export async function createSubmissionPdf(
   const prefix = opts.fileNamePrefix || 'submission';
   const fileName = `${prefix}-${iso}.pdf`;
 
-  let writableDir = resolveWritableDirectory(FileSystem, 'documents-first');
-  if (!writableDir) {
-    writableDir = resolveWritableDirectory(FileSystem, 'cache-first');
-  }
-  if (!writableDir) {
+  const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  if (!baseDir) {
     alertStorageUnavailable();
     return uri;
   }
-
-  const dest = `${writableDir}${fileName}`;
-
+  const exportDir = `${baseDir}exports/pdf/`;
   try {
-    const info = await FileSystem.getInfoAsync(writableDir);
+    const info = await FileSystem.getInfoAsync(exportDir);
     if (!info.exists) {
-      await FileSystem.makeDirectoryAsync(writableDir, { intermediates: true });
+      await FileSystem.makeDirectoryAsync(exportDir, { intermediates: true });
     }
   } catch {}
+
+  const dest = `${exportDir}${fileName}`;
 
   try {
     await FileSystem.copyAsync({ from: uri, to: dest });
     return dest;
   } catch {
-    // If copy fails, just return the original temporary file
     return uri;
   }
 }
@@ -193,25 +189,15 @@ export async function downloadSubmissionPdf(data: SubmissionPdf): Promise<string
     return uri;
   }
 
-  await shareIfPossible(uri);
-  return uri;
-}
-
-async function shareIfPossible(fileUri: string) {
-  try {
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri, {
-        UTI: 'com.adobe.pdf',
-        mimeType: 'application/pdf',
-      });
-    } else {
-      // Fallback: open native print dialog
-      await Print.printAsync({ uri: fileUri });
-    }
-  } catch {
-    // swallow; don't block the flow if user cancels or share fails
+  const sharingAvailable = await Sharing.isAvailableAsync();
+  if (!sharingAvailable) {
+    throw new Error('Sharing is not available on this device');
   }
-  return fileUri;
+  await Sharing.shareAsync(uri, {
+    UTI: 'com.adobe.pdf',
+    mimeType: 'application/pdf',
+  });
+  return uri;
 }
 
 // Keep a default export shape if other modules import it that way.

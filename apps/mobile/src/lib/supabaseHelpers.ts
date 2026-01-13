@@ -99,26 +99,50 @@ export async function uploadAvatarAndGetPublicUrl(
 
   const ext = (file.fileName?.split('.').pop() || 'jpg').toLowerCase();
   const path = `${uid}/avatar.${ext}`;
-  const blob = file.blob ?? (await (await fetch(file.uri)).blob());
-  const mimeType = file.mimeType || blob.type || 'image/jpeg';
-  const targetBucket = bucket || 'avatars';
-
-  if (__DEV__) {
-    console.log('[avatar upload] bucket', targetBucket, 'path', path, 'mime', mimeType);
-  }
-
-  const { error } = await supabase.storage.from(targetBucket).upload(path, blob, {
-    upsert: true,
-    contentType: mimeType,
+  return uploadFileToStorage({
+    bucket: bucket || 'avatars',
+    path,
+    photo: file,
   });
+}
 
+export async function uploadFileToStorage({
+  bucket,
+  path,
+  photo,
+}: {
+  bucket: string;
+  path: string;
+  photo: PhotoLike;
+}): Promise<{ path: string; publicUrl: string | null }> {
+  if (!photo?.uri && !photo?.blob) {
+    throw new Error('uploadFileToStorage requires a uri or blob');
+  }
+  const blob = photo.blob ?? (await (await fetch(photo.uri!)).blob());
+  const guessedType = photo.mimeType || blob.type || guessMimeType(path) || 'application/octet-stream';
+  if (__DEV__) {
+    console.log('[storage upload]', bucket, path, guessedType);
+  }
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
+    upsert: true,
+    contentType: guessedType,
+  });
   if (error) {
     if (__DEV__) {
-      console.warn('[avatar upload] failed', { bucket: targetBucket, path, error });
+      console.warn('[storage upload] failed', bucket, path, error);
     }
     throw error;
   }
-
-  const publicUrl = await getSignedStorageUrl(targetBucket, path);
+  const publicUrl = await getSignedStorageUrl(bucket, path);
   return { path, publicUrl };
+}
+
+function guessMimeType(path: string) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.heic')) return 'image/heic';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  return null;
 }

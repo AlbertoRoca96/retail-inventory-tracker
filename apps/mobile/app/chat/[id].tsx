@@ -172,18 +172,17 @@ export default function SubmissionChat() {
         <Text style={styles.messageBody}>{item.body}</Text>
         
         {/* Attachment Display */}
-        {item.attachment_path && (
+        {(item.attachment_signed_url || item.attachment_path) && (
           <TouchableOpacity 
             style={styles.attachmentBtn}
             onPress={() => {
-              if (item.attachment_type === 'csv') {
-                Alert.alert('CSV Attachment', `Download CSV: ${item.attachment_path}`);
-                // In real app, handle CSV download/viewing
-              }
+              const target = item.attachment_signed_url || item.attachment_path;
+              if (!target) return;
+              Linking.openURL(target);
             }}
           >
             <Text style={styles.attachmentText}>
-              📎 {item.attachment_type?.toUpperCase()}.{item.attachment_path?.split('.').pop()}
+              📎 {item.attachment_type?.toUpperCase()}.{(item.attachment_path || '').split('.').pop()}
             </Text>
           </TouchableOpacity>
         )}

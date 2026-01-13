@@ -14,7 +14,8 @@ import Head from 'expo-router/head';
 
 import LogoHeader from '../../src/components/LogoHeader';
 import { colors } from '../../src/theme';
-import { uploadPhotosAndGetPathsAndUrls } from '../../src/lib/supabaseHelpers';
+import { uploadFileToStorage } from '../../src/lib/supabaseHelpers';
+import { generateUuid } from '../../src/lib/uuid';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { loadUserDefaults, saveUserDefaults } from '../../src/lib/preferences';
@@ -824,9 +825,11 @@ export default function NewFormScreen() {
   const buildSubmissionRow = useCallback((
     v: FormValues,
     effectiveTeamId: string,
-    uploads: { path: string; publicUrl: string }[]
+    submissionId: string,
+    uploads: { path: string; publicUrl: string | null }[]
   ) => {
     return {
+      id: submissionId,
       user_id: uid || null,
       created_by: uid || null,
       team_id: effectiveTeamId,
@@ -843,13 +846,33 @@ export default function NewFormScreen() {
       on_shelf: safeNumber(v.onShelf),
       tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
       notes: v.notes || null,
-      photo1_url: uploads[0]?.publicUrl ?? null,
-      photo2_url: uploads[1]?.publicUrl ?? null,
+      photo1_url: null,
+      photo2_url: null,
       photo1_path: uploads[0]?.path ?? null,
       photo2_path: uploads[1]?.path ?? null,
       priority_level: Number(v.priorityLevel) || 3,
     };
   }, [uid]);
+
+  const uploadSubmissionPhotos = useCallback(
+    async (team: string, submissionId: string, photoList: Photo[]) => {
+      const uploads: { path: string; publicUrl: string | null }[] = [];
+      for (let i = 0; i < Math.min(photoList.length, 2); i++) {
+        const photo = photoList[i];
+        if (!photo?.uri) continue;
+        const ext = (photo.fileName?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+        const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}.${ext}`;
+        const uploaded = await uploadFileToStorage({
+          bucket: 'submissions',
+          path,
+          photo,
+        });
+        uploads.push(uploaded);
+      }
+      return uploads;
+    },
+    []
+  );
 
   const onSubmit = async () => {
     try {
@@ -865,20 +888,12 @@ export default function NewFormScreen() {
         return;
       }
 
-      setBanner({ kind: 'info', text: 'Uploading photos…' });
-
-      const uploadedAssets = await uploadPhotosAndGetPathsAndUrls(uid || 'anon', photos);
-
-      const excelPhotoUrls = photos
-        .map((p, i) => uploadedAssets[i]?.publicUrl ?? p.uri)
-        .filter(Boolean);
-
+      const submissionId = generateUuid();
+      let excelPhotoUrls: string[] = photos.map((p) => p.uri).filter(Boolean);
       let insertError: any = null;
       let effectiveTeamId: string | null = null;
 
       if (uid) {
-        setBanner({ kind: 'info', text: 'Preparing database insert…' });
-
         effectiveTeamId = selectedTeamId || teamId;
         if (!effectiveTeamId && !teamLoading) {
           const { data: tm, error: tmErr } = await supabase
@@ -894,7 +909,17 @@ export default function NewFormScreen() {
           throw new Error('No team found for this user. Ask an admin to add you to a team.');
         }
 
-        const row = buildSubmissionRow(v, effectiveTeamId, uploadedAssets || []);
+        let uploadedAssets: { path: string; publicUrl: string | null }[] = [];
+        if (photos.length) {
+          setBanner({ kind: 'info', text: 'Uploading photos…' });
+          uploadedAssets = await uploadSubmissionPhotos(effectiveTeamId, submissionId, photos);
+        }
+        excelPhotoUrls = photos
+          .map((p, i) => uploadedAssets[i]?.publicUrl ?? p.uri)
+          .filter(Boolean);
+
+        setBanner({ kind: 'info', text: 'Preparing database insert…' });
+        const row = buildSubmissionRow(v, effectiveTeamId, submissionId, uploadedAssets || []);
 
         if (!isOnline && autoQueueWhenOffline) {
           enqueueSubmission(row);
