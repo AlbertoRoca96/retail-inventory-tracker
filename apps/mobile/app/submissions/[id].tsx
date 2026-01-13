@@ -260,17 +260,30 @@ export default function Submission() {
     }
 
     try {
-      const dir = resolveWritableDirectory(FileSystem, 'documents-first');
+      let dir = resolveWritableDirectory(FileSystem, 'documents-first');
+      if (!dir) {
+        dir = resolveWritableDirectory(FileSystem, 'cache-first');
+      }
       if (!dir) {
         alertStorageUnavailable();
         return;
       }
 
+      try {
+        const info = await FileSystem.getInfoAsync(dir);
+        if (!info.exists) {
+          await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        }
+      } catch {}
+
       const target = `${dir}${fileName}`;
       await FileSystem.writeAsStringAsync(target, csv, {
         encoding: FileSystem.EncodingType.UTF8,
       });
-      Alert.alert('CSV saved', `Saved to Files → ${fileName}`);
+      Alert.alert('CSV saved', Platform.OS === 'ios'
+        ? 'Find it in Files → On My iPhone → RWS.'
+        : 'Saved to app storage (see Files/My Files).'
+      );
       flash('success', 'CSV saved to Files');
     } catch (err: any) {
       Alert.alert('Save failed', err?.message ?? 'Unable to save CSV on this device.');
@@ -504,6 +517,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#111',
+    backgroundColor: '#f1f5f9',
+    resizeMode: 'cover',
   },
   photoBadge: {
     ...typography.label,

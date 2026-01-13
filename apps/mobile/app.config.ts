@@ -147,6 +147,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...(iosBuildNumber ? { buildNumber: iosBuildNumber } : {}),
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        UIFileSharingEnabled: true,
+        LSSupportsOpeningDocumentsInPlace: true,
       },
     },
     android: {

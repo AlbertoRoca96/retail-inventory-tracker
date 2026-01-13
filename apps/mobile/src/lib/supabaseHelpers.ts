@@ -7,6 +7,23 @@ export type PhotoLike = {
   blob?: Blob | null;
 };
 
+async function getPublicOrSignedUrl(bucket: string, path: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(path, 60 * 60 * 24 * 7, { download: false });
+    if (!error && data?.signedUrl) {
+      return data.signedUrl;
+    }
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[storage] signed url failed', bucket, path, error);
+    }
+  }
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data?.publicUrl ?? null;
+}
+
 /** Returns public URLs for up to 2 uploaded photos */
 export async function uploadPhotosAndGetUrls(
   uid: string,
@@ -28,8 +45,10 @@ export async function uploadPhotosAndGetUrls(
       contentType: p.mimeType || blob.type || 'image/jpeg',
     });
     if (!error) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      urls.push(data.publicUrl);
+      const accessible = await getPublicOrSignedUrl(bucket, path);
+      if (accessible) {
+        urls.push(accessible);
+      }
     }
   }
   return urls.slice(0, 2);
@@ -56,8 +75,10 @@ export async function uploadPhotosAndGetPathsAndUrls(
       contentType: p.mimeType || blob.type || 'image/jpeg',
     });
     if (!error) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      out.push({ path, publicUrl: data.publicUrl });
+      const accessible = await getPublicOrSignedUrl(bucket, path);
+      if (accessible) {
+        out.push({ path, publicUrl: accessible });
+      }
     }
   }
   return out.slice(0, 2);
@@ -94,6 +115,6 @@ export async function uploadAvatarAndGetPublicUrl(
     throw error;
   }
 
-  const { data } = supabase.storage.from(targetBucket).getPublicUrl(path);
-  return data?.publicUrl ?? null;
+  const accessible = await getPublicOrSignedUrl(targetBucket, path);
+  return accessible;
 }

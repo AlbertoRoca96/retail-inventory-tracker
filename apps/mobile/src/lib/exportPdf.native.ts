@@ -2,6 +2,7 @@
 
 import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { alertStorageUnavailable, resolveWritableDirectory } from './storageAccess';
 
 export type SubmissionPdf = {
@@ -145,13 +146,23 @@ export async function createSubmissionPdf(
   const prefix = opts.fileNamePrefix || 'submission';
   const fileName = `${prefix}-${iso}.pdf`;
 
-  const writableDir = resolveWritableDirectory(FileSystem, 'documents-first');
+  let writableDir = resolveWritableDirectory(FileSystem, 'documents-first');
+  if (!writableDir) {
+    writableDir = resolveWritableDirectory(FileSystem, 'cache-first');
+  }
   if (!writableDir) {
     alertStorageUnavailable();
     return uri;
   }
 
   const dest = `${writableDir}${fileName}`;
+
+  try {
+    const info = await FileSystem.getInfoAsync(writableDir);
+    if (!info.exists) {
+      await FileSystem.makeDirectoryAsync(writableDir, { intermediates: true });
+    }
+  } catch {}
 
   try {
     await FileSystem.copyAsync({ from: uri, to: dest });

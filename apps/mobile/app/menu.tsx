@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, SafeAreaView, StyleSheet, Pressable } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, SafeAreaView, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 import { supabase } from '../src/lib/supabase';
-import { colors, typography } from '../src/theme';
+import { colors } from '../src/theme';
 import LogoHeader from '../src/components/LogoHeader';
 
 const TILE_DATA = [
@@ -42,6 +43,17 @@ const TILE_DATA = [
 ];
 
 export default function Menu() {
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const tileHeight = useMemo(() => {
+    const headerAllowance = 180; // header + logo space
+    const paddingAllowance = 48; // page padding
+    const usable = height - insets.top - insets.bottom - headerAllowance - paddingAllowance;
+    const twoRowHeight = usable / 2 - 10; // minus row gap
+    return Math.max(180, twoRowHeight);
+  }, [height, insets.top, insets.bottom]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <Head>
@@ -54,7 +66,7 @@ export default function Menu() {
             <Pressable
               key={item.key}
               onPress={item.onPress}
-              style={[styles.tile, { backgroundColor: item.color }]}
+              style={[styles.tile, { backgroundColor: item.color, minHeight: tileHeight }]}
             >
               <View style={styles.iconCircle}>
                 <Ionicons name={item.icon} size={32} color={colors.white} />
@@ -85,17 +97,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignContent: 'space-between',
     rowGap: 20,
+    columnGap: 16,
     flexGrow: 1,
   },
   tile: {
-    width: '48%',
+    flexBasis: '48%',
     borderRadius: 28,
     paddingHorizontal: 18,
     paddingVertical: 32,
     gap: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 270,
+    minHeight: 220,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 6,

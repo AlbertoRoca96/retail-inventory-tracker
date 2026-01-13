@@ -9,7 +9,8 @@ function sanitizeFileName(name: string) {
 export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
   const debug = __DEV__;
   try {
-    const FileSystem = await import('expo-file-system');
+    const FileSystemModule = await import('expo-file-system');
+    const FileSystem: typeof import('expo-file-system') = (FileSystemModule as any)?.default ?? FileSystemModule;
     const directories = {
       documentDirectory: FileSystem.documentDirectory,
       cacheDirectory: FileSystem.cacheDirectory,
@@ -25,14 +26,7 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
     }
     if (!baseDir) {
       alertStorageUnavailable();
-      if (debug) {
-        console.warn('[shareCsvNative] no writable directory, falling back to message-only share');
-      }
-      await Share.share({
-        title: 'Share submission CSV',
-        message: csv,
-      });
-      return;
+      throw new Error('No writable directory available for CSV export');
     }
 
     // Ensure the directory exists (especially when using cache-first)
@@ -60,7 +54,8 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
 
     let Sharing: typeof import('expo-sharing') | null = null;
     try {
-      Sharing = await import('expo-sharing');
+      const SharingModule = await import('expo-sharing');
+      Sharing = (SharingModule as any)?.default ?? SharingModule;
     } catch (err) {
       if (debug) {
         console.warn('[shareCsvNative] expo-sharing unavailable', err);
