@@ -144,6 +144,7 @@ export default function DirectConversation() {
           uri: asset.uri,
           fileName: safeName,
           mimeType: asset.mimeType || 'image/jpeg',
+          assetId: asset.assetId ?? null,
         },
       });
       const body = newMessage.trim() || 'Shared a photo';

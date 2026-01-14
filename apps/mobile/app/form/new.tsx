@@ -63,6 +63,7 @@ type Photo = {
   mimeType?: string | null;
   width?: number | null;
   height?: number | null;
+  assetId?: string | null;
 };
 
 type FormValues = {
@@ -531,6 +532,7 @@ export default function NewFormScreen() {
         mimeType: file.type || 'image/jpeg',
         width: null,
         height: null,
+        assetId: null,
       },
     ]);
     setTimeout(() => scheduleAutosave(), 0);
@@ -760,7 +762,14 @@ export default function NewFormScreen() {
       const a = res.assets[0];
       setPhotos((p) => [
         ...p,
-        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
+        {
+          uri: a.uri,
+          fileName: a.fileName,
+          mimeType: a.mimeType,
+          width: a.width,
+          height: a.height,
+          assetId: a.assetId ?? null,
+        },
       ]);
       setTimeout(() => scheduleAutosave(), 0);
     }
@@ -781,7 +790,14 @@ export default function NewFormScreen() {
       const a = res.assets[0];
       setPhotos((p) => [
         ...p,
-        { uri: a.uri, fileName: a.fileName, mimeType: a.mimeType, width: a.width, height: a.height },
+        {
+          uri: a.uri,
+          fileName: a.fileName,
+          mimeType: a.mimeType,
+          width: a.width,
+          height: a.height,
+          assetId: a.assetId ?? null,
+        },
       ]);
       setTimeout(() => scheduleAutosave(), 0);
     }

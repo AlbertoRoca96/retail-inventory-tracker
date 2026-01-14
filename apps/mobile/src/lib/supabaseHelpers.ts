@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
 import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 import { supabase } from './supabase';
 
 export type PhotoLike = {
@@ -7,6 +8,7 @@ export type PhotoLike = {
   fileName?: string | null;
   mimeType?: string | null;
   blob?: Blob | null;
+  assetId?: string | null;
 };
 
 export async function getSignedStorageUrl(
@@ -30,8 +32,6 @@ export async function getSignedStorageUrl(
   return data?.publicUrl ?? null;
 }
 
-
-
 /** Upload a single avatar image and return a public URL */
 export async function uploadAvatarAndGetPublicUrl(
   uid: string,
@@ -50,30 +50,79 @@ export async function uploadAvatarAndGetPublicUrl(
   });
 }
 
-async function blobFromUri(uri: string, mimeType?: string | null) {
-  try {
-    const response = await fetch(uri);
-    const fetchedBlob = await response.blob();
-    if (fetchedBlob && fetchedBlob.size > 0) {
-      return fetchedBlob;
-    }
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[storage upload] fetch fallback', error);
+function guessFileExtension(nameOrPath?: string | null) {
+  if (!nameOrPath) return '';
+  const match = /\.([a-zA-Z0-9]+)$/.exec(nameOrPath);
+  return match ? match[1] : '';
+}
+
+function guessMimeType(path: string) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.heic')) return 'image/heic';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  return null;
+}
+
+async function ensureLocalFileUri(photo: PhotoLike) {
+  if (!photo?.uri) {
+    throw new Error('uploadFileToStorage requires a uri');
+  }
+
+  let candidate = photo.uri;
+
+  if ((candidate.startsWith('ph://') || candidate.startsWith('assets-library://')) && photo.assetId) {
+    try {
+      const info = await MediaLibrary.getAssetInfoAsync(photo.assetId, { shouldDownloadFromNetwork: true });
+      if (info?.localUri) {
+        candidate = info.localUri;
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[storage upload] asset info lookup failed', error);
+      }
     }
   }
 
-  // Fallback to reading via FileSystem (needed on some iOS builds when fetch returns empty)
-  try {
-    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-    const buffer = Buffer.from(base64, 'base64');
-    return new Blob([buffer], { type: mimeType || 'application/octet-stream' });
-  } catch (fsError) {
-    if (__DEV__) {
-      console.warn('[storage upload] filesystem fallback failed', fsError);
+  if (!candidate.startsWith('file://')) {
+    const cacheBase = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+    if (cacheBase) {
+      const ext = guessFileExtension(photo.fileName || candidate);
+      const target = `${cacheBase}upload-${Date.now()}-${Math.random().toString(36).slice(2)}${ext ? `.${ext}` : ''}`;
+      try {
+        await FileSystem.copyAsync({ from: candidate, to: target });
+        candidate = target;
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[storage upload] copy fallback failed', error);
+        }
+      }
     }
-    throw fsError;
   }
+
+  return candidate;
+}
+
+async function blobFromPhoto(photo: PhotoLike) {
+  if (photo.blob) return photo.blob;
+  const localUri = await ensureLocalFileUri(photo);
+  try {
+    const response = await fetch(localUri);
+    const fetched = await response.blob();
+    if (fetched && fetched.size > 0) {
+      return fetched;
+    }
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[storage upload] fetch blob failed', error);
+    }
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+  const buffer = Buffer.from(base64, 'base64');
+  return new Blob([buffer], { type: photo.mimeType || 'application/octet-stream' });
 }
 
 export async function uploadFileToStorage({
@@ -88,7 +137,7 @@ export async function uploadFileToStorage({
   if (!photo?.uri && !photo?.blob) {
     throw new Error('uploadFileToStorage requires a uri or blob');
   }
-  const blob = photo.blob ?? (await blobFromUri(photo.uri!, photo.mimeType));
+  const blob = await blobFromPhoto(photo);
   const guessedType = photo.mimeType || blob.type || guessMimeType(path) || 'application/octet-stream';
   if (__DEV__) {
     console.log('[storage upload]', bucket, path, guessedType, blob.size);
@@ -105,14 +154,4 @@ export async function uploadFileToStorage({
   }
   const publicUrl = await getSignedStorageUrl(bucket, path);
   return { path, publicUrl };
-}
-
-function guessMimeType(path: string) {
-  const lower = path.toLowerCase();
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.heic')) return 'image/heic';
-  if (lower.endsWith('.csv')) return 'text/csv';
-  if (lower.endsWith('.pdf')) return 'application/pdf';
-  return null;
 }

@@ -208,6 +208,7 @@ export default function TeamChat() {
         uri: asset.uri,
         fileName: asset.fileName || `team-chat-${Date.now()}.jpg`,
         mimeType: asset.mimeType || 'image/jpeg',
+        assetId: asset.assetId ?? null,
       });
     } catch (error: any) {
       Alert.alert('Photo selection failed', error?.message || 'Unable to select a photo right now.');
