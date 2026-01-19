@@ -194,6 +194,7 @@ export default function Submission() {
   if (!row) return null;
 
   const downloadSpreadsheetWithPhotos = async () => {
+    console.warn('[downloadSpreadsheetWithPhotos] tapped');
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
     const p2 = row.photo2_url || photo2Url || null;
@@ -237,6 +238,7 @@ export default function Submission() {
   };
 
   const shareSubmission = async () => {
+    console.warn('[shareSubmission] tapped');
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
     const submissionPayload = {
       store_site: row.store_site || '',
@@ -275,6 +277,7 @@ export default function Submission() {
   };
 
   const saveSpreadsheetToFiles = async () => {
+    console.warn('[saveSpreadsheetToFiles] tapped');
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
     const submissionPayload = {
       store_site: row.store_site || '',
