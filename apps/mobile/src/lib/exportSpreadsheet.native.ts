@@ -1,19 +1,12 @@
 // apps/mobile/src/lib/exportSpreadsheet.native.ts
 //
-// Native: Generate a real, fully-editable .xlsx workbook.
-// **SAFE SIMPLE VERSION**: no embedded images, only text + photo URLs.
-// This avoids any native image-manipulation weirdness so buttons never freeze.
+// Native: Export a spreadsheet in a way that **does not lock the app**.
+// We skip ExcelJS entirely on native and instead generate a simple
+// HTML table with an .xls extension, which Excel happily opens.
 
-import ExcelJS from 'exceljs';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform, Share } from 'react-native';
-import { Buffer } from 'buffer';
-
-if (!(globalThis as any).Buffer) (globalThis as any).Buffer = Buffer;
-
-const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const IOS_UTI_XLSX = 'org.openxmlformats.spreadsheetml.sheet';
 
 export type SubmissionSpreadsheet = {
   store_site: string;
@@ -35,6 +28,9 @@ export type SubmissionSpreadsheet = {
 type ExportOpts = {
   fileNamePrefix?: string;
 };
+
+const MIME_XLS = 'application/vnd.ms-excel';
+const IOS_UTI_XLS = 'com.microsoft.excel.xls';
 
 function sanitizeFileBase(input: string): string {
   const base = (input || '').trim() || 'submission';
@@ -76,17 +72,17 @@ async function ensureDir(path: string) {
   try {
     await FileSystem.makeDirectoryAsync(path, { intermediates: true });
   } catch {
-    // ignore
+    // ignore if it already exists
   }
 }
 
-async function shareXlsx(fileUri: string) {
+async function shareXls(fileUri: string) {
   const canShare = await Sharing.isAvailableAsync();
   if (canShare) {
     await Sharing.shareAsync(fileUri, {
-      mimeType: MIME_XLSX,
+      mimeType: MIME_XLS,
       dialogTitle: 'Share spreadsheet',
-      UTI: Platform.OS === 'ios' ? IOS_UTI_XLSX : undefined,
+      UTI: Platform.OS === 'ios' ? IOS_UTI_XLS : undefined,
     });
     return;
   }
@@ -94,58 +90,65 @@ async function shareXlsx(fileUri: string) {
   await Share.share({ url: fileUri, title: 'Share spreadsheet' });
 }
 
-export async function downloadSubmissionSpreadsheet(
-  row: SubmissionSpreadsheet,
-  opts: ExportOpts = {}
-): Promise<void> {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'Retail Inventory Tracker';
-  wb.created = new Date();
+function buildHtml(row: SubmissionSpreadsheet): string {
+  const esc = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
 
-  const ws = wb.addWorksheet('submission');
-  ws.columns = [
-    { key: 'label', width: 22 },
-    { key: 'value', width: 48 },
-  ];
+  const cells: Array<[string, string]> = [];
+  cells.push(['EXPORT_VERSION', 'HTML_XLS_NATIVE_V1']);
+  cells.push(['DATE', normalizeText(row.date)]);
+  cells.push(['BRAND', normalizeText(row.brand)]);
+  cells.push(['STORE SITE', normalizeText(row.store_site)]);
+  cells.push(['STORE LOCATION', normalizeText(row.store_location)]);
+  cells.push(['LOCATIONS', normalizeText(row.location)]);
+  cells.push(['CONDITIONS', normalizeText(row.conditions)]);
+  cells.push(['PRICE PER UNIT', normalizeText(row.price_per_unit)]);
+  cells.push(['SHELF SPACE', normalizeText(row.shelf_space)]);
+  cells.push(['ON SHELF', normalizeText(row.on_shelf)]);
+  cells.push(['TAGS', normalizeTags(row.tags)]);
+  cells.push(['NOTES', normalizeText(row.notes)]);
+  cells.push(['PRIORITY LEVEL', normalizeText(row.priority_level)]);
+  if (row.submitted_by) cells.push(['SUBMITTED BY', normalizeText(row.submitted_by)]);
 
-  const addKV = (label: string, value: string) => {
-    ws.addRow([label, value]);
-  };
-
-  // Marker row so we know which exporter generated this.
-  addKV('EXPORT_VERSION', 'XLSX_NATIVE_SIMPLE_V1');
-
-  addKV('DATE', normalizeText(row.date));
-  addKV('BRAND', normalizeText(row.brand));
-  addKV('STORE SITE', normalizeText(row.store_site));
-  addKV('STORE LOCATION', normalizeText(row.store_location));
-  addKV('LOCATIONS', normalizeText(row.location));
-  addKV('CONDITIONS', normalizeText(row.conditions));
-  addKV('PRICE PER UNIT', normalizeText(row.price_per_unit));
-  addKV('SHELF SPACE', normalizeText(row.shelf_space));
-  addKV('ON SHELF', normalizeText(row.on_shelf));
-  addKV('TAGS', normalizeTags(row.tags));
-  addKV('NOTES', normalizeText(row.notes));
-  addKV('PRIORITY LEVEL', normalizeText(row.priority_level));
-  if (row.submitted_by) addKV('SUBMITTED BY', normalizeText(row.submitted_by));
-
-  // Photos section (URLs only, no embedding to avoid native/image issues)
-  ws.addRow(['', '']);
-  const hdr = ws.addRow(['PHOTOS', '']);
-  hdr.font = { bold: true };
+  cells.push(['', '']);
+  cells.push(['PHOTOS', '']);
 
   const urls = (row.photo_urls || [])
     .filter((u) => typeof u === 'string' && u.trim())
     .slice(0, 4);
 
-  addKV('PHOTO 1 URL', urls[0] || '');
-  addKV('PHOTO 2 URL', urls[1] || '');
-  if (urls[2]) addKV('PHOTO 3 URL', urls[2]);
-  if (urls[3]) addKV('PHOTO 4 URL', urls[3]);
+  cells.push(['PHOTO 1 URL', urls[0] || '']);
+  cells.push(['PHOTO 2 URL', urls[1] || '']);
+  if (urls[2]) cells.push(['PHOTO 3 URL', urls[2]]);
+  if (urls[3]) cells.push(['PHOTO 4 URL', urls[3]]);
 
-  // Write XLSX to disk.
-  const out = await wb.xlsx.writeBuffer();
-  const base64 = Buffer.from(out as ArrayBuffer).toString('base64');
+  const rowsHtml = cells
+    .map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`)
+    .join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Submission</title>
+</head>
+<body>
+<table border="1" cellspacing="0" cellpadding="4">
+${rowsHtml}
+</table>
+</body>
+</html>`;
+}
+
+export async function downloadSubmissionSpreadsheet(
+  row: SubmissionSpreadsheet,
+  opts: ExportOpts = {}
+): Promise<void> {
+  const html = buildHtml(row);
 
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
   if (!baseDir) throw new Error('No writable directory available for export.');
@@ -155,14 +158,14 @@ export async function downloadSubmissionSpreadsheet(
 
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = sanitizeFileBase(opts.fileNamePrefix || 'submission');
-  const fileName = `${prefix}-${iso}.xlsx`;
+  const fileName = `${prefix}-${iso}.xls`; // .xls extension so Excel opens it
   const dest = exportDir + fileName;
 
-  await FileSystem.writeAsStringAsync(dest, base64, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  await FileSystem.writeAsStringAsync(dest, html, {
+    // defaults to UTF-8 string
+  } as any);
 
-  await shareXlsx(dest);
+  await shareXls(dest);
 }
 
 export default { downloadSubmissionSpreadsheet };
