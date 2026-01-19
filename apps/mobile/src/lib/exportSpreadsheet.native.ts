@@ -1,18 +1,25 @@
 // apps/mobile/src/lib/exportSpreadsheet.native.ts
-// Native spreadsheet export that produces a **real XLSX file** with embedded
-// images, mirroring the web Excel export so the result is fully editable in
-// Excel/Numbers and not a PDF or HTML hack.
+//
+// Native: Generate a real, fully-editable .xlsx workbook with embedded photos.
+// Industry-grade behavior:
+// - Always outputs XLSX (not HTML, not CSV).
+// - Downloads remote photo URLs.
+// - Autoconverts ANY image/video into JPEG for ExcelJS embedding (HEIC/HEIF/PNG/JPEG/WebP/Live Photo MOV).
+// - Shares with correct XLSX MIME type / iOS UTI.
 
 import ExcelJS from 'exceljs';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { Platform, Share } from 'react-native';
 import { Buffer } from 'buffer';
-import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
-import { shareFileNative } from './shareFile.native';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
-// Ensure Buffer exists on globalThis for ExcelJS and our base64 conversions
-if (!(globalThis as any).Buffer) {
-  (globalThis as any).Buffer = Buffer;
-}
+if (!(globalThis as any).Buffer) (globalThis as any).Buffer = Buffer;
+
+const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+// iOS UTI that helps the share sheet + Excel understand this is XLSX.
+const IOS_UTI_XLSX = 'org.openxmlformats.spreadsheetml.sheet';
 
 export type SubmissionSpreadsheet = {
   store_site: string;
@@ -21,193 +28,267 @@ export type SubmissionSpreadsheet = {
   store_location: string;
   location: string;
   conditions: string;
-  price_per_unit: string;
+  price_per_unit: number | string;
   shelf_space: string;
-  on_shelf: string;
-  tags: string;
+  on_shelf: number | string;
+  tags: unknown;
   notes: string;
-  priority_level?: string | null; // "1" | "2" | "3"
-  photo_urls: string[]; // up to 2
+  priority_level: number | string;
+  submitted_by?: string;
+  photo_urls: string[];
 };
 
-// ----- Image helpers (borrowed from web Excel export, adapted for native) -----
+type ExportOpts = {
+  fileNamePrefix?: string;
+  // Hardening knobs:
+  maxPhotoWidthPx?: number; // default 1400
+  jpegQuality?: number; // default 0.85
+};
 
-async function toCanvasBase64(url: string): Promise<string> {
-  // On native, ExcelJS only needs base64 JPEG; we can fetch the remote URL
-  // and feed the bytes into a data URL-compatible string.
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
-  const blob = await res.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+function sanitizeFileBase(input: string): string {
+  const base = (input || '').trim() || 'submission';
+  return base
+    .replace(/[\/\\?%*:|"<>]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 80);
+}
+
+function normalizeText(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
   }
-  const base64 = globalThis.btoa ? globalThis.btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
-  return base64;
+}
+
+function normalizeTags(tags: unknown): string {
+  // Handles:
+  // - ["Wow"] (array)
+  // - '["Wow"]' (stringified array)
+  // - "Wow" (string)
+  if (Array.isArray(tags)) return tags.map(normalizeText).filter(Boolean).join(', ');
+  if (typeof tags === 'string') {
+    const t = tags.trim();
+    try {
+      const parsed = JSON.parse(t);
+      if (Array.isArray(parsed)) return parsed.map(normalizeText).filter(Boolean).join(', ');
+    } catch {
+      // ignore
+    }
+    return t;
+  }
+  return normalizeText(tags);
+}
+
+function isRemoteUri(uri: string): boolean {
+  return /^https?:\/\//i.test(uri);
+}
+
+function looksLikeVideo(uri: string): boolean {
+  return /(\.mov|\.mp4|\.m4v|\.3gp|\.avi|\.webm)(\?|#|$)/i.test(uri);
+}
+
+async function ensureDir(path: string) {
+  try {
+    await FileSystem.makeDirectoryAsync(path, { intermediates: true });
+  } catch {
+    // ignore
+  }
+}
+
+async function downloadToLocalIfNeeded(uriOrUrl: string): Promise<{ uri: string; cleanup: () => Promise<void> }> {
+  if (!isRemoteUri(uriOrUrl)) return { uri: uriOrUrl, cleanup: async () => {} };
+
+  const base = (FileSystem.cacheDirectory || FileSystem.documentDirectory || '') + 'xlsx_tmp/';
+  await ensureDir(base);
+
+  const extMatch = uriOrUrl.split('?')[0].match(/\.([a-z0-9]+)$/i);
+  const ext = (extMatch?.[1] || 'bin').toLowerCase();
+  const dest = `${base}${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+  const res = await FileSystem.downloadAsync(uriOrUrl, dest);
+  return {
+    uri: res.uri,
+    cleanup: async () => {
+      try {
+        await FileSystem.deleteAsync(res.uri, { idempotent: true });
+      } catch {
+        // ignore
+      }
+    },
+  };
+}
+
+/**
+ * Autoconverter:
+ * - remote -> local download
+ * - video -> thumbnail
+ * - any image/video -> JPEG re-encode (Excel-compatible)
+ */
+async function toJpegDataUri(
+  uriOrUrl: string,
+  opts: Required<Pick<ExportOpts, 'maxPhotoWidthPx' | 'jpegQuality'>>
+): Promise<{ dataUri: string } | null> {
+  let downloaded: { uri: string; cleanup: () => Promise<void> } | null = null;
+  let thumbUri: string | null = null;
+  let outUri: string | null = null;
+
+  try {
+    downloaded = await downloadToLocalIfNeeded(uriOrUrl);
+    let inputUri = downloaded.uri;
+
+    // Live Photos / videos: extract a still image.
+    if (looksLikeVideo(inputUri) || looksLikeVideo(uriOrUrl)) {
+      const thumb = await VideoThumbnails.getThumbnailAsync(inputUri, { time: 0 });
+      thumbUri = thumb.uri;
+      inputUri = thumbUri;
+    }
+
+    // Force everything to JPEG to guarantee ExcelJS embedding compatibility.
+    const manipulated = await ImageManipulator.manipulateAsync(
+      inputUri,
+      [{ resize: { width: opts.maxPhotoWidthPx } }],
+      { format: ImageManipulator.SaveFormat.JPEG, compress: opts.jpegQuality, base64: true }
+    );
+
+    outUri = manipulated.uri;
+    if (!manipulated.base64) return null;
+
+    return { dataUri: `data:image/jpeg;base64,${manipulated.base64}` };
+  } catch {
+    return null;
+  } finally {
+    // Best-effort cleanup.
+    const cleanups: Promise<any>[] = [];
+    if (downloaded) cleanups.push(downloaded.cleanup());
+    if (thumbUri) cleanups.push(FileSystem.deleteAsync(thumbUri, { idempotent: true }).catch(() => {}));
+    if (outUri) cleanups.push(FileSystem.deleteAsync(outUri, { idempotent: true }).catch(() => {}));
+    await Promise.allSettled(cleanups);
+  }
+}
+
+async function shareXlsx(fileUri: string) {
+  const canShare = await Sharing.isAvailableAsync();
+  if (canShare) {
+    await Sharing.shareAsync(fileUri, {
+      mimeType: MIME_XLSX,
+      dialogTitle: 'Share spreadsheet',
+      UTI: Platform.OS === 'ios' ? IOS_UTI_XLSX : undefined,
+    });
+    return;
+  }
+
+  // Fallback: less reliable, but better than nothing.
+  await Share.share({ url: fileUri, title: 'Share spreadsheet' });
 }
 
 export async function downloadSubmissionSpreadsheet(
   row: SubmissionSpreadsheet,
-  opts: { fileNamePrefix?: string } = {}
-) {
-  const debug = __DEV__;
+  opts: ExportOpts = {}
+): Promise<void> {
+  const maxPhotoWidthPx = Math.max(256, Math.min(opts.maxPhotoWidthPx ?? 1400, 2400));
+  const jpegQuality = Math.max(0.3, Math.min(opts.jpegQuality ?? 0.85, 0.95));
 
   const wb = new ExcelJS.Workbook();
+  wb.creator = 'Retail Inventory Tracker';
+  wb.created = new Date();
 
-  const ws = wb.addWorksheet('submission', {
-    properties: { defaultRowHeight: 18 },
-    pageSetup: {
-      fitToPage: true,
-      fitToWidth: 1,
-      orientation: 'portrait',
-      margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
-    },
-  });
-
+  const ws = wb.addWorksheet('submission');
   ws.columns = [
-    { key: 'label',  width: 44 },
-    { key: 'value',  width: 44 },
-    { key: 'gap',    width: 2  },
-    { key: 'gap2',   width: 2  },
+    { key: 'label', width: 22 },
+    { key: 'value', width: 48 },
   ];
 
-  const border = {
-    top: { style: 'thin' as const },
-    bottom: { style: 'thin' as const },
-    left: { style: 'thin' as const },
-    right: { style: 'thin' as const },
-  };
-  const labelStyle = { font: { bold: true }, alignment: { vertical: 'middle' as const }, border };
-  const valueStyle = { alignment: { vertical: 'middle' as const }, border };
-
-  let r = 1;
-
-  // Title
-  ws.mergeCells(`A${r}:B${r}`);
-  const siteCell = ws.getCell(`A${r}`);
-  siteCell.value = (row.store_site || '').toUpperCase();
-  siteCell.font = { bold: true };
-  siteCell.alignment = { vertical: 'middle', horizontal: 'left' };
-  siteCell.border = border;
-  ws.getCell(`C${r}`).border = border;
-  ws.getCell(`D${r}`).border = border;
-  r++;
-
-  const addRow = (label: string, value: string) => {
-    ws.getCell(`A${r}`).value = label.toUpperCase();
-    Object.assign(ws.getCell(`A${r}`), labelStyle);
-    ws.getCell(`B${r}`).value = value || '';
-    Object.assign(ws.getCell(`B${r}`), valueStyle);
-    ws.getCell(`C${r}`).border = border;
-    ws.getCell(`D${r}`).border = border;
-    r++;
+  const addKV = (label: string, value: string) => {
+    ws.addRow([label, value]);
   };
 
-  addRow('DATE', row.date);
-  addRow('BRAND', row.brand);
-  addRow('STORE LOCATION', row.store_location);
-  addRow('LOCATIONS', row.location);
-  addRow('CONDITIONS', row.conditions);
-  addRow('PRICE PER UNIT', row.price_per_unit);
-  addRow('SHELF SPACE', row.shelf_space);
-  addRow('ON SHELF', row.on_shelf);
-  addRow('TAGS', row.tags);
-  addRow('NOTES', row.notes);
+  // Marker row: proves which exporter generated the file.
+  addKV('EXPORT_VERSION', 'XLSX_NATIVE_V2');
 
-  // Priority row, colored
-  const priorityRow = r;
-  addRow('PRIORITY LEVEL', row.priority_level ?? '');
-  const p = Number(row.priority_level ?? '0');
-  const color = p === 1 ? 'FFEF4444' /* red-500 */
-              : p === 2 ? 'FFF59E0B' /* amber-500 */
-              : p === 3 ? 'FF22C55E' /* green-500 */
-              : undefined;
-  if (color) {
-    ws.getCell(`B${priorityRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
-  }
+  addKV('DATE', normalizeText(row.date));
+  addKV('BRAND', normalizeText(row.brand));
+  addKV('STORE SITE', normalizeText(row.store_site));
+  addKV('STORE LOCATION', normalizeText(row.store_location));
+  addKV('LOCATIONS', normalizeText(row.location));
+  addKV('CONDITIONS', normalizeText(row.conditions));
+  addKV('PRICE PER UNIT', normalizeText(row.price_per_unit));
+  addKV('SHELF SPACE', normalizeText(row.shelf_space));
+  addKV('ON SHELF', normalizeText(row.on_shelf));
+  addKV('TAGS', normalizeTags(row.tags));
+  addKV('NOTES', normalizeText(row.notes));
+  addKV('PRIORITY LEVEL', normalizeText(row.priority_level));
+  if (row.submitted_by) addKV('SUBMITTED BY', normalizeText(row.submitted_by));
 
-  // PHOTOS header
-  ws.mergeCells(`A${r}:B${r}`);
-  const hdr = ws.getCell(`A${r}`);
-  hdr.value = 'PHOTOS';
+  // Photos section
+  ws.addRow(['', '']);
+  const hdr = ws.addRow(['PHOTOS', '']);
   hdr.font = { bold: true };
-  hdr.alignment = { vertical: 'middle', horizontal: 'left' };
-  hdr.border = border;
-  ws.getCell(`C${r}`).border = border;
-  ws.getCell(`D${r}`).border = border;
-  r++;
 
-  // Photo grid
-  const imageTopRow = r;
-  const rowsForImages = 18;
-  const imageBottomRow = imageTopRow + rowsForImages - 1;
+  const urls = (row.photo_urls || [])
+    .filter((u) => typeof u === 'string' && u.trim())
+    .slice(0, 2);
 
-  for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
-    ws.getCell(`A${rr}`).border = border;
-    ws.getCell(`B${rr}`).border = border;
-    ws.getCell(`C${rr}`).border = border;
-    ws.getCell(`D${rr}`).border = border;
-    ws.getRow(rr).height = 18;
-  }
+  // Keep URLs in-sheet (debug + traceability).
+  addKV('PHOTO 1 URL', urls[0] || '');
+  addKV('PHOTO 2 URL', urls[1] || '');
 
-  // Embed up to 2 images exactly as in the web Excel export
-  const urls = (row.photo_urls || []).slice(0, 2);
-  try {
-    const settled = await Promise.allSettled(urls.map(toCanvasBase64));
-    const base64s = settled
-      .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
-      .map((s) => s.value);
-
-    if (base64s[0]) {
-      const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
-      ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
-    }
-    if (base64s[1]) {
-      const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
-      ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
-    }
-  } catch (err) {
-    if (debug) {
-      console.warn('[exportSpreadsheet.native] image embedding failed', err);
+  // Reserve visible space.
+  const imageTopRow = (ws.lastRow?.number || 1) + 2;
+  const imageHeightRows = 18;
+  for (let i = 0; i < imageHeightRows; i++) {
+    const r = ws.getRow(imageTopRow + i);
+    r.height = 18;
+    if (i === 0) {
+      r.getCell(1).value = 'Photo 1';
+      r.getCell(2).value = 'Photo 2';
     }
   }
 
-  const buffer = await wb.xlsx.writeBuffer();
+  const settled = await Promise.allSettled(
+    urls.map((u) => toJpegDataUri(u, { maxPhotoWidthPx, jpegQuality }))
+  );
 
-  const exportDir =
-    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'documents-first')) ??
-    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'cache-first'));
+  for (let i = 0; i < settled.length; i++) {
+    const s = settled[i];
+    if (s.status !== 'fulfilled' || !s.value) continue;
 
-  if (!exportDir) {
-    alertStorageUnavailable();
-    throw new Error('Unable to resolve a writable directory for spreadsheet exports.');
+    const imageId = wb.addImage({
+      base64: s.value.dataUri,
+      extension: 'jpeg',
+    });
+
+    // Place side-by-side: col 0 = A, col 1 = B. ExcelJS uses 0-based col/row anchors.
+    ws.addImage(imageId, {
+      tl: { col: i, row: imageTopRow - 1 },
+      ext: { width: 320, height: 320 },
+    });
   }
+
+  // Write XLSX to disk.
+  const out = await wb.xlsx.writeBuffer();
+  const base64 = Buffer.from(out as ArrayBuffer).toString('base64');
+
+  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  if (!baseDir) throw new Error('No writable directory available for export.');
+
+  const exportDir = baseDir + 'exports/';
+  await ensureDir(exportDir);
 
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
-  const prefix = opts.fileNamePrefix || 'submission';
+  const prefix = sanitizeFileBase(opts.fileNamePrefix || 'submission');
   const fileName = `${prefix}-${iso}.xlsx`;
-  const dest = `${exportDir}${fileName}`;
+  const dest = exportDir + fileName;
 
-  // Write the XLSX bytes to disk
-  const base64 = Buffer.from(buffer as ArrayBufferLike).toString('base64');
   await FileSystem.writeAsStringAsync(dest, base64, {
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  if (debug) {
-    const info = await FileSystem.getInfoAsync(dest);
-    console.log('[exportSpreadsheet.native] wrote spreadsheet', dest, info);
-  }
-
-  await shareFileNative(dest, {
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    dialogTitle: 'Share submission spreadsheet',
-    message: 'Submission data attached as an Excel spreadsheet.',
-  });
-
-  return dest;
+  await shareXlsx(dest);
 }
 
 export default { downloadSubmissionSpreadsheet };

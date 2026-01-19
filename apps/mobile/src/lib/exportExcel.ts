@@ -43,7 +43,8 @@ async function toCanvasBase64(url: string): Promise<string> {
   if (srcForImg.startsWith('blob:') && srcForImg !== url) URL.revokeObjectURL(srcForImg);
 
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  return dataUrl.split(',')[1] || '';
+  // IMPORTANT: keep full data URI so ExcelJS can reliably interpret the format
+  return dataUrl;
 }
 
 export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { fileNamePrefix?: string } = {}) {
@@ -152,16 +153,16 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
   // Exactly up to two images; per-index mapping so both export reliably
   const urls = (row.photo_urls || []).slice(0, 2);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
-  const base64s = settled
+  const dataUris = settled
     .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
     .map((s) => s.value);
 
-  if (base64s[0]) {
-    const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
+  if (dataUris[0]) {
+    const id = wb.addImage({ base64: dataUris[0], extension: 'jpeg' });
     ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
   }
-  if (base64s[1]) {
-    const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
+  if (dataUris[1]) {
+    const id = wb.addImage({ base64: dataUris[1], extension: 'jpeg' });
     ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
   }
 
