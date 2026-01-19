@@ -90,8 +90,9 @@ const resolveAutoBuildMeta = (): BuildMeta => {
   return meta;
 };
 
-const envIosBuild =
-  sanitizeNumericString(process.env.IOS_BUILD_NUMBER ?? process.env.EXPO_IOS_BUILD_NUMBER) ?? undefined;
+// Ignore IOS_BUILD_NUMBER env for now; let generated/auto meta drive build numbers
+// so we don't accidentally pin the build number and hit App Store duplicate errors.
+const envIosBuild: string | undefined = undefined;
 const envAndroidBuild =
   sanitizeInteger(process.env.ANDROID_VERSION_CODE ?? process.env.EXPO_ANDROID_VERSION_CODE) ?? undefined;
 
@@ -101,7 +102,7 @@ const autoMeta = resolveAutoBuildMeta();
 // Always ensure iOS build number is at least 101 so we never collide with
 // older TestFlight builds again. We still respect env/generated/auto meta,
 // but clamp to a minimum of 101.
-const rawIosBuild = envIosBuild ?? generatedMeta.ios ?? autoMeta.ios;
+const rawIosBuild = generatedMeta.ios ?? autoMeta.ios;
 const iosBuildNumber = (() => {
   const n = Number(rawIosBuild);
   if (!Number.isFinite(n)) return '101';
