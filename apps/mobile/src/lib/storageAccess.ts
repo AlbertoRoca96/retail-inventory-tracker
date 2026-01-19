@@ -11,6 +11,9 @@ export function resolveWritableDirectory(
   FileSystem: typeof import('expo-file-system'),
   preference: DirectoryPreference = 'documents-first'
 ) {
+  // On iOS, Files.app exposes the app container; documentDirectory is the most stable
+  // place for user-facing exports. Cache/temp are fine fallbacks but we should never
+  // blow up just because one of them is missing.
   const primaryOrder =
     preference === 'documents-first'
       ? [FileSystem.documentDirectory, FileSystem.cacheDirectory]
@@ -20,7 +23,6 @@ export function resolveWritableDirectory(
     (FileSystem as any).temporaryDirectory,
     (FileSystem as any).documentDirectory,
     (FileSystem as any).storageDirectory,
-    (FileSystem as any).bundleDirectory,
     'file:///tmp/',
   ];
 
@@ -46,7 +48,10 @@ export async function ensureExportDirectory(
     if (__DEV__) {
       console.warn('[storageAccess] ensureExportDirectory failed', exportDir, err);
     }
-    return null;
+    // As a last resort, fall back to the root directory itself rather than
+    // treating storage as completely unavailable. The share sheet will still
+    // be able to move the file into Files when the user picks a destination.
+    return normalizeDir(root);
   }
 }
 

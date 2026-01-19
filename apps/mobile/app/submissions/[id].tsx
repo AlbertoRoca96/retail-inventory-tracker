@@ -19,6 +19,7 @@ import { colors, typography, textA11yProps, theme } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
 import { shareCsvNative } from '../../src/lib/shareCsv';
 import LogoHeader from '../../src/components/LogoHeader';
+import { getSignedStorageUrl } from '../../src/lib/supabaseHelpers';
 
 const isWeb = Platform.OS === 'web';
 
@@ -49,6 +50,19 @@ type Row = {
   priority_level?: number | null;
 };
 
+/** Build a human-friendly base name for exported files from the submission. */
+function buildSubmissionFileBase(row: Row): string {
+  const primary = row.store_location || row.store_site || 'submission';
+  const parts = [primary];
+  if (row.date) parts.push(row.date);
+  return parts.filter(Boolean).join(' - ');
+}
+
+/** Basic filename sanitizer for all platforms. */
+function sanitizeFileBase(name: string): string {
+  return name.replace(/[^a-z0-9_.-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'submission';
+}
+
 function priColor(n: number | null | undefined) {
   return n === 1 ? '#da291c' : n === 2 ? '#eeba2b' : '#99e169';
 }
@@ -69,7 +83,7 @@ function PriPill({ n }: { n: number | null | undefined }) {
   );
 }
 
-function toCsv(r: Row) {
+function toCsv(r: Row, photo1Resolved?: string | null, photo2Resolved?: string | null) {
   const tags = Array.isArray(r.tags)
     ? r.tags.join(', ')
     : typeof r.tags === 'string'
@@ -89,8 +103,9 @@ function toCsv(r: Row) {
     ['NOTES', r.notes ?? ''],
     ['PRIORITY LEVEL', r.priority_level ?? ''],
     ['SUBMITTED BY', r.created_by || ''],
-    ['PHOTO 1', r.photo1_url ?? r.photo1_path ?? ''],
-    ['PHOTO 2', r.photo2_url ?? r.photo2_path ?? ''],
+    // Prefer the same resolved URLs used in the UI so CSV matches what users see online
+    ['PHOTO 1', photo1Resolved ?? r.photo1_url ?? r.photo1_path ?? ''],
+    ['PHOTO 2', photo2Resolved ?? r.photo2_url ?? r.photo2_path ?? ''],
   ];
   return cells
     .map(([k, v]) => `"${k}","${String(v).replace(/"/g, '""')}"`)
@@ -163,11 +178,12 @@ export default function Submission() {
 
       const resolveSigned = async (path?: string | null) => {
         if (!path) return null;
-        const tryBucket = async (bucket: string) => {
-          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, { download: false });
-          return error ? null : data?.signedUrl ?? null;
-        };
-        return (await tryBucket('submissions')) || (await tryBucket('photos'));
+        const buckets = ['submissions', 'chat', 'photos'];
+        for (const bucket of buckets) {
+          const signed = await getSignedStorageUrl(bucket, path, 3600);
+          if (signed) return signed;
+        }
+        return null;
       };
 
       setPhoto1Url(dataRow.photo1_url ?? (await resolveSigned(dataRow.photo1_path)));
@@ -177,20 +193,39 @@ export default function Submission() {
 
   if (!row) return null;
 
-  const downloadExcelWithPhotos = async () => {
-    if (!isWeb) {
-      Alert.alert('Web only', 'Excel downloads are only available on the web dashboard for now.');
-      return;
-    }
-
+  const downloadSpreadsheetWithPhotos = async () => {
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
     const p2 = row.photo2_url || photo2Url || null;
     if (p1) photos.push(p1);
     if (p2) photos.push(p2);
 
-    const mod = await import('../../src/lib/exportExcel');
-    await mod.downloadSubmissionExcel({
+    const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+
+    if (isWeb) {
+      const mod = await import('../../src/lib/exportSpreadsheet.web');
+      await mod.downloadSubmissionSpreadsheet({
+        store_site: row.store_site || '',
+        date: row.date || '',
+        brand: row.brand || '',
+        store_location: row.store_location || '',
+        location: row.location || '',
+        conditions: row.conditions || '',
+        price_per_unit: String(row.price_per_unit ?? ''),
+        shelf_space: row.shelf_space || '',
+        on_shelf: String(row.on_shelf ?? ''),
+        tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
+        notes: row.notes || '',
+        photo_urls: photos,
+        priority_level: row.priority_level ? String(row.priority_level) : undefined,
+      }, { fileNamePrefix: baseName });
+      flash('success', 'Spreadsheet downloaded');
+      return;
+    }
+
+    // Native: HTML-as-Excel spreadsheet with inline images
+    const mod = await import('../../src/lib/exportSpreadsheet.native');
+    await mod.downloadSubmissionSpreadsheet({
       store_site: row.store_site || '',
       date: row.date || '',
       brand: row.brand || '',
@@ -203,13 +238,15 @@ export default function Submission() {
       tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
       notes: row.notes || '',
       photo_urls: photos,
-    });
-    flash('success', 'Excel downloaded');
+      priority_level: row.priority_level ? String(row.priority_level) : undefined,
+    }, { fileNamePrefix: baseName });
+    flash('success', 'Share sheet opened');
   };
 
   const shareSubmission = async () => {
-    const csv = toCsv(row);
-    const fileName = `submission-${row.id || Date.now()}.csv`;
+    const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+    const csv = toCsv(row, photo1, photo2);
+    const fileName = `${baseName}.csv`;
 
     if (Platform.OS === 'web') {
       const canUseNavigatorShare =
@@ -238,18 +275,34 @@ export default function Submission() {
     }
 
     try {
+      // 1) Send CSV into the internal chat as an attachment
+      const { sendCsvTextAttachmentMessage } = await import('../../src/lib/chat');
+      if (row.team_id && sendCsvTextAttachmentMessage) {
+        await sendCsvTextAttachmentMessage(
+          row.team_id,
+          row.id,
+          csv,
+          fileName,
+          'Submission CSV shared from detail view',
+          { is_internal: true }
+        );
+      }
+
+      // 2) Also open the native share sheet so the user can send the CSV to
+      // other apps (Mail, WhatsApp, etc.). This uses the same helper as
+      // "Save CSV" so behavior is consistent.
       await shareCsvNative(csv, fileName);
       flash('success', 'Share sheet opened');
-      Alert.alert('Share', 'Pick an app to send your CSV.');
     } catch (err: any) {
-      Alert.alert('Share failed', err?.message ?? 'Unable to open the share sheet on this device.');
-      flash('error', 'Could not open share sheet');
+      Alert.alert('Share failed', err?.message ?? 'Unable to share this submission.');
+      flash('error', 'Could not share submission');
     }
   };
 
   const saveCsvToFiles = async () => {
-    const csv = toCsv(row);
-    const fileName = `submission-${row.id || Date.now()}.csv`;
+    const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+    const csv = toCsv(row, photo1, photo2);
+    const fileName = `${baseName}.csv`;
 
     if (Platform.OS === 'web') {
       downloadCsvWeb(fileName, csv);
@@ -274,7 +327,9 @@ export default function Submission() {
       : '';
   const submittedBy = row.created_by || '';
 
-  const photoUrls = [row.photo1_url || photo1Url, row.photo2_url || photo2Url].filter(Boolean) as string[];
+  const photo1 = row.photo1_url || photo1Url || null;
+  const photo2 = row.photo2_url || photo2Url || null;
+  const photoUrls = [photo1, photo2].filter(Boolean) as string[];
   const csvSaveLabel = Platform.OS === 'web' ? 'Download CSV' : 'Save CSV';
   const buildPdfPayload = () => ({
     store_site: row.store_site || '',
@@ -299,13 +354,14 @@ export default function Submission() {
         : await import('../../src/lib/exportPdf.native');
       const fn = (mod as any)?.downloadSubmissionPdf || (mod as any)?.default?.downloadSubmissionPdf;
       if (typeof fn === 'function') {
-        await fn(buildPdfPayload());
+        const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+        await fn(buildPdfPayload(), { fileNamePrefix: baseName });
         if (Platform.OS === 'web') {
           flash('success', 'PDF downloaded');
           Alert.alert('PDF ready', 'Check your downloads folder for the exported PDF.');
         } else {
+          // Native: rely on the system share sheet UX only.
           flash('success', 'Share sheet opened');
-          Alert.alert('PDF ready', 'Choose "Save to Files" to keep a copy.');
         }
       }
     } catch (err: any) {
@@ -382,15 +438,13 @@ export default function Submission() {
         </View>
 
         <View style={styles.actionsGrid}>
-          {isWeb && (
-            <Button
-              title="Download Excel"
-              onPress={downloadExcelWithPhotos}
-              variant="secondary"
-              fullWidth
-              accessibilityLabel="Download Excel with photos"
-            />
-          )}
+          <Button
+            title="Download Spreadsheet"
+            onPress={downloadSpreadsheetWithPhotos}
+            variant="secondary"
+            fullWidth
+            accessibilityLabel="Download spreadsheet with photos"
+          />
           <Button
             title="Share CSV"
             onPress={shareSubmission}

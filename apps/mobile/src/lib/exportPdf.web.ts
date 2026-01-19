@@ -146,7 +146,10 @@ function priorityFillRgb(p?: string | null) {
   return null;
 }
 
-export async function downloadSubmissionPdf(data: SubmissionPdf) {
+export async function downloadSubmissionPdf(
+  data: SubmissionPdf,
+  opts: { fileNamePrefix?: string } = {}
+) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -241,7 +244,9 @@ export async function downloadSubmissionPdf(data: SubmissionPdf) {
   // Save + Download (with Safari-friendly fallback)
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-  const name = `submission-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
+  const iso = new Date().toISOString().replace(/[:.]/g, '-');
+  const prefix = opts.fileNamePrefix || 'submission';
+  const name = `${prefix}-${iso}.pdf`;
   downloadBlobWithFallback(blob, name);
 }
 

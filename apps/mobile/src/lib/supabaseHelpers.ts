@@ -106,13 +106,26 @@ async function ensureLocalFileUri(photo: PhotoLike) {
 }
 
 async function blobFromPhoto(photo: PhotoLike) {
-  if (photo.blob) return photo.blob;
+  // If caller already provided a Blob, trust it but guard against empty data
+  if (photo.blob) {
+    if (photo.blob.size === 0) {
+      throw new Error('Selected file appears to be empty');
+    }
+    return photo.blob;
+  }
+
   const localUri = await ensureLocalFileUri(photo);
+
+  // Expo / RN fetch(localUri) can be flaky and sometimes yield an empty blob.
+  // We try it first for efficiency, but we *never* accept a zero-byte result.
   try {
     const response = await fetch(localUri);
     const fetched = await response.blob();
     if (fetched && fetched.size > 0) {
       return fetched;
+    }
+    if (__DEV__) {
+      console.warn('[storage upload] fetched empty blob from', localUri);
     }
   } catch (error) {
     if (__DEV__) {
@@ -120,9 +133,21 @@ async function blobFromPhoto(photo: PhotoLike) {
     }
   }
 
-  const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+  // Fallback: read file as base64 via FileSystem and construct a Blob manually.
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  if (!base64) {
+    throw new Error('Unable to read image data from local file');
+  }
   const buffer = Buffer.from(base64, 'base64');
-  return new Blob([buffer], { type: photo.mimeType || 'application/octet-stream' });
+  const blob = new Blob([buffer], {
+    type: photo.mimeType || 'application/octet-stream',
+  });
+  if (blob.size === 0) {
+    throw new Error('Image data is empty after file read');
+  }
+  return blob;
 }
 
 export async function uploadFileToStorage({
@@ -138,6 +163,9 @@ export async function uploadFileToStorage({
     throw new Error('uploadFileToStorage requires a uri or blob');
   }
   const blob = await blobFromPhoto(photo);
+  if (!blob || blob.size === 0) {
+    throw new Error('Image file is empty; please try selecting a different photo.');
+  }
   const guessedType = photo.mimeType || blob.type || guessMimeType(path) || 'application/octet-stream';
   if (__DEV__) {
     console.log('[storage upload]', bucket, path, guessedType, blob.size);

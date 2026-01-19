@@ -177,7 +177,7 @@ export async function sendSubmissionMessage(
   }
 }
 
-// Upload CSV and send it as a chat message
+// Upload CSV and send it as a chat message (web / File-based)
 export async function sendCsvAttachmentMessage(
   teamId: string,
   submissionId: string | null,
@@ -223,6 +223,55 @@ export async function sendCsvAttachmentMessage(
     return result;
   } catch (error) {
     console.error('Error sending CSV attachment message:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// Native-friendly helper: upload a CSV string as a file and send it as a chat message.
+// This mirrors sendCsvAttachmentMessage but avoids relying on the browser File type.
+export async function sendCsvTextAttachmentMessage(
+  teamId: string,
+  submissionId: string | null,
+  csv: string,
+  fileName: string,
+  message: string,
+  options: { is_internal?: boolean; is_revised?: boolean } = {}
+): Promise<{ success: boolean; error?: string; message?: SubmissionMessage }> {
+  try {
+    const { is_internal = true, is_revised = false } = options;
+
+    const normalizedName = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
+    const objectName = `${Date.now()}-${normalizedName}`;
+    const filePath = `${teamId}/${objectName}`;
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const { error: uploadError } = await supabase.storage
+      .from('submission-csvs')
+      .upload(filePath, blob, {
+        contentType: 'text/csv',
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('submission-csvs')
+      .getPublicUrl(filePath);
+
+    const result = await sendSubmissionMessage({
+      team_id: teamId,
+      submission_id: submissionId,
+      body: message,
+      is_internal,
+      is_revised,
+      attachment_path: publicUrl,
+      attachment_type: 'csv',
+    });
+
+    return result;
+  } catch (error) {
+    console.error('Error sending CSV text attachment message:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }

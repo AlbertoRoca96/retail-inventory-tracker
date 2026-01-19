@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, SafeAreaView, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, SafeAreaView, StyleSheet, Pressable, useWindowDimensions, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -54,6 +54,19 @@ export default function Menu() {
     return Math.max(160, usable / 2 - rowGap);
   }, [height, insets.top, insets.bottom]);
 
+  const renderTile = ({ item }: { item: typeof TILE_DATA[number] }) => (
+    <Pressable
+      key={item.key}
+      onPress={item.onPress}
+      style={[styles.tile, { backgroundColor: item.color, minHeight: tileHeight }]}
+    >
+      <View style={styles.iconCircle}>
+        <Ionicons name={item.icon} size={32} color={colors.white} />
+      </View>
+      <Text style={styles.tileTitle}>{item.title}</Text>
+    </Pressable>
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
       <Head>
@@ -61,20 +74,15 @@ export default function Menu() {
       </Head>
       <LogoHeader showBack={false} showSettings settingsColor={colors.text} />
       <View style={styles.content}>
-        <View style={styles.grid}>
-          {TILE_DATA.map((item) => (
-            <Pressable
-              key={item.key}
-              onPress={item.onPress}
-              style={[styles.tile, { backgroundColor: item.color, minHeight: tileHeight }]}
-            >
-              <View style={styles.iconCircle}>
-                <Ionicons name={item.icon} size={32} color={colors.white} />
-              </View>
-              <Text style={styles.tileTitle}>{item.title}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <FlatList
+          data={TILE_DATA}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          keyExtractor={(item) => item.key}
+          renderItem={renderTile}
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+        />
       </View>
     </SafeAreaView>
   );
@@ -91,16 +99,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   grid: {
+    flexGrow: 1,
+    paddingBottom: 12,
+    gap: 16,
+  },
+  row: {
     flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    alignContent: 'space-between',
-    rowGap: 16,
-    columnGap: 16,
+    marginBottom: 16,
   },
   tile: {
-    flexBasis: '48%',
+    flex: 1,
+    marginHorizontal: 4,
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 28,

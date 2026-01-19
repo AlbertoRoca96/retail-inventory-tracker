@@ -231,6 +231,7 @@ export default function AccountSettings() {
           uri: a.uri,
           fileName: a.fileName || 'avatar.jpg',
           mimeType: a.mimeType || 'image/jpeg',
+          assetId: (a as any).assetId ?? null,
         },
         'avatars'
       );

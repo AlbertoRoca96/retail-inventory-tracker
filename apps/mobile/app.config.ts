@@ -114,11 +114,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     sanitizeOrigin(process.env.EXPO_PUBLIC_WEB_ORIGIN ?? process.env.WEB_ORIGIN) ??
     FALLBACK_WEB_ORIGIN;
 
-  const iosBuildNumber = isEasBuild ? undefined : (envIosBuild ?? generatedMeta.ios ?? autoMeta.ios);
-  const androidVersionCode = ensureAndroidBounds(
-    envAndroidBuild ?? generatedMeta.android ?? autoMeta.android
-  );
-
   return {
     ...config,
     name: "RWS",

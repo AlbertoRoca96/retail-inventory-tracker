@@ -1,6 +1,7 @@
 // apps/mobile/src/lib/shareCsv.native.ts
 import { Platform } from 'react-native';
 import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
+import { shareFileNative } from './shareFile.native';
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^a-z0-9_.-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'submission.csv';
@@ -9,7 +10,9 @@ function sanitizeFileName(name: string) {
 export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
   const debug = __DEV__;
   try {
-    const FileSystemModule = await import('expo-file-system');
+    // Use the legacy filesystem API to avoid the runtime deprecation error
+    // when calling writeAsStringAsync in Expo 54.
+    const FileSystemModule = await import('expo-file-system/legacy');
     const FileSystem: typeof import('expo-file-system') = (FileSystemModule as any)?.default ?? FileSystemModule;
 
     const exportDir =
@@ -17,6 +20,9 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
       (await ensureExportDirectory(FileSystem, 'csv', 'cache-first'));
 
     if (!exportDir) {
+      // This should be practically impossible on a real device now that
+      // ensureExportDirectory falls back to a root directory, but keep
+      // a soft alert just in case.
       alertStorageUnavailable();
       throw new Error('Files storage unavailable on this device. Please enable Files access.');
     }
@@ -36,41 +42,20 @@ export async function shareCsvNative(csv: string, fileName = 'submission.csv') {
       console.log('[shareCsvNative] writing CSV', filePath, `(${csv.length} chars)`);
     }
 
-    await FileSystem.writeAsStringAsync(filePath, csv, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-
-    let Sharing: typeof import('expo-sharing') | null = null;
-    try {
-      const SharingModule = await import('expo-sharing');
-      Sharing = (SharingModule as any)?.default ?? SharingModule;
-    } catch (err) {
-      if (debug) {
-        console.warn('[shareCsvNative] expo-sharing unavailable', err);
-      }
-      Sharing = null;
-    }
+    // Expo's writeAsStringAsync defaults to UTF-8; avoid touching
+    // EncodingType in case it is undefined in some runtimes.
+    await FileSystem.writeAsStringAsync(filePath, csv as any);
 
     const info = await FileSystem.getInfoAsync(filePath);
     if (debug) {
       console.log('[shareCsvNative] file info', info);
     }
 
-    if (!Sharing) {
-      throw new Error('Sharing module unavailable');
-    }
-    const sharingAvailable = await Sharing.isAvailableAsync();
-    if (debug) {
-      console.log('[shareCsvNative] sharing available?', sharingAvailable);
-    }
-    if (!sharingAvailable) {
-      throw new Error('Sharing is not available on this device');
-    }
-
-    await Sharing.shareAsync(filePath, {
+    await shareFileNative(filePath, {
       mimeType: 'text/csv',
       dialogTitle: 'Share submission CSV',
-      UTI: 'public.comma-separated-values-text',
+      uti: 'public.comma-separated-values-text',
+      message: 'Submission data attached as CSV.',
     });
     return;
   } catch (error) {

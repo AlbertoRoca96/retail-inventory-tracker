@@ -1,8 +1,15 @@
+// apps/mobile/src/lib/exportSpreadsheet.native.ts
+// Native spreadsheet export that produces a **real XLSX file** with embedded
+// images, mirroring the web Excel export so the result is fully editable in
+// Excel/Numbers and not a PDF or HTML hack.
+
 import ExcelJS from 'exceljs';
+import * as FileSystem from 'expo-file-system/legacy';
+import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
+import { shareFileNative } from './shareFile.native';
 
-export type SubmissionExcel = {
+export type SubmissionSpreadsheet = {
   store_site: string;
-
   date: string;
   brand: string;
   store_location: string;
@@ -13,43 +20,33 @@ export type SubmissionExcel = {
   on_shelf: string;
   tags: string;
   notes: string;
-
-  priority_level?: string;   // "1" | "2" | "3"
-
-  photo_urls: string[];
+  priority_level?: string | null; // "1" | "2" | "3"
+  photo_urls: string[]; // up to 2
 };
 
+// ----- Image helpers (borrowed from web Excel export, adapted for native) -----
+
 async function toCanvasBase64(url: string): Promise<string> {
-  let srcForImg = url;
-  if (/^https?:/i.test(url)) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
-    const blob = await res.blob();
-    srcForImg = URL.createObjectURL(blob);
+  // On native, ExcelJS only needs base64 JPEG; we can fetch the remote URL
+  // and feed the bytes into a data URL-compatible string.
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
+  const blob = await res.blob();
+  const arrayBuffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
-
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = reject;
-    el.src = srcForImg;
-  });
-
-  const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth || (img.width as number);
-  canvas.height = img.naturalHeight || (img.height as number);
-  canvas.getContext('2d')!.drawImage(img, 0, 0);
-
-  if (srcForImg.startsWith('blob:') && srcForImg !== url) URL.revokeObjectURL(srcForImg);
-
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  return dataUrl.split(',')[1] || '';
+  const base64 = globalThis.btoa ? globalThis.btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
+  return base64;
 }
 
-export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { fileNamePrefix?: string } = {}) {
-  if (typeof document === 'undefined') {
-    throw new Error('Excel export is only available on the web app.');
-  }
+export async function downloadSubmissionSpreadsheet(
+  row: SubmissionSpreadsheet,
+  opts: { fileNamePrefix?: string } = {}
+) {
+  const debug = __DEV__;
 
   const wb = new ExcelJS.Workbook();
 
@@ -113,7 +110,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 
-  // NEW: Priority row, colored
+  // Priority row, colored
   const priorityRow = r;
   addRow('PRIORITY LEVEL', row.priority_level ?? '');
   const p = Number(row.priority_level ?? '0');
@@ -149,32 +146,62 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
     ws.getRow(rr).height = 18;
   }
 
-  // Exactly up to two images; per-index mapping so both export reliably
+  // Embed up to 2 images exactly as in the web Excel export
   const urls = (row.photo_urls || []).slice(0, 2);
-  const settled = await Promise.allSettled(urls.map(toCanvasBase64));
-  const base64s = settled
-    .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
-    .map((s) => s.value);
+  try {
+    const settled = await Promise.allSettled(urls.map(toCanvasBase64));
+    const base64s = settled
+      .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
+      .map((s) => s.value);
 
-  if (base64s[0]) {
-    const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
-    ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
-  }
-  if (base64s[1]) {
-    const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
-    ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
+    if (base64s[0]) {
+      const id = wb.addImage({ base64: base64s[0], extension: 'jpeg' });
+      ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
+    }
+    if (base64s[1]) {
+      const id = wb.addImage({ base64: base64s[1], extension: 'jpeg' });
+      ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
+    }
+  } catch (err) {
+    if (debug) {
+      console.warn('[exportSpreadsheet.native] image embedding failed', err);
+    }
   }
 
   const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+
+  const exportDir =
+    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'documents-first')) ??
+    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'cache-first'));
+
+  if (!exportDir) {
+    alertStorageUnavailable();
+    throw new Error('Unable to resolve a writable directory for spreadsheet exports.');
+  }
+
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = opts.fileNamePrefix || 'submission';
-  const fname = `${prefix}-${iso}.xlsx`;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = fname;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const fileName = `${prefix}-${iso}.xlsx`;
+  const dest = `${exportDir}${fileName}`;
+
+  // Write the XLSX bytes to disk
+  const base64 = Buffer.from(buffer as ArrayBufferLike).toString('base64');
+  await FileSystem.writeAsStringAsync(dest, base64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  if (debug) {
+    const info = await FileSystem.getInfoAsync(dest);
+    console.log('[exportSpreadsheet.native] wrote spreadsheet', dest, info);
+  }
+
+  await shareFileNative(dest, {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dialogTitle: 'Share submission spreadsheet',
+    message: 'Submission data attached as an Excel spreadsheet.',
+  });
+
+  return dest;
 }
+
+export default { downloadSubmissionSpreadsheet };

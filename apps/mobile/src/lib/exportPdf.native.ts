@@ -1,9 +1,9 @@
 // apps/mobile/src/lib/exportPdf.native.ts
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import { alertStorageUnavailable, resolveWritableDirectory } from './storageAccess';
+import { alertStorageUnavailable, resolveWritableDirectory, ensureExportDirectory } from './storageAccess';
+import { shareFileNative } from './shareFile.native';
 
 export type SubmissionPdf = {
   store_site: string;
@@ -76,9 +76,10 @@ function priorityFill(p?: string | null): string {
 }
 
 /**
- * Build the PDF and return the **file URI**.
- * - Mirrors Excel layout & your previous HTML.
- * - If `inlineImages` is true, photos are embedded as data URIs for reliability.
+ * Build the PDF and return the **final saved file URI** inside the app's
+ * exports/pdf directory. We render HTML → PDF via Print, then copy the
+ * resulting bytes into a predictable location that shows up under
+ * Files → On My iPhone → RWS → exports → pdf.
  */
 export async function createSubmissionPdf(
   data: SubmissionPdf,
@@ -138,73 +139,79 @@ export async function createSubmissionPdf(
   </div>
 </body></html>`;
 
-  // 1) Render HTML → PDF file on device
-  const { uri } = await Print.printToFileAsync({ html, base64: false });
+  // 1) Render HTML → PDF file in memory (base64) so we can write it exactly
+  // where we want in the app container.
+  const { base64 } = await Print.printToFileAsync({ html, base64: true });
 
-  // 2) Give it a nice name and move into app documents folder
+  // 2) Give it a nice name and move into app documents/exports/pdf folder.
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = opts.fileNamePrefix || 'submission';
   const fileName = `${prefix}-${iso}.pdf`;
 
-  const candidateDirs = [
-    FileSystem.cacheDirectory,
-    FileSystem.documentDirectory,
-    (FileSystem as any).temporaryDirectory,
-    'file:///tmp/',
-  ];
-  const baseDir = candidateDirs.find((dir): dir is string => typeof dir === 'string' && dir.length > 0) || null;
-  if (!baseDir) {
+  const exportDir =
+    (await ensureExportDirectory(FileSystem as any, 'pdf', 'documents-first')) ??
+    (await ensureExportDirectory(FileSystem as any, 'pdf', 'cache-first'));
+  if (!exportDir) {
     alertStorageUnavailable();
-    return uri;
+    throw new Error('Unable to resolve a writable directory for PDF exports.');
   }
-  const normalizedBase = baseDir.endsWith('/') ? baseDir : `${baseDir}/`;
-  const exportDir = `${normalizedBase}exports/pdf/`;
-  try {
-    const info = await FileSystem.getInfoAsync(exportDir);
-    if (!info.exists) {
-      await FileSystem.makeDirectoryAsync(exportDir, { intermediates: true });
-    }
-  } catch {}
 
   const dest = `${exportDir}${fileName}`;
 
   try {
-    await FileSystem.copyAsync({ from: uri, to: dest });
+    await FileSystem.writeAsStringAsync(dest, base64 as string, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
     return dest;
-  } catch {
-    return uri;
+  } catch (error) {
+    throw new Error('Failed to write PDF file to exports directory.');
   }
 }
 
 /**
- * Previous behavior: build the PDF then open the share sheet / print dialog.
+ * Build the PDF then open the share sheet / print dialog.
  * Returns the file URI either way.
  */
-export async function downloadSubmissionPdf(data: SubmissionPdf): Promise<string> {
+export async function downloadSubmissionPdf(
+  data: SubmissionPdf,
+  opts: { fileNamePrefix?: string } = {}
+): Promise<string> {
   const uri = await createSubmissionPdf(data, {
     inlineImages: true,
-    fileNamePrefix: 'submission',
+    fileNamePrefix: opts.fileNamePrefix || 'submission',
   });
 
-  // Sanity: make sure the file exists before trying to share/print
+  // Sanity: make sure the file exists before trying to share
   try {
     const info = await FileSystem.getInfoAsync(uri);
     if (!info.exists) {
-      return uri;
+      throw new Error('PDF file was not created successfully.');
     }
-  } catch {
-    return uri;
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('Unable to verify PDF file.');
   }
 
-  const sharingAvailable = await Sharing.isAvailableAsync();
-  if (!sharingAvailable) {
-    throw new Error('Sharing is not available on this device');
+  try {
+    await shareFileNative(uri, {
+      mimeType: 'application/pdf',
+      dialogTitle: 'Share submission PDF',
+      uti: 'com.adobe.pdf',
+      message: 'Submission PDF attached.',
+    });
+    return uri;
+  } catch (err) {
+    // If sharing fails or the user cancels, offer print as a backup but do
+    // not hide the original error from callers.
+    try {
+      await Print.printAsync({ uri });
+    } catch {
+      // swallow; at this point the file still exists at `uri` or `dest`
+    }
+    throw err;
   }
-  await Sharing.shareAsync(uri, {
-    UTI: 'com.adobe.pdf',
-    mimeType: 'application/pdf',
-  });
-  return uri;
+
+  // NOTE: We only reach here if the caller ignores the thrown error.
+
 }
 
 // Keep a default export shape if other modules import it that way.
