@@ -276,6 +276,57 @@ export async function sendCsvTextAttachmentMessage(
   }
 }
 
+// Native helper: upload an Excel file (by local path) into chat storage and
+// send it as a submission message with attachment_type 'excel'.
+export async function sendExcelFileAttachmentMessageFromPath(
+  teamId: string,
+  submissionId: string | null,
+  localPath: string,
+  fileName: string,
+  message: string,
+  options: { is_internal?: boolean; is_revised?: boolean } = {}
+): Promise<{ success: boolean; error?: string; message?: SubmissionMessage }> {
+  try {
+    const { is_internal = true, is_revised = false } = options;
+
+    const normalizedName = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
+    const objectName = `${Date.now()}-${normalizedName}`;
+    const storagePath = `${teamId}/excel/${objectName}`;
+
+    const response = await fetch(localPath);
+    const blob = await response.blob();
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat')
+      .upload(storagePath, blob, {
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        upsert: true,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('chat')
+      .getPublicUrl(storagePath);
+
+    const result = await sendSubmissionMessage({
+      team_id: teamId,
+      submission_id: submissionId,
+      body: message,
+      is_internal,
+      is_revised,
+      attachment_path: publicUrl,
+      attachment_type: 'excel',
+    });
+
+    return result;
+  } catch (error) {
+    console.error('Error sending Excel attachment message:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 // Subscribe to real-time updates for a specific submission
 export function subscribeToSubmissionMessages(
   submissionId: string,

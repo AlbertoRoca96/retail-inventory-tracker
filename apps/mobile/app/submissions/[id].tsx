@@ -193,6 +193,7 @@ export default function Submission() {
 
   if (!row) return null;
 
+  // NOTE: Native no longer uses this; web-only for now.
   const downloadSpreadsheetWithPhotos = async () => {
     console.warn('[downloadSpreadsheetWithPhotos] tapped');
 
@@ -229,8 +230,8 @@ export default function Submission() {
         return;
       }
 
-      const mod = await import('../../src/lib/exportSpreadsheet.native');
-      await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
+      const edge = await import('../../src/lib/submissionSpreadsheet.native');
+      await edge.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       Alert.alert('Spreadsheet failed', err?.message ?? 'Unable to generate spreadsheet');
@@ -267,13 +268,8 @@ export default function Submission() {
         return;
       }
 
-      const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
-      console.warn('[saveSpreadsheetToFiles] calling shareCsvNative with', submissionPayload, baseName);
-      await shareCsvNative(submissionPayload as any, baseName);
-      flash('success', 'Share sheet opened');
-      Alert.alert('Save Spreadsheet', 'Choose "Save to Files" in the share sheet to keep a copy.');
-      console.warn('[shareSubmission] calling shareCsvNative with', submissionPayload, baseName);
-      await shareCsvNative(submissionPayload as any, baseName);
+      const edge = await import('../../src/lib/submissionSpreadsheet.native');
+      await edge.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       console.warn('[shareSubmission] failed', err);
@@ -282,8 +278,8 @@ export default function Submission() {
     }
   };
 
-  const saveSpreadsheetToFiles = async () => {
-    console.warn('[saveSpreadsheetToFiles] tapped');
+  const sendSpreadsheetToChat = async () => {
+    console.warn('[sendSpreadsheetToChat] tapped');
 
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
     const submissionPayload = {
@@ -311,16 +307,37 @@ export default function Submission() {
         return;
       }
 
-      const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
-      console.warn('[shareSubmission] calling shareCsvNative with', submissionPayload, baseName);
-      await shareCsvNative(submissionPayload as any, baseName);
-      flash('success', 'Share sheet opened');
+      if (!row.team_id) {
+        Alert.alert('Missing team', 'Cannot send spreadsheet without a team id.');
+        return;
+      }
+
+      const edge = await import('../../src/lib/submissionSpreadsheet.native');
+      const chat = await import('../../src/lib/chat');
+
+      const path = await edge.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+      const result = await chat.sendExcelFileAttachmentMessageFromPath(
+        row.team_id,
+        row.id,
+        path,
+        `${baseName}.xlsx`,
+        'Submission spreadsheet',
+        { is_internal: true }
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Unable to send spreadsheet to chat');
+      }
+
+      flash('success', 'Spreadsheet sent to team chat');
     } catch (err: any) {
-      console.warn('[saveSpreadsheetToFiles] failed', err);
-      Alert.alert('Save failed', err?.message ?? 'Unable to save spreadsheet on this device.');
-      flash('error', 'Unable to save spreadsheet');
+      console.warn('[sendSpreadsheetToChat] failed', err);
+      Alert.alert('Send failed', err?.message ?? 'Unable to send spreadsheet to chat.');
+      flash('error', 'Unable to send spreadsheet to chat');
     }
   };
+
+  const tagsText = Array.isArray(row.tags)
 
   const tagsText = Array.isArray(row.tags)
     ? row.tags.join(', ')
@@ -332,7 +349,7 @@ export default function Submission() {
   const photo1 = row.photo1_url || photo1Url || null;
   const photo2 = row.photo2_url || photo2Url || null;
   const photoUrls = [photo1, photo2].filter(Boolean) as string[];
-  const csvSaveLabel = Platform.OS === 'web' ? 'Download Spreadsheet' : 'Save Spreadsheet';
+  const csvSaveLabel = Platform.OS === 'web' ? 'Download Spreadsheet' : 'Send Spreadsheet to Chat';
   const buildPdfPayload = () => ({
     store_site: row.store_site || '',
     date: row.date || '',
@@ -441,13 +458,6 @@ export default function Submission() {
 
         <View style={styles.actionsGrid}>
           <Button
-            title="Download Spreadsheet"
-            onPress={downloadSpreadsheetWithPhotos}
-            variant="secondary"
-            fullWidth
-            accessibilityLabel="Download spreadsheet with photos"
-          />
-          <Button
             title="Share Spreadsheet"
             onPress={shareSubmission}
             variant="primary"
@@ -456,10 +466,10 @@ export default function Submission() {
           />
           <Button
             title={csvSaveLabel}
-            onPress={saveSpreadsheetToFiles}
+            onPress={sendSpreadsheetToChat}
             variant="primary"
             fullWidth
-            accessibilityLabel={Platform.OS === 'web' ? 'Download spreadsheet file' : 'Save spreadsheet to Files'}
+            accessibilityLabel={Platform.OS === 'web' ? 'Download spreadsheet file' : 'Send spreadsheet to team chat'}
           />
           <Button
             title="Save PDF"
