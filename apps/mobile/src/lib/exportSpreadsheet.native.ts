@@ -5,8 +5,14 @@
 
 import ExcelJS from 'exceljs';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Buffer } from 'buffer';
 import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
 import { shareFileNative } from './shareFile.native';
+
+// Ensure Buffer exists on globalThis for ExcelJS and our base64 conversions
+if (!(globalThis as any).Buffer) {
+  (globalThis as any).Buffer = Buffer;
+}
 
 export type SubmissionSpreadsheet = {
   store_site: string;
