@@ -20,7 +20,6 @@
     "preview": {
       "node": "20.19.4",
       "distribution": "internal",
-      "autoIncrement": true,
       "android": {
         "buildType": "apk",
         "image": "latest"
@@ -37,7 +36,6 @@
     "production": {
       "node": "20.19.4",
       "distribution": "store",
-      "autoIncrement": true,
       "ios": {
         "image": "latest"
       },
