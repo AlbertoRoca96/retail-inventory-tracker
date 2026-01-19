@@ -5,8 +5,11 @@
 
 import * as FileSystem from 'expo-file-system';
 import { Alert } from 'react-native';
+import { Buffer } from 'buffer';
 import { shareFileNative } from './shareFile.native';
 import { supabase, resolvedSupabaseUrl } from './supabase';
+
+if (!(globalThis as any).Buffer) (globalThis as any).Buffer = Buffer;
 
 const EDGE_FUNCTION_NAME = 'submission-xlsx';
 
