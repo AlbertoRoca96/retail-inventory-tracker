@@ -264,9 +264,11 @@ export default function Submission() {
       }
 
       const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
+      console.warn('[shareSubmission] calling shareCsvNative with', submissionPayload, baseName);
       await shareCsvNative(submissionPayload as any, baseName);
       flash('success', 'Share sheet opened');
     } catch (err: any) {
+      console.warn('[shareSubmission] failed', err);
       Alert.alert('Share failed', err?.message ?? 'Unable to share this submission.');
       flash('error', 'Could not share submission');
     }
@@ -300,10 +302,12 @@ export default function Submission() {
       }
 
       const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
+      console.warn('[saveSpreadsheetToFiles] calling shareCsvNative with', submissionPayload, baseName);
       await shareCsvNative(submissionPayload as any, baseName);
       flash('success', 'Share sheet opened');
       Alert.alert('Save Spreadsheet', 'Choose "Save to Files" in the share sheet to keep a copy.');
     } catch (err: any) {
+      console.warn('[saveSpreadsheetToFiles] failed', err);
       Alert.alert('Save failed', err?.message ?? 'Unable to save spreadsheet on this device.');
       flash('error', 'Unable to save spreadsheet');
     }

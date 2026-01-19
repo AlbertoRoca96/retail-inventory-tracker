@@ -193,6 +193,13 @@ export async function downloadSubmissionSpreadsheet(
   const maxPhotoWidthPx = Math.max(256, Math.min(opts.maxPhotoWidthPx ?? 1400, 2400));
   const jpegQuality = Math.max(0.3, Math.min(opts.jpegQuality ?? 0.85, 0.95));
 
+  // QUICK SAFETY: if something is catastrophically wrong with ExcelJS on native,
+  // bail early with a simple text file so buttons don't freeze the UI. Remove
+  // this guard once things are stable.
+  if (!ExcelJS || !(ExcelJS as any).Workbook) {
+    throw new Error('ExcelJS not available on native runtime');
+  }
+
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Retail Inventory Tracker';
   wb.created = new Date();
@@ -249,9 +256,15 @@ export async function downloadSubmissionSpreadsheet(
     }
   }
 
-  const settled = await Promise.allSettled(
-    urls.map((u) => toJpegDataUri(u, { maxPhotoWidthPx, jpegQuality }))
-  );
+  let settled: PromiseSettledResult<{ dataUri: string } | null>[] = [];
+  try {
+    settled = await Promise.allSettled(
+      urls.map((u) => toJpegDataUri(u, { maxPhotoWidthPx, jpegQuality }))
+    );
+  } catch (err) {
+    // If anything goes wrong with image conversion, continue without images
+    settled = [];
+  }
 
   for (let i = 0; i < settled.length; i++) {
     const s = settled[i];
