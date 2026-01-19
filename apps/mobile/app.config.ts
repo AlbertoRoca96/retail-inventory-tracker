@@ -98,7 +98,15 @@ const envAndroidBuild =
 const generatedMeta = readGeneratedBuildMeta();
 const autoMeta = resolveAutoBuildMeta();
 
-const iosBuildNumber = envIosBuild ?? generatedMeta.ios ?? autoMeta.ios;
+// Always ensure iOS build number is at least 101 so we never collide with
+// older TestFlight builds again. We still respect env/generated/auto meta,
+// but clamp to a minimum of 101.
+const rawIosBuild = envIosBuild ?? generatedMeta.ios ?? autoMeta.ios;
+const iosBuildNumber = (() => {
+  const n = Number(rawIosBuild);
+  if (!Number.isFinite(n)) return '101';
+  return String(Math.max(101, Math.floor(n)));
+})();
 const androidVersionCode = ensureAndroidBounds(
   envAndroidBuild ?? generatedMeta.android ?? autoMeta.android
 );
