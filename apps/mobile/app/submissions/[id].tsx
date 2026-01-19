@@ -202,96 +202,69 @@ export default function Submission() {
 
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
 
-    if (isWeb) {
-      const mod = await import('../../src/lib/exportSpreadsheet.web');
-      await mod.downloadSubmissionSpreadsheet({
-        store_site: row.store_site || '',
-        date: row.date || '',
-        brand: row.brand || '',
-        store_location: row.store_location || '',
-        location: row.location || '',
-        conditions: row.conditions || '',
-        price_per_unit: String(row.price_per_unit ?? ''),
-        shelf_space: row.shelf_space || '',
-        on_shelf: String(row.on_shelf ?? ''),
-        tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
-        notes: row.notes || '',
-        photo_urls: photos,
-        priority_level: row.priority_level ? String(row.priority_level) : undefined,
-      }, { fileNamePrefix: baseName });
-      flash('success', 'Spreadsheet downloaded');
-      return;
-    }
-
-    // Native: HTML-as-Excel spreadsheet with inline images
-    const mod = await import('../../src/lib/exportSpreadsheet.native');
-    await mod.downloadSubmissionSpreadsheet({
+    const submissionPayload = {
       store_site: row.store_site || '',
       date: row.date || '',
       brand: row.brand || '',
       store_location: row.store_location || '',
       location: row.location || '',
       conditions: row.conditions || '',
-      price_per_unit: String(row.price_per_unit ?? ''),
+      price_per_unit: row.price_per_unit ?? '',
       shelf_space: row.shelf_space || '',
-      on_shelf: String(row.on_shelf ?? ''),
+      on_shelf: row.on_shelf ?? '',
       tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
       notes: row.notes || '',
+      priority_level: row.priority_level ?? '',
+      submitted_by: submittedBy || '',
       photo_urls: photos,
-      priority_level: row.priority_level ? String(row.priority_level) : undefined,
-    }, { fileNamePrefix: baseName });
-    flash('success', 'Share sheet opened');
+    };
+
+    try {
+      if (isWeb) {
+        const mod = await import('../../src/lib/exportSpreadsheet.web');
+        await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
+        flash('success', 'Spreadsheet downloaded');
+        return;
+      }
+
+      const mod = await import('../../src/lib/exportSpreadsheet.native');
+      await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
+      flash('success', 'Share sheet opened');
+    } catch (err: any) {
+      Alert.alert('Spreadsheet failed', err?.message ?? 'Unable to generate spreadsheet');
+      flash('error', 'Unable to generate spreadsheet');
+    }
   };
 
   const shareSubmission = async () => {
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
-    const csv = toCsv(row, photo1, photo2);
-    const fileName = `${baseName}.csv`;
-
-    if (Platform.OS === 'web') {
-      const canUseNavigatorShare =
-        typeof navigator !== 'undefined' &&
-        typeof (navigator as any).share === 'function' &&
-        typeof File !== 'undefined';
-
-      if (canUseNavigatorShare) {
-        try {
-          const file = new File([csv], fileName, { type: 'text/csv' });
-          await (navigator as any).share({
-            title: 'Submission',
-            text: 'See attached CSV',
-            files: [file],
-          });
-          flash('success', 'Share sheet opened');
-          return;
-        } catch (err) {
-          console.warn('Web share failed, falling back to download', err);
-        }
-      }
-
-      downloadCsvWeb(fileName, csv);
-      flash('success', 'CSV downloaded');
-      return;
-    }
+    const submissionPayload = {
+      store_site: row.store_site || '',
+      date: row.date || '',
+      brand: row.brand || '',
+      store_location: row.store_location || '',
+      location: row.location || '',
+      conditions: row.conditions || '',
+      price_per_unit: row.price_per_unit ?? '',
+      shelf_space: row.shelf_space || '',
+      on_shelf: row.on_shelf ?? '',
+      tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
+      notes: row.notes || '',
+      priority_level: row.priority_level ?? '',
+      submitted_by: submittedBy || '',
+      photo_urls: photoUrls,
+    };
 
     try {
-      // 1) Send CSV into the internal chat as an attachment
-      const { sendCsvTextAttachmentMessage } = await import('../../src/lib/chat');
-      if (row.team_id && sendCsvTextAttachmentMessage) {
-        await sendCsvTextAttachmentMessage(
-          row.team_id,
-          row.id,
-          csv,
-          fileName,
-          'Submission CSV shared from detail view',
-          { is_internal: true }
-        );
+      if (Platform.OS === 'web') {
+        const mod = await import('../../src/lib/exportSpreadsheet.web');
+        await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
+        flash('success', 'Spreadsheet downloaded');
+        return;
       }
 
-      // 2) Also open the native share sheet so the user can send the CSV to
-      // other apps (Mail, WhatsApp, etc.). This uses the same helper as
-      // "Save CSV" so behavior is consistent.
-      await shareCsvNative(csv, fileName);
+      const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
+      await shareCsvNative(submissionPayload as any, baseName);
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       Alert.alert('Share failed', err?.message ?? 'Unable to share this submission.');
@@ -299,24 +272,40 @@ export default function Submission() {
     }
   };
 
-  const saveCsvToFiles = async () => {
+  const saveSpreadsheetToFiles = async () => {
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
-    const csv = toCsv(row, photo1, photo2);
-    const fileName = `${baseName}.csv`;
-
-    if (Platform.OS === 'web') {
-      downloadCsvWeb(fileName, csv);
-      flash('success', 'CSV downloaded');
-      return;
-    }
+    const submissionPayload = {
+      store_site: row.store_site || '',
+      date: row.date || '',
+      brand: row.brand || '',
+      store_location: row.store_location || '',
+      location: row.location || '',
+      conditions: row.conditions || '',
+      price_per_unit: row.price_per_unit ?? '',
+      shelf_space: row.shelf_space || '',
+      on_shelf: row.on_shelf ?? '',
+      tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
+      notes: row.notes || '',
+      priority_level: row.priority_level ?? '',
+      submitted_by: submittedBy || '',
+      photo_urls: photoUrls,
+    };
 
     try {
-      await shareCsvNative(csv, fileName);
+      if (Platform.OS === 'web') {
+        const mod = await import('../../src/lib/exportSpreadsheet.web');
+        await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
+        flash('success', 'Spreadsheet downloaded');
+        return;
+      }
+
+      const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
+      await shareCsvNative(submissionPayload as any, baseName);
       flash('success', 'Share sheet opened');
-      Alert.alert('Save CSV', 'Choose "Save to Files" in the share sheet to keep a copy.');
+      Alert.alert('Save Spreadsheet', 'Choose "Save to Files" in the share sheet to keep a copy.');
     } catch (err: any) {
-      Alert.alert('Save failed', err?.message ?? 'Unable to save CSV on this device.');
-      flash('error', 'Unable to save CSV');
+      Alert.alert('Save failed', err?.message ?? 'Unable to save spreadsheet on this device.');
+      flash('error', 'Unable to save spreadsheet');
     }
   };
 
@@ -330,7 +319,7 @@ export default function Submission() {
   const photo1 = row.photo1_url || photo1Url || null;
   const photo2 = row.photo2_url || photo2Url || null;
   const photoUrls = [photo1, photo2].filter(Boolean) as string[];
-  const csvSaveLabel = Platform.OS === 'web' ? 'Download CSV' : 'Save CSV';
+  const csvSaveLabel = Platform.OS === 'web' ? 'Download Spreadsheet' : 'Save Spreadsheet';
   const buildPdfPayload = () => ({
     store_site: row.store_site || '',
     date: row.date || '',
@@ -446,18 +435,18 @@ export default function Submission() {
             accessibilityLabel="Download spreadsheet with photos"
           />
           <Button
-            title="Share CSV"
+            title="Share Spreadsheet"
             onPress={shareSubmission}
             variant="primary"
             fullWidth
-            accessibilityLabel="Share submission CSV"
+            accessibilityLabel="Share submission spreadsheet"
           />
           <Button
             title={csvSaveLabel}
-            onPress={saveCsvToFiles}
+            onPress={saveSpreadsheetToFiles}
             variant="primary"
             fullWidth
-            accessibilityLabel={Platform.OS === 'web' ? 'Download CSV file' : 'Save CSV to Files'}
+            accessibilityLabel={Platform.OS === 'web' ? 'Download spreadsheet file' : 'Save spreadsheet to Files'}
           />
           <Button
             title="Save PDF"
