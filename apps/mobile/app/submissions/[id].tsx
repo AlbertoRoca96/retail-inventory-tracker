@@ -195,6 +195,15 @@ export default function Submission() {
 
   const downloadSpreadsheetWithPhotos = async () => {
     console.warn('[downloadSpreadsheetWithPhotos] tapped');
+
+    // TEMP: disable native spreadsheet export entirely to avoid any chance
+    // of freezing the UI while we debug. Web still works as before.
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not available yet', 'Spreadsheet export is temporarily disabled on this build.');
+      flash('error', 'Spreadsheet export disabled on this build');
+      return;
+    }
+
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
     const p2 = row.photo2_url || photo2Url || null;
@@ -228,9 +237,7 @@ export default function Submission() {
         return;
       }
 
-      const mod = await import('../../src/lib/exportSpreadsheet.native');
-      await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
-      flash('success', 'Share sheet opened');
+      // Native path is temporarily disabled above.
     } catch (err: any) {
       Alert.alert('Spreadsheet failed', err?.message ?? 'Unable to generate spreadsheet');
       flash('error', 'Unable to generate spreadsheet');
@@ -239,6 +246,13 @@ export default function Submission() {
 
   const shareSubmission = async () => {
     console.warn('[shareSubmission] tapped');
+
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not available yet', 'Spreadsheet share is temporarily disabled on this build.');
+      flash('error', 'Spreadsheet share disabled on this build');
+      return;
+    }
+
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
     const submissionPayload = {
       store_site: row.store_site || '',
@@ -265,10 +279,7 @@ export default function Submission() {
         return;
       }
 
-      const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
-      console.warn('[shareSubmission] calling shareCsvNative with', submissionPayload, baseName);
-      await shareCsvNative(submissionPayload as any, baseName);
-      flash('success', 'Share sheet opened');
+      // Native path is temporarily disabled above.
     } catch (err: any) {
       console.warn('[shareSubmission] failed', err);
       Alert.alert('Share failed', err?.message ?? 'Unable to share this submission.');
@@ -278,6 +289,13 @@ export default function Submission() {
 
   const saveSpreadsheetToFiles = async () => {
     console.warn('[saveSpreadsheetToFiles] tapped');
+
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not available yet', 'Spreadsheet save is temporarily disabled on this build.');
+      flash('error', 'Spreadsheet save disabled on this build');
+      return;
+    }
+
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
     const submissionPayload = {
       store_site: row.store_site || '',
@@ -304,11 +322,7 @@ export default function Submission() {
         return;
       }
 
-      const { shareCsvNative } = await import('../../src/lib/shareCsv.native');
-      console.warn('[saveSpreadsheetToFiles] calling shareCsvNative with', submissionPayload, baseName);
-      await shareCsvNative(submissionPayload as any, baseName);
-      flash('success', 'Share sheet opened');
-      Alert.alert('Save Spreadsheet', 'Choose "Save to Files" in the share sheet to keep a copy.');
+      // Native path is temporarily disabled above.
     } catch (err: any) {
       console.warn('[saveSpreadsheetToFiles] failed', err);
       Alert.alert('Save failed', err?.message ?? 'Unable to save spreadsheet on this device.');
