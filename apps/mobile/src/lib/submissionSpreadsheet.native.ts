@@ -3,9 +3,10 @@
 // `submission-xlsx`, saving it locally, and either sharing it or returning the
 // path so it can be attached to chat.
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 import { Buffer } from 'buffer';
+import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
 import { shareFileNative } from './shareFile.native';
 import { supabase, resolvedSupabaseUrl } from './supabase';
 
@@ -61,15 +62,17 @@ async function fetchSubmissionXlsxFromEdge(submissionId: string, fileBase: strin
     throw new Error('Received empty XLSX from server.');
   }
 
-  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  if (!baseDir) throw new Error('No writable directory available on device.');
-
-  const exportDir = baseDir + 'exports/';
-  await FileSystem.makeDirectoryAsync(exportDir, { intermediates: true }).catch(() => {});
+  const exportDir =
+    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'documents-first')) ??
+    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'cache-first'));
+  if (!exportDir) {
+    alertStorageUnavailable();
+    throw new Error('No writable directory available on device.');
+  }
 
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const fileName = `${sanitizeFileBase(fileBase)}-${iso}.xlsx`;
-  const dest = exportDir + fileName;
+  const dest = `${exportDir}${fileName}`;
 
   const bytes = new Uint8Array(arrayBuffer);
   const b64 = Buffer.from(bytes).toString('base64');
