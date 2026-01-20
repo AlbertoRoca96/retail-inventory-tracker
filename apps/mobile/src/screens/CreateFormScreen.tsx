@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet, ScrollView, Alert, Image } from 'rea
 import Button from '../components/Button';
 import { supabase } from '../lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadFileToStorage } from '../lib/supabaseHelpers';
 import { theme } from '../theme';
 
 export default function CreateFormScreen({ onBack }: { onBack: () => void }) {
@@ -51,12 +52,18 @@ export default function CreateFormScreen({ onBack }: { onBack: () => void }) {
       if (error) throw error;
 
       const doUpload = async (localUri: string, slot: 1 | 2) => {
-        const resp = await fetch(localUri);
-        const blob = await resp.blob();
-        const key = `u_${inserted.id}/photo${slot}.jpg`;
-        const { error: upErr } = await supabase.storage.from('submissions').upload(key, blob, { upsert: true, contentType: 'image/jpeg' });
-        if (upErr) throw upErr;
-        const patch = slot === 1 ? { photo1_path: key } : { photo2_path: key };
+        const key = `teams/${teamId}/submissions/${inserted.id}/photo${slot}.jpg`;
+        const uploaded = await uploadFileToStorage({
+          bucket: 'submissions',
+          path: key,
+          photo: { uri: localUri },
+        });
+
+        const patch =
+          slot === 1
+            ? { photo1_path: uploaded.path, photo1_url: uploaded.publicUrl }
+            : { photo2_path: uploaded.path, photo2_url: uploaded.publicUrl };
+
         await supabase.from('submissions').update(patch).eq('id', inserted.id);
       };
 

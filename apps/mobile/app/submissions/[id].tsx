@@ -338,8 +338,6 @@ export default function Submission() {
   };
 
   const tagsText = Array.isArray(row.tags)
-
-  const tagsText = Array.isArray(row.tags)
     ? row.tags.join(', ')
     : typeof row.tags === 'string'
       ? row.tags
