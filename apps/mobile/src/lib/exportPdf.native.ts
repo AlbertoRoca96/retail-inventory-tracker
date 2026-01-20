@@ -2,6 +2,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { alertStorageUnavailable, resolveWritableDirectory, ensureExportDirectory } from './storageAccess';
 import { shareFileNative } from './shareFile.native';
 
@@ -33,36 +34,58 @@ type BuildOptions = {
 const esc = (s: string) =>
   (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** Convert a local/remote/data URL to a data URI string (jpeg by default). */
-async function toDataUri(url?: string | null, mime = 'image/jpeg'): Promise<string | null> {
+/**
+ * Convert ANY local/remote image into a JPEG data URI using
+ * expo-image-manipulator. This normalizes HEIC/HEIF/PNG/WebP/etc to
+ * JPEG so iOS PDF rendering doesn't choke.
+ */
+async function toDataUri(url?: string | null): Promise<string | null> {
   if (!url) return null;
 
   // Already a data URI
   if (url.startsWith('data:')) return url;
 
-  try {
-    let localPath = url;
+  let localPath = url;
+  let downloadedTemp: string | null = null;
 
+  try {
     // If it's not a file/content URI, download to cache first.
     if (!/^file:|^content:/i.test(url)) {
       const name = `img-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-      const targetDir = resolveWritableDirectory(FileSystem, 'cache-first');
+      const targetDir = resolveWritableDirectory(FileSystem as any, 'cache-first');
       if (!targetDir) {
         alertStorageUnavailable();
         return null;
       }
       const { uri } = await FileSystem.downloadAsync(url, `${targetDir}${name}`);
       localPath = uri;
+      downloadedTemp = uri;
     }
 
-    // Read bytes → base64 → data URI
-    const base64 = await FileSystem.readAsStringAsync(localPath, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return `data:${mime};base64,${base64}`;
+    // Use ImageManipulator to re-encode as JPEG at a reasonable size
+    const manipulated = await ImageManipulator.manipulateAsync(
+      localPath,
+      [{ resize: { width: 1400 } }],
+      { format: ImageManipulator.SaveFormat.JPEG, compress: 0.85, base64: true }
+    );
+
+    if (!manipulated.base64) return null;
+
+    return `data:image/jpeg;base64,${manipulated.base64}`;
   } catch {
-    // Swallow; image will just be omitted if something fails
-    return null;
+    // As a fallback, try the old direct-read path (works for JPEG/PNG)
+    try {
+      const base64 = await FileSystem.readAsStringAsync(localPath, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return `data:image/jpeg;base64,${base64}`;
+    } catch {
+      return null;
+    }
+  } finally {
+    if (downloadedTemp) {
+      FileSystem.deleteAsync(downloadedTemp, { idempotent: true }).catch(() => {});
+    }
   }
 }
 
