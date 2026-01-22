@@ -50,7 +50,7 @@ export async function ensureExportDirectory(
     }
     // As a last resort, fall back to the root directory itself rather than
     // treating storage as completely unavailable. The share sheet will still
-    // be able to move the file into Files when the user picks a destination.
+    // be able to move the file into Files when Users picks a destination.
     return normalizeDir(root);
   }
 }

@@ -34,25 +34,23 @@ create table if not exists public.submissions (
   tags text[] not null default '{}',
   notes text,
 
+  -- Photo fields - edge function expects both path (storage) and url (public)
   photo1_url text,
   photo2_url text,
+  photo1_path text,
+  photo2_path text,
 
   -- NEW: priority (1 urgent/red, 2 yellow, 3 ok/green)
   priority_level integer not null default 3 check (priority_level between 1 and 3)
 );
 
--- ====== Safe alignment for older databases (run harmlessly if already aligned) ======
-do $$
-begin
-  if exists (select 1 from information_schema.columns
-             where table_schema='public' and table_name='submissions' and column_name='photo1_path') then
-    alter table public.submissions rename column photo1_path to photo1_url;
-  end if;
-  if exists (select 1 from information_schema.columns
-             where table_schema='public' and table_name='submissions' and column_name='photo2_path') then
-    alter table public.submissions rename column photo2_path to photo2_url;
-  end if;
-end$$;
+-- Create indexes for photo paths for edge function lookups
+create index if not exists idx_submissions_photo1_path on public.submissions(photo1_path) where photo1_path is not null;
+create index if not exists idx_submissions_photo2_path on public.submissions(photo2_path) where photo2_path is not null;
+
+-- ====== Safe alignment for older databases (run harmlessly if already aligned) =======
+-- Edge function expects BOTH photo_path (storage) and photo_url (public)
+-- Don't rename, just ensure both columns exist
 
 -- Add NEW columns if the table pre-existed (idempotent)
 alter table public.submissions add column if not exists store_site text;
@@ -60,12 +58,20 @@ alter table public.submissions add column if not exists location text;
 alter table public.submissions add column if not exists brand text;
 alter table public.submissions add column if not exists photo1_url text;
 alter table public.submissions add column if not exists photo2_url text;
-alter table public.submissions add column if not exists priority_level integer not null default 3;
+alter table public.submissions add column if not exists photo1_path text;
+alter table public.submissions add column if not exists photo2_path text;
+alter table public.submissions add column if not exists priority_level integer default 3;
 
 -- Keep default and allow nulls temporarily for legacy rows; range is enforced separately
 alter table public.submissions
   alter column priority_level set default 3,
   alter column priority_level drop not null;
+
+-- Create photo path indexes for edge function
+create index if not exists idx_submissions_photo1_path
+  on public.submissions(photo1_path) where photo1_path is not null;
+create index if not exists idx_submissions_photo2_path
+  on public.submissions(photo2_path) where photo2_path is not null;
 
 -- Enforce allowed range if the CHECK is missing
 do $$

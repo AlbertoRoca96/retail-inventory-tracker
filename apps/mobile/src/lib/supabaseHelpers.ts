@@ -1,15 +1,17 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { Buffer } from 'buffer';
-import * as FileSystem from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
 import { supabase } from './supabase';
 
 export type PhotoLike = {
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
-  blob?: Blob | null;
   assetId?: string | null;
 };
+
+function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+}
 
 export async function getSignedStorageUrl(
   bucket: string,
@@ -24,15 +26,12 @@ export async function getSignedStorageUrl(
       return data.signedUrl;
     }
   } catch (error) {
-    if (__DEV__) {
-      console.warn('[storage] signed url failed', bucket, path, error);
-    }
+    console.warn('[storage] signed url failed', bucket, path, error);
   }
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
   return data?.publicUrl ?? null;
 }
 
-/** Upload a single avatar image and return a public URL */
 export async function uploadAvatarAndGetPublicUrl(
   uid: string,
   file: PhotoLike,
@@ -50,106 +49,64 @@ export async function uploadAvatarAndGetPublicUrl(
   });
 }
 
-function guessFileExtension(nameOrPath?: string | null) {
-  if (!nameOrPath) return '';
-  const match = /\.([a-zA-Z0-9]+)$/.exec(nameOrPath);
-  return match ? match[1] : '';
-}
-
-function guessMimeType(path: string) {
+function guessMimeType(path: string): string {
   const lower = path.toLowerCase();
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.heic')) return 'image/heic';
-  if (lower.endsWith('.csv')) return 'text/csv';
-  if (lower.endsWith('.pdf')) return 'application/pdf';
-  return null;
+  return 'image/jpeg';
 }
 
-async function ensureLocalFileUri(photo: PhotoLike) {
-  if (!photo?.uri) {
-    throw new Error('uploadFileToStorage requires a uri');
+/**
+ * GPT's EXACT code for ArrayBuffer upload.
+ * This fixes the 0-byte file issue.
+ */
+export async function uploadSubmissionPhoto({
+  bucket = 'submissions',
+  path,
+  uri,
+  contentType = 'image/jpeg',
+}: {
+  bucket?: string;
+  path: string;
+  uri: string;
+  contentType?: string;
+}) {
+  let bytes: Uint8Array | null = null;
+
+  // Preferred: Expo File API (if available)
+  const FileCtor = (FileSystem as any).File;
+  if (FileCtor) {
+    const file = new FileCtor(uri);
+    bytes = await file.bytes();
+  } else {
+    // Fallback: base64 read
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    bytes = base64 ? new Uint8Array(Buffer.from(base64, 'base64')) : null;
   }
 
-  let candidate = photo.uri;
-
-  if ((candidate.startsWith('ph://') || candidate.startsWith('assets-library://')) && photo.assetId) {
-    try {
-      const info = await MediaLibrary.getAssetInfoAsync(photo.assetId, { shouldDownloadFromNetwork: true });
-      if (info?.localUri) {
-        candidate = info.localUri;
-      }
-    } catch (error) {
-      if (__DEV__) {
-        console.warn('[storage upload] asset info lookup failed', error);
-      }
-    }
+  if (!bytes || bytes.byteLength === 0) {
+    throw new Error(`uploadSubmissionPhoto: got 0 bytes from uri=${uri}`);
   }
 
-  if (!candidate.startsWith('file://')) {
-    const cacheBase = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-    if (cacheBase) {
-      const ext = guessFileExtension(photo.fileName || candidate);
-      const target = `${cacheBase}upload-${Date.now()}-${Math.random().toString(36).slice(2)}${ext ? `.${ext}` : ''}`;
-      try {
-        await FileSystem.copyAsync({ from: candidate, to: target });
-        candidate = target;
-      } catch (error) {
-        if (__DEV__) {
-          console.warn('[storage upload] copy fallback failed', error);
-        }
-      }
-    }
-  }
-
-  return candidate;
+  const ab = toArrayBuffer(bytes);
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(path, ab, {
+      contentType,
+      upsert: true,
+      cacheControl: '3600',
+    });
+  if (error) throw error;
+  return data;
 }
 
-async function blobFromPhoto(photo: PhotoLike) {
-  // If caller already provided a Blob, trust it but guard against empty data
-  if (photo.blob) {
-    if (photo.blob.size === 0) {
-      throw new Error('Selected file appears to be empty');
-    }
-    return photo.blob;
-  }
-
-  const localUri = await ensureLocalFileUri(photo);
-
-  // Expo / RN fetch(localUri) can be flaky and sometimes yield an empty blob.
-  // We try it first for efficiency, but we *never* accept a zero-byte result.
-  try {
-    const response = await fetch(localUri);
-    const fetched = await response.blob();
-    if (fetched && fetched.size > 0) {
-      return fetched;
-    }
-    if (__DEV__) {
-      console.warn('[storage upload] fetched empty blob from', localUri);
-    }
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[storage upload] fetch blob failed', error);
-    }
-  }
-
-  // Fallback: read file as base64 via FileSystem and construct a Blob manually.
-  const base64 = await FileSystem.readAsStringAsync(localUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  if (!base64) {
-    throw new Error('Unable to read image data from local file');
-  }
-  const buffer = Buffer.from(base64, 'base64');
-  const blob = new Blob([buffer], {
-    type: photo.mimeType || 'application/octet-stream',
-  });
-  if (blob.size === 0) {
-    throw new Error('Image data is empty after file read');
-  }
-  return blob;
-}
-
+/**
+ * Upload helper that matches the existing codebase signature.
+ * Internally uses GPT's ArrayBuffer method.
+ */
 export async function uploadFileToStorage({
   bucket,
   path,
@@ -159,27 +116,20 @@ export async function uploadFileToStorage({
   path: string;
   photo: PhotoLike;
 }): Promise<{ path: string; publicUrl: string | null }> {
-  if (!photo?.uri && !photo?.blob) {
-    throw new Error('uploadFileToStorage requires a uri or blob');
+  if (!photo?.uri) {
+    throw new Error('uploadFileToStorage requires a uri');
   }
-  const blob = await blobFromPhoto(photo);
-  if (!blob || blob.size === 0) {
-    throw new Error('Image file is empty; please try selecting a different photo.');
-  }
-  const guessedType = photo.mimeType || blob.type || guessMimeType(path) || 'application/octet-stream';
-  if (__DEV__) {
-    console.log('[storage upload]', bucket, path, guessedType, blob.size);
-  }
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
-    upsert: true,
-    contentType: guessedType,
+
+  const contentType = photo.mimeType || guessMimeType(path);
+
+  // Use GPT's exact method
+  const data = await uploadSubmissionPhoto({
+    bucket,
+    path,
+    uri: photo.uri,
+    contentType,
   });
-  if (error) {
-    if (__DEV__) {
-      console.warn('[storage upload] failed', bucket, path, error);
-    }
-    throw error;
-  }
+
   const publicUrl = await getSignedStorageUrl(bucket, path);
-  return { path, publicUrl };
+  return { path: data.path, publicUrl };
 }
