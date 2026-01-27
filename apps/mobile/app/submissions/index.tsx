@@ -63,6 +63,7 @@ export default function Submissions() {
   const { fontScale, highContrast, targetMinHeight } = useUISettings();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
+  const [submitterNames, setSubmitterNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -84,7 +85,22 @@ export default function Submissions() {
         .order('created_at', { ascending: false })
         .limit(200);
       if (error) throw error;
-      setRows(data || []);
+      const nextRows = (data || []) as Row[];
+      setRows(nextRows);
+
+      const userIds = Array.from(new Set(nextRows.map((r) => r.created_by).filter(Boolean))) as string[];
+      if (userIds.length) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id,display_name,email')
+          .in('id', userIds);
+        const map: Record<string, string> = {};
+        (profiles || []).forEach((p: any) => {
+          const name = (p?.display_name || '').trim() || p?.email?.split('@')[0] || p?.id?.slice(0, 8) || '';
+          if (p?.id) map[p.id] = name;
+        });
+        setSubmitterNames(map);
+      }
     } catch (error) {
       console.error('submissions list load failed', error);
       setLoadError(error instanceof Error ? error.message : 'Unable to load submissions');
@@ -132,8 +148,9 @@ export default function Submissions() {
   const renderItem = ({ item }: { item: Row }) => {
     const subtitle = new Date(item.created_at).toLocaleString();
     const price = typeof item.price_per_unit === 'number' ? `$${item.price_per_unit}` : '$-';
-    const byline = item.created_by ? `Created by ${item.created_by.slice(0, 8)}` : '';
-    const title = item.store_location || item.store_site || '(no store)';
+    const submitter = item.created_by ? (submitterNames[item.created_by] || item.created_by.slice(0, 8)) : '';
+    const byline = submitter ? `Created by ${submitter}` : '';
+    const title = item.store_site || item.store_location || '(no store)';
 
     return (
       <Pressable

@@ -110,7 +110,7 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
   addRow('CONDITIONS', row.conditions);
   addRow('PRICE PER UNIT', row.price_per_unit);
   addRow('SHELF SPACE', row.shelf_space);
-  addRow('ON SHELF', row.on_shelf);
+  addRow('FACES ON SHELF', row.on_shelf);
   addRow('TAGS', row.tags);
   addRow('NOTES', row.notes);
 

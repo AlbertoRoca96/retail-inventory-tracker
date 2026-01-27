@@ -85,7 +85,7 @@ export default function CreateFormScreen({ onBack }: { onBack: () => void }) {
       <TextInput placeholder="CONDITIONS" value={conditions} onChangeText={setConditions} style={styles.input} />
       <TextInput placeholder="PRICE PER UNIT" value={price} onChangeText={setPrice} style={styles.input} keyboardType="decimal-pad" />
       <TextInput placeholder="SHELF SPACE" value={shelfSpace} onChangeText={setShelfSpace} style={styles.input} />
-      <TextInput placeholder="ON SHELF" value={onShelf} onChangeText={setOnShelf} style={styles.input} keyboardType="numeric" />
+      <TextInput placeholder="FACES ON SHELF" value={onShelf} onChangeText={setOnShelf} style={styles.input} keyboardType="numeric" />
       <TextInput placeholder="TAGS (comma-separated)" value={tags} onChangeText={setTags} style={styles.input} />
       <TextInput placeholder="NOTES" value={notes} onChangeText={setNotes} style={[styles.input, {height: 120}]} multiline />
 

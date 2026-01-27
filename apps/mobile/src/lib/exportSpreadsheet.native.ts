@@ -108,7 +108,7 @@ function buildHtml(row: SubmissionSpreadsheet): string {
   cells.push(['CONDITIONS', normalizeText(row.conditions)]);
   cells.push(['PRICE PER UNIT', normalizeText(row.price_per_unit)]);
   cells.push(['SHELF SPACE', normalizeText(row.shelf_space)]);
-  cells.push(['ON SHELF', normalizeText(row.on_shelf)]);
+  cells.push(['FACES ON SHELF', normalizeText(row.on_shelf)]);
   cells.push(['TAGS', normalizeTags(row.tags)]);
   cells.push(['NOTES', normalizeText(row.notes)]);
   cells.push(['PRIORITY LEVEL', normalizeText(row.priority_level)]);

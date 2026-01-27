@@ -38,7 +38,7 @@ function parseSupabaseStorageUrl(url: string) {
   }
 }
 
-async function resolveAttachmentUrl(path?: string | null, type?: string | null) {
+export async function resolveAttachmentUrl(path?: string | null, type?: string | null) {
   if (!path) return null;
   if (/^https?:/i.test(path)) {
     const parsed = parseSupabaseStorageUrl(path);

@@ -51,10 +51,12 @@ type Row = {
 };
 
 /** Build a human-friendly base name for exported files from the submission. */
-function buildSubmissionFileBase(row: Row): string {
-  const primary = row.store_location || row.store_site || 'submission';
+function buildSubmissionFileBase(row: Row, submitterName?: string | null): string {
+  const primary = row.store_site || row.store_location || 'submission';
+  const name = (submitterName || '').trim();
   const parts = [primary];
   if (row.date) parts.push(row.date);
+  if (name) parts.push(name);
   return parts.filter(Boolean).join(' - ');
 }
 
@@ -83,7 +85,12 @@ function PriPill({ n }: { n: number | null | undefined }) {
   );
 }
 
-function toCsv(r: Row, photo1Resolved?: string | null, photo2Resolved?: string | null) {
+function toCsv(
+  r: Row,
+  submittedBy: string,
+  photo1Resolved?: string | null,
+  photo2Resolved?: string | null
+) {
   const tags = Array.isArray(r.tags)
     ? r.tags.join(', ')
     : typeof r.tags === 'string'
@@ -98,11 +105,11 @@ function toCsv(r: Row, photo1Resolved?: string | null, photo2Resolved?: string |
     ['CONDITIONS', r.conditions ?? ''],
     ['PRICE PER UNIT', r.price_per_unit ?? ''],
     ['SHELF SPACE', r.shelf_space ?? ''],
-    ['ON SHELF', r.on_shelf ?? ''],
+    ['FACES ON SHELF', r.on_shelf ?? ''],
     ['TAGS', tags],
     ['NOTES', r.notes ?? ''],
     ['PRIORITY LEVEL', r.priority_level ?? ''],
-    ['SUBMITTED BY', r.created_by || ''],
+    ['SUBMITTED BY', submittedBy || ''],
     // Prefer the same resolved URLs used in the UI so CSV matches what users see online
     ['PHOTO 1', photo1Resolved ?? r.photo1_url ?? r.photo1_path ?? ''],
     ['PHOTO 2', photo2Resolved ?? r.photo2_url ?? r.photo2_path ?? ''],
@@ -131,6 +138,7 @@ export default function Submission() {
   const [row, setRow] = useState<Row | null>(null);
   const [photo1Url, setPhoto1Url] = useState<string | null>(null);
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
+  const [submitterName, setSubmitterName] = useState<string>('');
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const titleStyle = useMemo(() => ({
@@ -176,6 +184,26 @@ export default function Submission() {
       if (!dataRow) return;
       setRow(dataRow);
 
+      if (dataRow.created_by) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name,email')
+            .eq('id', dataRow.created_by)
+            .maybeSingle();
+          const name =
+            profile?.display_name?.trim() ||
+            profile?.email?.split('@')[0] ||
+            dataRow.created_by.slice(0, 8) ||
+            '';
+          setSubmitterName(name);
+        } catch {
+          setSubmitterName(dataRow.created_by.slice(0, 8));
+        }
+      } else {
+        setSubmitterName('');
+      }
+
       const resolveSigned = async (path?: string | null) => {
         if (!path) return null;
         const buckets = ['submissions', 'chat', 'photos'];
@@ -203,7 +231,7 @@ export default function Submission() {
     if (p1) photos.push(p1);
     if (p2) photos.push(p2);
 
-    const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+    const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
 
     const submissionPayload = {
       store_site: row.store_site || '',
@@ -242,7 +270,7 @@ export default function Submission() {
   const shareSubmission = async () => {
     console.warn('[shareSubmission] tapped');
 
-    const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+    const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
     const submissionPayload = {
       store_site: row.store_site || '',
       date: row.date || '',
@@ -281,7 +309,7 @@ export default function Submission() {
   const sendSpreadsheetToChat = async () => {
     console.warn('[sendSpreadsheetToChat] tapped');
 
-    const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+    const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
     const submissionPayload = {
       store_site: row.store_site || '',
       date: row.date || '',
@@ -318,7 +346,7 @@ export default function Submission() {
       const path = await edge.downloadSubmissionSpreadsheetToPath(row.id, baseName);
       const result = await chat.sendExcelFileAttachmentMessageFromPath(
         row.team_id,
-        row.id,
+        null,
         path,
         `${baseName}.xlsx`,
         'Submission spreadsheet',
@@ -342,7 +370,7 @@ export default function Submission() {
     : typeof row.tags === 'string'
       ? row.tags
       : '';
-  const submittedBy = row.created_by || '';
+  const submittedBy = submitterName || row.created_by || '';
 
   const photo1 = row.photo1_url || photo1Url || null;
   const photo2 = row.photo2_url || photo2Url || null;
@@ -371,7 +399,7 @@ export default function Submission() {
         : await import('../../src/lib/exportPdf.native');
       const fn = (mod as any)?.downloadSubmissionPdf || (mod as any)?.default?.downloadSubmissionPdf;
       if (typeof fn === 'function') {
-        const baseName = sanitizeFileBase(buildSubmissionFileBase(row));
+        const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
         await fn(buildPdfPayload(), { fileNamePrefix: baseName });
         if (Platform.OS === 'web') {
           flash('success', 'PDF downloaded');
@@ -422,7 +450,7 @@ export default function Submission() {
         <Text {...textA11yProps} style={bodyStyle}>Conditions: {row.conditions}</Text>
         <Text {...textA11yProps} style={bodyStyle}>Price per unit: {row.price_per_unit}</Text>
         <Text {...textA11yProps} style={bodyStyle}>Shelf space: {row.shelf_space}</Text>
-        <Text {...textA11yProps} style={bodyStyle}>On shelf: {row.on_shelf}</Text>
+        <Text {...textA11yProps} style={bodyStyle}>Faces on shelf: {row.on_shelf}</Text>
         <Text {...textA11yProps} style={bodyStyle}>Tags: {tagsText}</Text>
         <Text {...textA11yProps} style={bodyStyle}>Notes: {row.notes}</Text>
 

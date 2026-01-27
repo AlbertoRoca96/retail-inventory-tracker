@@ -10,7 +10,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import LogoHeader from '../../src/components/LogoHeader';
-import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, type SubmissionMessage } from '../../src/lib/chat';
+import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, resolveAttachmentUrl, type SubmissionMessage } from '../../src/lib/chat';
 import { uploadFileToStorage, type PhotoLike } from '../../src/lib/supabaseHelpers';
 import { generateUuid } from '../../src/lib/uuid';
 
@@ -217,6 +217,15 @@ export default function TeamChat() {
     }
   };
 
+  const openAttachment = async (item: SubmissionMessage) => {
+    const url = await resolveAttachmentUrl(item.attachment_signed_url || item.attachment_path, item.attachment_type);
+    if (!url) {
+      Alert.alert('Attachment unavailable', 'Unable to open this attachment.');
+      return;
+    }
+    await Linking.openURL(url);
+  };
+
   const renderMessage = ({ item, index }: { item: SubmissionMessage; index: number }) => {
     const isMe = item.sender_id === session?.user?.id;
     const senderSummary = isMe ? 'You' : roster[item.sender_id || '']?.name || item.sender_id?.slice(0, 8) || 'Team Member';
@@ -242,7 +251,7 @@ export default function TeamChat() {
           item.attachment_type === 'image' ? (
             <TouchableOpacity
               style={styles.imageAttachment}
-              onPress={() => Linking.openURL((item.attachment_signed_url || item.attachment_path)!)}
+              onPress={() => openAttachment(item)}
             >
               <Image
                 source={{ uri: item.attachment_signed_url || item.attachment_path || undefined }}
@@ -252,7 +261,7 @@ export default function TeamChat() {
           ) : (
             <TouchableOpacity
               style={styles.attachmentInfo}
-              onPress={() => Linking.openURL((item.attachment_signed_url || item.attachment_path)!)}
+              onPress={() => openAttachment(item)}
             >
               <Text style={styles.attachmentText}>
                 📎 {item.attachment_type.toUpperCase()} attachment

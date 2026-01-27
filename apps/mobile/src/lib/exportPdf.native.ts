@@ -26,7 +26,7 @@ export type SubmissionPdf = {
 type BuildOptions = {
   /** If true, photos are fetched and embedded as data URIs inside the HTML before printing. */
   inlineImages?: boolean;
-  /** Optional filename prefix; final file is "<prefix>-<iso>.pdf" */
+  /** Optional filename prefix; final file is "<prefix>.pdf" (no extra timestamp). */
   fileNamePrefix?: string;
 };
 
@@ -148,7 +148,7 @@ export async function createSubmissionPdf(
     <tr><th class="label">CONDITIONS</th><td class="value">${esc(data.conditions)}</td></tr>
     <tr><th class="label">PRICE PER UNIT</th><td class="value">${esc(data.price_per_unit)}</td></tr>
     <tr><th class="label">SHELF SPACE</th><td class="value">${esc(data.shelf_space)}</td></tr>
-    <tr><th class="label">ON SHELF</th><td class="value">${esc(data.on_shelf)}</td></tr>
+    <tr><th class="label">FACES ON SHELF</th><td class="value">${esc(data.on_shelf)}</td></tr>
     <tr><th class="label">TAGS</th><td class="value">${esc(data.tags)}</td></tr>
     <tr><th class="label">NOTES</th><td class="value">${esc(data.notes)}</td></tr>
     ${priRow}
@@ -168,8 +168,9 @@ export async function createSubmissionPdf(
 
   // 2) Give it a nice name and move into app documents/exports/pdf folder.
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
-  const prefix = opts.fileNamePrefix || 'submission';
-  const fileName = `${prefix}-${iso}.pdf`;
+  const prefix = (opts.fileNamePrefix || '').trim();
+  const fileBase = prefix || `submission-${iso}`;
+  const fileName = `${fileBase}.pdf`;
 
   const exportDir =
     (await ensureExportDirectory(FileSystem as any, 'pdf', 'documents-first')) ??

@@ -171,7 +171,7 @@ export async function downloadSubmissionPdf(
     ['CONDITIONS', data.conditions],
     ['PRICE PER UNIT', data.price_per_unit],
     ['SHELF SPACE', data.shelf_space],
-    ['ON SHELF', data.on_shelf],
+    ['FACES ON SHELF', data.on_shelf],
     ['TAGS', data.tags],
     ['NOTES', data.notes],
   ];
@@ -245,8 +245,9 @@ export async function downloadSubmissionPdf(
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
-  const prefix = opts.fileNamePrefix || 'submission';
-  const name = `${prefix}-${iso}.pdf`;
+  const prefix = (opts.fileNamePrefix || '').trim();
+  const fileBase = prefix || `submission-${iso}`;
+  const name = `${fileBase}.pdf`;
   downloadBlobWithFallback(blob, name);
 }
 

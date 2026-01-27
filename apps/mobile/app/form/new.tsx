@@ -42,6 +42,17 @@ const safeNumber = (s?: string) => {
   return Number.isFinite(n) ? n : null;
 };
 const looksLikeISODate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const sanitizeFileBase = (input: string) =>
+  (input || '')
+    .trim()
+    .replace(/[^a-z0-9_.-]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'submission';
+const buildFileBase = (storeName?: string, date?: string, userName?: string) => {
+  const primary = (storeName || '').trim() || 'submission';
+  const name = (userName || '').trim();
+  return [primary, date, name].filter(Boolean).join(' - ');
+};
 
 const QUEUE_KEY = 'rit:submission-queue:v1';
 
@@ -451,6 +462,10 @@ const Field = memo(function Field({
 export default function NewFormScreen() {
   const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
+  const submitterName = useMemo(() => {
+    const md = session?.user?.user_metadata as any;
+    return (md?.display_name || session?.user?.email?.split('@')[0] || '').trim();
+  }, [session?.user?.user_metadata, session?.user?.email]);
 
   // ✨ NEW: accessibility toggles & derived sizes
   const {
@@ -829,7 +844,10 @@ export default function NewFormScreen() {
       if (typeof fn !== 'function') {
         throw new Error('PDF export function not found.');
       }
-      await fn(pdfReady);
+      const baseName = sanitizeFileBase(
+        buildFileBase(pdfReady.store_site || pdfReady.store_location, pdfReady.date, submitterName)
+      );
+      await fn(pdfReady, { fileNamePrefix: baseName });
     } catch (e: any) {
       setBanner({ kind: 'error', text: e?.message || 'PDF export failed' });
       return;
@@ -1006,7 +1024,10 @@ export default function NewFormScreen() {
         try {
           const mod = await import('../../src/lib/exportPdf');
           if (mod?.downloadSubmissionPdf) {
-            await mod.downloadSubmissionPdf(pdfPayload);
+            const baseName = sanitizeFileBase(
+              buildFileBase(v.storeSite || v.storeLocation, v.date, submitterName)
+            );
+            await mod.downloadSubmissionPdf(pdfPayload, { fileNamePrefix: baseName });
           }
         } catch {}
       }
@@ -1377,7 +1398,7 @@ export default function NewFormScreen() {
         typingEnd={typingEnd}
       />
       <Field
-        name="onShelf" label="ITEMS ON SHELF"
+        name="onShelf" label="FACES ON SHELF"
         formKey={formKey}
         formRef={formRef}
         onEdit={scheduleAutosave}

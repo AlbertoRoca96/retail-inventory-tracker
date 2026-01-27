@@ -7,7 +7,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import Input from '../../src/components/Input';
-import { fetchSubmissionMessages, sendSubmissionMessage, sendCsvAttachmentMessage, subscribeToSubmissionMessages, type SubmissionMessage } from '../../src/lib/chat';
+import { fetchSubmissionMessages, sendSubmissionMessage, sendCsvAttachmentMessage, subscribeToSubmissionMessages, resolveAttachmentUrl, type SubmissionMessage } from '../../src/lib/chat';
 
 export default function SubmissionChat() {
   const params = useLocalSearchParams<{ id: string; team?: string }>();
@@ -150,6 +150,15 @@ export default function SubmissionChat() {
     // 3. Show upload progress
   };
 
+  const openAttachment = async (item: SubmissionMessage) => {
+    const url = await resolveAttachmentUrl(item.attachment_signed_url || item.attachment_path, item.attachment_type);
+    if (!url) {
+      Alert.alert('Attachment unavailable', 'Unable to open this attachment.');
+      return;
+    }
+    await Linking.openURL(url);
+  };
+
   const renderMessage = ({ item, index }: { item: SubmissionMessage; index: number }) => {
     const isMe = item.sender_id === session?.user?.id;
     
@@ -176,9 +185,7 @@ export default function SubmissionChat() {
           <TouchableOpacity 
             style={styles.attachmentBtn}
             onPress={() => {
-              const target = item.attachment_signed_url || item.attachment_path;
-              if (!target) return;
-              Linking.openURL(target);
+              openAttachment(item);
             }}
           >
             <Text style={styles.attachmentText}>

@@ -22,7 +22,7 @@ export default function ViewSubmissionsScreen({ onBack }: { onBack: () => void }
       // Keep the same table read; RLS already scopes to the viewer's team(s)
       let query = supabase.from('submissions').select('*');
       if (sort === 'recent') query = query.order('created_at', { ascending: false });
-      if (sort === 'az') query = query.order('store_location', { ascending: true });
+      if (sort === 'az') query = query.order('store_site', { ascending: true });
       const { data, error } = await query;
       if (error) throw error;
       setItems((data || []) as Submission[]);
@@ -76,12 +76,12 @@ export default function ViewSubmissionsScreen({ onBack }: { onBack: () => void }
 
     return (
       <View style={styles.card}>
-        <Text style={styles.title}>{item.store_location} — {created}</Text>
+        <Text style={styles.title}>{item.store_site || item.store_location || '(no store)'} — {created}</Text>
         {item.brand ? <Text>Brand: {item.brand}</Text> : null}
         {item.store_site ? <Text>Store site: {item.store_site}</Text> : null}
         {item.location ? <Text>Location: {item.location}</Text> : null}
         <Text>Price: {item.price_per_unit ?? '-'}</Text>
-        <Text>On shelf: {item.on_shelf ?? '-'}</Text>
+        <Text>Faces on shelf: {item.on_shelf ?? '-'}</Text>
         {Array.isArray(item.tags) ? <Text>Tags: {item.tags.join(', ')}</Text> : null}
         {item.notes ? <Text>Notes: {item.notes}</Text> : null}
 
