@@ -267,7 +267,11 @@ export default function Submission() {
       }
 
       const edge = await import('../../src/lib/submissionSpreadsheet.native');
-      await edge.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+      await edge.shareSubmissionSpreadsheetFromEdge(
+        row.id,
+        baseName,
+        submissionPayload as any
+      );
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       Alert.alert('Spreadsheet failed', err?.message ?? 'Unable to generate spreadsheet');
@@ -305,7 +309,11 @@ export default function Submission() {
       }
 
       const edge = await import('../../src/lib/submissionSpreadsheet.native');
-      await edge.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+      await edge.shareSubmissionSpreadsheetFromEdge(
+        row.id,
+        baseName,
+        submissionPayload as any
+      );
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       console.warn('[shareSubmission] failed', err);
@@ -351,7 +359,11 @@ export default function Submission() {
       const edge = await import('../../src/lib/submissionSpreadsheet.native');
       const chat = await import('../../src/lib/chat');
 
-      const path = await edge.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+      const path = await edge.downloadSubmissionSpreadsheetToPath(
+        row.id,
+        baseName,
+        submissionPayload as any
+      );
       const result = await chat.sendExcelFileAttachmentMessageFromPath(
         row.team_id,
         null,

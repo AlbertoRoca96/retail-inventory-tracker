@@ -1,18 +1,14 @@
 // apps/mobile/src/lib/submissionSpreadsheet.native.ts
-// Native helpers for fetching the submission XLSX from Supabase Edge Function
-// `submission-xlsx`, saving it locally, and either sharing it or returning the
-// path so it can be attached to chat.
+// Native helpers for building the submission XLSX locally with ExcelJS
+// (6 embedded photos, 2x3 grid) and either sharing it or returning the
+// file path so it can be attached to chat.
 
-import * as FileSystem from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
-import { Buffer } from 'buffer';
-import { alertStorageUnavailable, ensureExportDirectory } from './storageAccess';
 import { shareFileNative } from './shareFile.native';
-import { supabase, resolvedSupabaseUrl } from './supabase';
-
-if (!(globalThis as any).Buffer) (globalThis as any).Buffer = Buffer;
-
-const EDGE_FUNCTION_NAME = 'submission-xlsx';
+import {
+  buildSubmissionSpreadsheetFile,
+  SubmissionSpreadsheet,
+} from './exportSpreadsheet.native';
 
 function sanitizeFileBase(input: string): string {
   const base = (input || '').trim() || 'submission';
@@ -24,72 +20,21 @@ function sanitizeFileBase(input: string): string {
     .slice(0, 80);
 }
 
-async function fetchSubmissionXlsxFromEdge(submissionId: string, fileBase: string) {
-  const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-  if (sessionErr || !sessionData.session?.access_token) {
-    throw new Error('Not authenticated; please log in again.');
-  }
-  const token = sessionData.session.access_token;
-
-  if (!resolvedSupabaseUrl) {
-    throw new Error('Supabase URL not configured.');
-  }
-
-  const url = `${resolvedSupabaseUrl}/functions/v1/${EDGE_FUNCTION_NAME}`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ submission_id: submissionId }),
-  });
-
-  if (!res.ok) {
-    let msg = `Edge function failed (${res.status})`;
-    try {
-      const body = await res.json();
-      if (body?.error) msg = String(body.error);
-    } catch {
-      // ignore
-    }
-    throw new Error(msg);
-  }
-
-  const arrayBuffer = await res.arrayBuffer();
-  if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-    throw new Error('Received empty XLSX from server.');
-  }
-
-  const exportDir =
-    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'documents-first')) ??
-    (await ensureExportDirectory(FileSystem as any, 'xlsx', 'cache-first'));
-  if (!exportDir) {
-    alertStorageUnavailable();
-    throw new Error('No writable directory available on device.');
-  }
-
-  const iso = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `${sanitizeFileBase(fileBase)}-${iso}.xlsx`;
-  const dest = `${exportDir}${fileName}`;
-
-  const bytes = new Uint8Array(arrayBuffer);
-  const b64 = Buffer.from(bytes).toString('base64');
-  await FileSystem.writeAsStringAsync(dest, b64, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-
-  return dest;
-}
-
+// Note: we keep the old signature (submissionId, fileBase) for compatibility,
+// but we ignore submissionId because everything is built from the payload.
 export async function shareSubmissionSpreadsheetFromEdge(
-  submissionId: string,
-  fileBase: string
+  _submissionId: string,
+  fileBase: string,
+  payload?: SubmissionSpreadsheet
 ) {
   try {
-    const path = await fetchSubmissionXlsxFromEdge(submissionId, fileBase);
-    await shareFileNative(path, {
+    if (!payload) throw new Error('Spreadsheet payload missing');
+
+    const dest = await buildSubmissionSpreadsheetFile(payload, {
+      fileNamePrefix: sanitizeFileBase(fileBase),
+    });
+
+    await shareFileNative(dest, {
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       dialogTitle: 'Share spreadsheet',
       uti: 'org.openxmlformats.spreadsheetml.sheet',
@@ -102,10 +47,14 @@ export async function shareSubmissionSpreadsheetFromEdge(
 }
 
 export async function downloadSubmissionSpreadsheetToPath(
-  submissionId: string,
-  fileBase: string
+  _submissionId: string,
+  fileBase: string,
+  payload: SubmissionSpreadsheet
 ): Promise<string> {
-  return fetchSubmissionXlsxFromEdge(submissionId, fileBase);
+  const dest = await buildSubmissionSpreadsheetFile(payload, {
+    fileNamePrefix: sanitizeFileBase(fileBase),
+  });
+  return dest;
 }
 
 export default { shareSubmissionSpreadsheetFromEdge, downloadSubmissionSpreadsheetToPath };
