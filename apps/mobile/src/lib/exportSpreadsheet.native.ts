@@ -146,10 +146,10 @@ ${rowsHtml}
 </html>`;
 }
 
-export async function downloadSubmissionSpreadsheet(
+export async function buildSubmissionSpreadsheetFile(
   row: SubmissionSpreadsheet,
   opts: ExportOpts = {}
-): Promise<void> {
+): Promise<string> {
   const html = buildHtml(row);
 
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
@@ -167,7 +167,15 @@ export async function downloadSubmissionSpreadsheet(
     // defaults to UTF-8 string
   } as any);
 
+  return dest;
+}
+
+export async function downloadSubmissionSpreadsheet(
+  row: SubmissionSpreadsheet,
+  opts: ExportOpts = {}
+): Promise<void> {
+  const dest = await buildSubmissionSpreadsheetFile(row, opts);
   await shareXls(dest);
 }
 
-export default { downloadSubmissionSpreadsheet };
+export default { downloadSubmissionSpreadsheet, buildSubmissionSpreadsheetFile };
