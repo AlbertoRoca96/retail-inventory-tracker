@@ -228,8 +228,16 @@ export default function Submission() {
     const photos: string[] = [];
     const p1 = row.photo1_url || photo1Url || null;
     const p2 = row.photo2_url || photo2Url || null;
+    const p3 = (row as any).photo3_url || null;
+    const p4 = (row as any).photo4_url || null;
+    const p5 = (row as any).photo5_url || null;
+    const p6 = (row as any).photo6_url || null;
     if (p1) photos.push(p1);
     if (p2) photos.push(p2);
+    if (p3) photos.push(p3);
+    if (p4) photos.push(p4);
+    if (p5) photos.push(p5);
+    if (p6) photos.push(p6);
 
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
 
@@ -374,7 +382,11 @@ export default function Submission() {
 
   const photo1 = row.photo1_url || photo1Url || null;
   const photo2 = row.photo2_url || photo2Url || null;
-  const photoUrls = [photo1, photo2].filter(Boolean) as string[];
+  const extra3 = (row as any).photo3_url || null;
+  const extra4 = (row as any).photo4_url || null;
+  const extra5 = (row as any).photo5_url || null;
+  const extra6 = (row as any).photo6_url || null;
+  const photoUrls = [photo1, photo2, extra3, extra4, extra5, extra6].filter(Boolean) as string[];
   const csvSaveLabel = Platform.OS === 'web' ? 'Download Spreadsheet' : 'Send Spreadsheet to Chat';
   const buildPdfPayload = () => ({
     store_site: row.store_site || '',

@@ -882,8 +882,16 @@ export default function NewFormScreen() {
       notes: v.notes || null,
       photo1_url: uploads[0]?.publicUrl ?? null,
       photo2_url: uploads[1]?.publicUrl ?? null,
+      photo3_url: uploads[2]?.publicUrl ?? null,
+      photo4_url: uploads[3]?.publicUrl ?? null,
+      photo5_url: uploads[4]?.publicUrl ?? null,
+      photo6_url: uploads[5]?.publicUrl ?? null,
       photo1_path: uploads[0]?.path ?? null,
       photo2_path: uploads[1]?.path ?? null,
+      photo3_path: uploads[2]?.path ?? null,
+      photo4_path: uploads[3]?.path ?? null,
+      photo5_path: uploads[4]?.path ?? null,
+      photo6_path: uploads[5]?.path ?? null,
       priority_level: Number(v.priorityLevel) || 3,
     };
   }, [uid]);
@@ -891,7 +899,8 @@ export default function NewFormScreen() {
   const uploadSubmissionPhotos = useCallback(
     async (team: string, submissionId: string, photoList: Photo[]) => {
       const uploads: { path: string; publicUrl: string | null }[] = [];
-      for (let i = 0; i < Math.min(photoList.length, 2); i++) {
+      const maxPhotos = 6;
+      for (let i = 0; i < Math.min(photoList.length, maxPhotos); i++) {
         const photo = photoList[i];
         if (!photo?.uri) continue;
         const ext = (photo.fileName?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
