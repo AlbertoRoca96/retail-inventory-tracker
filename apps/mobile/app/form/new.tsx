@@ -898,21 +898,37 @@ export default function NewFormScreen() {
 
   const uploadSubmissionPhotos = useCallback(
     async (team: string, submissionId: string, photoList: Photo[]) => {
-      const uploads: { path: string; publicUrl: string | null }[] = [];
       const maxPhotos = 6;
+      const tasks: Promise<{ path: string; publicUrl: string | null } | null>[] = [];
+
       for (let i = 0; i < Math.min(photoList.length, maxPhotos); i++) {
         const photo = photoList[i];
         if (!photo?.uri) continue;
-        const ext = (photo.fileName?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
-        const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}.${ext}`;
-        const uploaded = await uploadFileToStorage({
-          bucket: 'submissions',
-          path,
-          photo,
-        });
-        uploads.push(uploaded);
+
+        tasks.push(
+          (async () => {
+            const ext = (photo.fileName?.split('.').pop() || 'jpg')
+              .replace(/[^a-z0-9]/gi, '')
+              .toLowerCase() || 'jpg';
+            const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}.${ext}`;
+            try {
+              const uploaded = await uploadFileToStorage({
+                bucket: 'submissions',
+                path,
+                photo,
+              });
+              return uploaded;
+            } catch (err) {
+              console.warn('photo upload failed for index', i, err);
+              return null;
+            }
+          })()
+        );
       }
-      return uploads;
+
+      const results = await Promise.all(tasks);
+      // Preserve index alignment: results[i] corresponds to photo i
+      return results.filter(Boolean) as { path: string; publicUrl: string | null }[];
     },
     []
   );

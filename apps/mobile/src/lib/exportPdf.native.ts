@@ -108,12 +108,17 @@ export async function createSubmissionPdf(
   data: SubmissionPdf,
   opts: BuildOptions = {}
 ): Promise<string> {
-  // Prepare up to two photos
-  const [raw1, raw2] = (data.photo_urls || []).slice(0, 2);
+  // Prepare up to six photos: first two as main, next four as thumbnails
+  const urls = (data.photo_urls || []).filter(Boolean).slice(0, 6);
+  const [raw1, raw2, raw3, raw4, raw5, raw6] = urls as string[];
   const inline = !!opts.inlineImages;
 
   const img1 = inline ? await toDataUri(raw1) : raw1 || '';
   const img2 = inline ? await toDataUri(raw2) : raw2 || '';
+  const img3 = inline ? await toDataUri(raw3) : raw3 || '';
+  const img4 = inline ? await toDataUri(raw4) : raw4 || '';
+  const img5 = inline ? await toDataUri(raw5) : raw5 || '';
+  const img6 = inline ? await toDataUri(raw6) : raw6 || '';
 
   // Compute priority row bits up front (below NOTES)
   const pri = (data.priority_level ?? '').toString();
@@ -159,6 +164,16 @@ export async function createSubmissionPdf(
       <div class="cell">${img1 ? `<img src="${img1}"/>` : ''}</div>
       <div class="cell">${img2 ? `<img src="${img2}"/>` : ''}</div>
     </div>
+    ${img3 || img4 || img5 || img6 ? `
+    <div class="grid" style="margin-top: 8pt; height: 180pt;">
+      <div class="cell">${img3 ? `<img src="${img3}"/>` : ''}</div>
+      <div class="cell">${img4 ? `<img src="${img4}"/>` : ''}</div>
+    </div>
+    <div class="grid" style="height: 180pt;">
+      <div class="cell">${img5 ? `<img src="${img5}"/>` : ''}</div>
+      <div class="cell">${img6 ? `<img src="${img6}"/>` : ''}</div>
+    </div>
+    ` : ''}
   </div>
 </body></html>`;
 

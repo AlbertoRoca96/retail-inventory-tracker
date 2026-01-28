@@ -220,18 +220,46 @@ export async function downloadSubmissionPdf(
   const BOX_W = Math.floor((PAGE_W - 2 * M - GAP) / 2);
   const BOX_H = 250;
 
-  const urls = (data.photo_urls || []).slice(0, 2);
-  const boxes = [
+  const urls = (data.photo_urls || []).filter(Boolean).slice(0, 6);
+
+  // First row: main two photos
+  const main = [
     { x: M, y: y - BOX_H, w: BOX_W, h: BOX_H, url: urls[0] },
     { x: M + BOX_W + GAP, y: y - BOX_H, w: BOX_W, h: BOX_H, url: urls[1] },
   ];
 
-  for (let i = 0; i < boxes.length; i++) {
-    const b = boxes[i];
+  for (let i = 0; i < main.length; i++) {
+    const b = main[i];
     drawRect(page, b.x, b.y, b.w, b.h);
 
-    // Rasterize to oriented JPEG bytes before embedding (matches Excel export).
-    const jpegBytes = await rasterizeToJPEGBytes(b.url);
+    const jpegBytes = await rasterizeToJPEGBytes(b.url as string | null);
+    if (!jpegBytes) continue;
+
+    const img = await pdfDoc.embedJpg(jpegBytes);
+    const scale = Math.min(b.w / img.width, b.h / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
+  }
+
+  // Second block: up to four thumbnails (2x2) under the main row
+  const thumbH = 140;
+  const thumbY1 = y - BOX_H - GAP - thumbH;
+  const thumbY2 = thumbY1 - thumbH;
+
+  const thumbs = [
+    { x: M, y: thumbY1, w: BOX_W, h: thumbH, url: urls[2] },
+    { x: M + BOX_W + GAP, y: thumbY1, w: BOX_W, h: thumbH, url: urls[3] },
+    { x: M, y: thumbY2, w: BOX_W, h: thumbH, url: urls[4] },
+    { x: M + BOX_W + GAP, y: thumbY2, w: BOX_W, h: thumbH, url: urls[5] },
+  ];
+
+  for (let i = 0; i < thumbs.length; i++) {
+    const b = thumbs[i];
+    if (!b.url) continue;
+    drawRect(page, b.x, b.y, b.w, b.h);
+
+    const jpegBytes = await rasterizeToJPEGBytes(b.url as string);
     if (!jpegBytes) continue;
 
     const img = await pdfDoc.embedJpg(jpegBytes);

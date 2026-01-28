@@ -119,12 +119,14 @@ function buildHtml(row: SubmissionSpreadsheet): string {
 
   const urls = (row.photo_urls || [])
     .filter((u) => typeof u === 'string' && u.trim())
-    .slice(0, 4);
+    .slice(0, 6);
 
   cells.push(['PHOTO 1 URL', urls[0] || '']);
   cells.push(['PHOTO 2 URL', urls[1] || '']);
   if (urls[2]) cells.push(['PHOTO 3 URL', urls[2]]);
   if (urls[3]) cells.push(['PHOTO 4 URL', urls[3]]);
+  if (urls[4]) cells.push(['PHOTO 5 URL', urls[4]]);
+  if (urls[5]) cells.push(['PHOTO 6 URL', urls[5]]);
 
   const rowsHtml = cells
     .map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`)
