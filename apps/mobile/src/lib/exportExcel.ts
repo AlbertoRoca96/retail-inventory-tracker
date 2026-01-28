@@ -137,9 +137,9 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Photo grid
+  // Photo grid: up to 6 photos, 2 columns x 3 rows
   const imageTopRow = r;
-  const rowsForImages = 18;
+  const rowsForImages = 36; // more vertical space for 3 rows of images
   const imageBottomRow = imageTopRow + rowsForImages - 1;
 
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
@@ -150,20 +150,23 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
     ws.getRow(rr).height = 18;
   }
 
-  // Exactly up to two images; per-index mapping so both export reliably
-  const urls = (row.photo_urls || []).slice(0, 2);
+  const urls = (row.photo_urls || []).filter(Boolean).slice(0, 6);
   const settled = await Promise.allSettled(urls.map(toCanvasBase64));
-  const dataUris = settled
-    .filter((s): s is PromiseFulfilledResult<string> => s.status === 'fulfilled')
-    .map((s) => s.value);
+  const dataUris = settled.map((s) => (s.status === 'fulfilled' ? s.value : null));
 
-  if (dataUris[0]) {
-    const id = wb.addImage({ base64: dataUris[0], extension: 'jpeg' });
-    ws.addImage(id, `A${imageTopRow}:A${imageBottomRow}`);
-  }
-  if (dataUris[1]) {
-    const id = wb.addImage({ base64: dataUris[1], extension: 'jpeg' });
-    ws.addImage(id, `B${imageTopRow}:B${imageBottomRow}`);
+  for (let i = 0; i < dataUris.length; i++) {
+    const dataUri = dataUris[i];
+    if (!dataUri) continue;
+    const id = wb.addImage({ base64: dataUri, extension: 'jpeg' });
+    const colIndex = i % 2; // 0 or 1
+    const rowBlock = Math.floor(i / 2); // 0,1,2
+
+    const topRowForImage = imageTopRow + rowBlock * 12; // 12-row block per image row
+    const tlCol = colIndex === 0 ? 'A' : 'B';
+    const brCol = colIndex === 0 ? 'A' : 'B';
+    const tl = `${tlCol}${topRowForImage}`;
+    const br = `${brCol}${topRowForImage + 11}`;
+    ws.addImage(id, `${tl}:${br}`);
   }
 
   const buffer = await wb.xlsx.writeBuffer();
