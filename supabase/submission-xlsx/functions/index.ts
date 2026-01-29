@@ -12,6 +12,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import ExcelJS from 'https://esm.sh/exceljs@4.4.0?target=es2020&no-check';
+// ExcelJS expects a Node-like Buffer for image embedding in many runtimes.
+// Supabase Edge runs on Deno; use the std Node buffer polyfill.
+import { Buffer } from 'https://deno.land/std@0.224.0/node/buffer.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -140,6 +143,17 @@ Deno.serve(async (req) => {
     wb.creator = 'Retail Inventory Tracker';
     wb.created = new Date();
 
+    // Debug sheet (keeps main sheet layout stable)
+    const debugWs = wb.addWorksheet('debug');
+    debugWs.columns = [
+      { header: 'slot', width: 8 },
+      { header: 'path', width: 80 },
+      { header: 'status', width: 14 },
+      { header: 'bytes', width: 12 },
+      { header: 'contentType', width: 20 },
+      { header: 'note', width: 50 },
+    ];
+
     const ws = wb.addWorksheet('submission');
     ws.columns = [
       { header: 'Field', key: 'label', width: 22 },
@@ -181,25 +195,42 @@ Deno.serve(async (req) => {
     ];
 
     // Image grid placement:
-    // 2 columns x 3 rows blocks under the PHOTOS header.
-    const imageTopRow = (ws.lastRow?.number ?? ws.rowCount) + 2;
+    // IMPORTANT: ExcelJS `tl.row/col` are 0-based.
+    // We want images to start below the PHOTOS header, so use the current
+    // rowCount (1-based) and convert to 0-based by subtracting 1.
+    const imageTopRow0 = ws.rowCount + 1; // one blank row below current content, already 0-based
+
+    // Reserve some row heights so images are visible in Excel without manual resizing.
+    // 3 blocks * 14 rows = 42 rows.
+    for (let rr = 0; rr < 42; rr++) {
+      ws.getRow(imageTopRow0 + 1 + rr).height = 24;
+    }
 
     // Download + embed, in order.
     for (let i = 0; i < 6; i++) {
       const p = paths[i];
-      if (!p) continue;
+      if (!p) {
+        debugWs.addRow([i + 1, '', 'missing_path', 0, '', 'no photo path on submission row']);
+        continue;
+      }
 
       const img = await downloadStorageThumb(admin, 'submissions', p);
-      if (!img) continue;
+      if (!img) {
+        debugWs.addRow([i + 1, p, 'download_failed', 0, '', 'storage.download returned no data']);
+        continue;
+      }
 
-      const imageId = wb.addImage({ buffer: img.bytes, extension: img.extension });
+      debugWs.addRow([i + 1, p, 'ok', img.bytes.byteLength, img.extension, '']);
+
+      // IMPORTANT: wrap Uint8Array in a Node-like Buffer for ExcelJS
+      const imageId = wb.addImage({ buffer: Buffer.from(img.bytes), extension: img.extension });
 
       const colIndex = i % 2; // 0/1
       const rowBlock = Math.floor(i / 2); // 0/1/2
-      const topRow = imageTopRow + rowBlock * 14;
+      const topRow0 = imageTopRow0 + rowBlock * 14;
 
       ws.addImage(imageId, {
-        tl: { col: colIndex, row: topRow },
+        tl: { col: colIndex, row: topRow0 },
         ext: { width: 320, height: 320 },
       });
     }
