@@ -6,7 +6,7 @@
 //
 // Key optimizations (so this survives Edge compute limits):
 // - Use Supabase image render transforms (small thumbnails)
-// - Embed images via raw Uint8Array buffers (NO base64)
+// - Embed images via base64 data URLs (bundler-compatible)
 // - Disable shared strings/styles where possible
 // - Avoid expensive formatting loops
 
@@ -53,6 +53,54 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 type ImageBits = { bytes: Uint8Array; extension: 'jpeg' | 'png' };
+
+type AttemptResult =
+  | { ok: true; usedPath: string; img: ImageBits }
+  | { ok: false; tried: string[] };
+
+function looksLikeFilePath(p: string): boolean {
+  // super basic: if it ends in .jpg/.jpeg/.png treat as file.
+  return /\.(jpe?g|png)$/i.test(p.trim());
+}
+
+function buildCandidatePaths(slot: number, rawPath: string): string[] {
+  const p = (rawPath || '').trim();
+  if (!p) return [];
+
+  // If it's already a file path, trust it first.
+  const candidates: string[] = [p];
+
+  const base = p.endsWith('/') ? p.slice(0, -1) : p;
+
+  // If the stored value looks like a folder prefix, try the canonical names.
+  // This covers cases where DB mistakenly stores:
+  //   teams/<team>/submissions/<submissionId>
+  // instead of:
+  //   teams/<team>/submissions/<submissionId>/photo1.jpg
+  if (!looksLikeFilePath(base)) {
+    const fileStem = `${base}/photo${slot}`;
+    candidates.push(`${fileStem}.jpg`, `${fileStem}.jpeg`, `${fileStem}.png`);
+  }
+
+  // De-dupe while preserving order
+  return candidates.filter((x, i) => candidates.indexOf(x) === i);
+}
+
+async function tryDownloadThumb(
+  admin: ReturnType<typeof createClient>,
+  bucket: string,
+  candidates: string[]
+): Promise<AttemptResult> {
+  const tried: string[] = [];
+  for (const path of candidates) {
+    tried.push(path);
+    const img = await downloadStorageThumb(admin, bucket, path);
+    if (img) {
+      return { ok: true, usedPath: path, img };
+    }
+  }
+  return { ok: false, tried };
+}
 
 function inferExtFromContentTypeOrPath(
   contentType: string | null | undefined,
@@ -151,18 +199,19 @@ Deno.serve(async (req) => {
     wb.creator = 'Retail Inventory Tracker';
     wb.created = new Date();
 
-    // Debug sheet (keeps main sheet layout stable)
+    const ws = wb.addWorksheet('submission');
+
+    // Debug sheet (second tab  so the main export opens first)
     const debugWs = wb.addWorksheet('debug');
     debugWs.columns = [
       { header: 'slot', width: 8 },
-      { header: 'path', width: 80 },
-      { header: 'status', width: 14 },
+      { header: 'stored_path', width: 80 },
+      { header: 'used_path', width: 80 },
+      { header: 'status', width: 16 },
       { header: 'bytes', width: 12 },
-      { header: 'contentType', width: 20 },
-      { header: 'note', width: 50 },
+      { header: 'ext', width: 8 },
+      { header: 'note', width: 60 },
     ];
-
-    const ws = wb.addWorksheet('submission');
     ws.columns = [
       { header: 'Field', key: 'label', width: 22 },
       { header: 'Value', key: 'value', width: 48 },
@@ -172,7 +221,7 @@ Deno.serve(async (req) => {
       ws.addRow([label, safeString(value)]);
     };
 
-    addKV('EXPORT_VERSION', 'XLSX_EDGE_V7_6_PHOTOS_BASE64_COMPAT');
+    addKV('EXPORT_VERSION', 'XLSX_EDGE_V8_6_PHOTOS_BASE64_TRY_FALLBACKS');
     addKV('DATE', submission.date ?? '');
     addKV('BRAND', submission.brand ?? '');
     addKV('STORE SITE', submission.store_site ?? '');
@@ -216,22 +265,32 @@ Deno.serve(async (req) => {
 
     // Download + embed, in order.
     for (let i = 0; i < 6; i++) {
-      const p = paths[i];
-      if (!p) {
-        debugWs.addRow([i + 1, '', 'missing_path', 0, '', 'no photo path on submission row']);
+      const stored = paths[i];
+      if (!stored) {
+        debugWs.addRow([i + 1, '', '', 'missing_path', 0, '', 'no photo path on submission row']);
         continue;
       }
 
-      const img = await downloadStorageThumb(admin, 'submissions', p);
-      if (!img) {
-        debugWs.addRow([i + 1, p, 'download_failed', 0, '', 'storage.download returned no data']);
+      const candidates = buildCandidatePaths(i + 1, stored);
+      const attempt = await tryDownloadThumb(admin, 'submissions', candidates);
+
+      if (!attempt.ok) {
+        debugWs.addRow([
+          i + 1,
+          stored,
+          '',
+          'download_failed',
+          0,
+          '',
+          `tried: ${attempt.tried.join(' | ')}`,
+        ]);
         continue;
       }
 
-      debugWs.addRow([i + 1, p, 'ok', img.bytes.byteLength, img.extension, '']);
+      const { img, usedPath } = attempt;
+      debugWs.addRow([i + 1, stored, usedPath, 'ok', img.bytes.byteLength, img.extension, '']);
 
-      // IMPORTANT: Supabase Edge bundler may not allow Node Buffer polyfills.
-      // ExcelJS supports base64 data URLs, so use that for maximum compatibility.
+      // ExcelJS supports base64 data URLs.
       const mime = img.extension === 'png' ? 'image/png' : 'image/jpeg';
       const base64 = bytesToBase64(img.bytes);
       const imageId = wb.addImage({
