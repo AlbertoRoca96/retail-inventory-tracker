@@ -101,23 +101,31 @@ async function shareXlsx(fileUri: string) {
   await Share.share({ url: fileUri, title: 'Share spreadsheet' });
 }
 
-async function fetchImageAsBase64(url: string): Promise<string | null> {
+async function fetchImageAsDataUri(url: string): Promise<string | null> {
   try {
     debugLog('fetch image', url);
     const started = Date.now();
+
     const res = await fetch(url);
     const status = res.status;
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+
     if (!res.ok) {
       debugLog('fetch image failed', url, status);
       return null;
     }
+
+    // ExcelJS is picky: use a full data URI so it can interpret the bytes correctly.
+    const mime = ct.includes('png') ? 'image/png' : 'image/jpeg';
+
     const arrayBuf = await res.arrayBuffer();
     const bytes = new Uint8Array(arrayBuf);
-    debugLog('image bytes', url, 'status', status, 'bytes', bytes.byteLength, 'ms', Date.now() - started);
+    debugLog('image bytes', url, 'status', status, 'content-type', ct, 'bytes', bytes.byteLength, 'ms', Date.now() - started);
     if (!bytes.byteLength) return null;
+
     const b64 = Buffer.from(bytes).toString('base64');
     debugLog('image base64 length', url, b64.length);
-    return b64;
+    return `data:${mime};base64,${b64}`;
   } catch (e) {
     debugLog('fetch image error', url, e);
     return null;
@@ -255,19 +263,20 @@ export async function buildSubmissionSpreadsheetFile(
   debugLog('photos to embed', urls.length, urls);
 
   // Fetch images sequentially to avoid memory spikes; convert to base64 JPEG
-  const base64s: (string | null)[] = [];
+  const dataUris: (string | null)[] = [];
   for (const url of urls) {
-    const b64 = await fetchImageAsBase64(url);
-    base64s.push(b64);
+    const dataUri = await fetchImageAsDataUri(url);
+    dataUris.push(dataUri);
   }
 
-  debugLog('photos fetched/base64', base64s.map((b, idx) => ({ idx, ok: !!b })));
+  debugLog('photos fetched/dataUri', dataUris.map((b, idx) => ({ idx, ok: !!b })));
 
-  for (let i = 0; i < base64s.length; i++) {
-    const b64 = base64s[i];
-    if (!b64) continue;
+  for (let i = 0; i < dataUris.length; i++) {
+    const dataUri = dataUris[i];
+    if (!dataUri) continue;
 
-    const imageId = wb.addImage({ base64: b64, extension: 'jpeg' });
+    const isPng = dataUri.startsWith('data:image/png');
+    const imageId = wb.addImage({ base64: dataUri, extension: isPng ? 'png' : 'jpeg' });
     const colIndex = i % 2; // 0 or 1
     const rowBlock = Math.floor(i / 2); // 0,1,2
     const tlRow = imageTopRow + rowBlock * 12;

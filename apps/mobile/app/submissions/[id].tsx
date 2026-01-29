@@ -125,6 +125,7 @@ export default function Submission() {
   const [row, setRow] = useState<Row | null>(null);
   const [photo1Url, setPhoto1Url] = useState<string | null>(null);
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
+  const [extraPhotoUrls, setExtraPhotoUrls] = useState<(string | null)[]>([null, null, null, null]);
   const [submitterName, setSubmitterName] = useState<string>('');
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
@@ -201,8 +202,17 @@ export default function Submission() {
         return null;
       };
 
-      setPhoto1Url(dataRow.photo1_url ?? (await resolveSigned(dataRow.photo1_path)));
-      setPhoto2Url(dataRow.photo2_url ?? (await resolveSigned(dataRow.photo2_path)));
+      // Resolve up to 6 photos (url preferred, otherwise signed from path).
+      setPhoto1Url(dataRow.photo1_url ?? (await resolveSigned((dataRow as any).photo1_path)));
+      setPhoto2Url(dataRow.photo2_url ?? (await resolveSigned((dataRow as any).photo2_path)));
+
+      const extras: (string | null)[] = [];
+      for (let slot = 3; slot <= 6; slot++) {
+        const url = (dataRow as any)[`photo${slot}_url`] as string | null | undefined;
+        const path = (dataRow as any)[`photo${slot}_path`] as string | null | undefined;
+        extras.push(url ?? (await resolveSigned(path)));
+      }
+      setExtraPhotoUrls(extras);
     })();
   }, [id]);
 
@@ -243,8 +253,10 @@ export default function Submission() {
       }
 
       const tStart = Date.now();
-      const edge = await import('../../src/lib/submissionSpreadsheet.native');
-      await edge.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+      // Edge XLSX export can hit Supabase CPU limits when embedding photos.
+      // Generate on-device instead to guarantee all 6 images.
+      const native = await import('../../src/lib/exportSpreadsheet.native');
+      await native.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
     } catch (err: any) {
@@ -294,11 +306,11 @@ export default function Submission() {
         return;
       }
 
-      const edge = await import('../../src/lib/submissionSpreadsheet.native');
+      const native = await import('../../src/lib/exportSpreadsheet.native');
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const path = await edge.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+      const path = await native.buildSubmissionSpreadsheetFile(submissionPayload as any, { fileNamePrefix: baseName });
       console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
       const tChatStart = Date.now();
@@ -335,10 +347,7 @@ export default function Submission() {
 
   const photo1 = row.photo1_url || photo1Url || null;
   const photo2 = row.photo2_url || photo2Url || null;
-  const extra3 = (row as any).photo3_url || null;
-  const extra4 = (row as any).photo4_url || null;
-  const extra5 = (row as any).photo5_url || null;
-  const extra6 = (row as any).photo6_url || null;
+  const [extra3, extra4, extra5, extra6] = extraPhotoUrls;
   const photoUrls = [photo1, photo2, extra3, extra4, extra5, extra6].filter(Boolean) as string[];
   const csvSaveLabel = Platform.OS === 'web' ? 'Download Spreadsheet' : 'Send Spreadsheet to Chat';
   const buildPdfPayload = () => ({
