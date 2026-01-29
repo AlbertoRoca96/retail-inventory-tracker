@@ -3,10 +3,17 @@
 // Native: Build a real XLSX spreadsheet with embedded images using ExcelJS,
 // mirroring the PDF layout (6 photos: 2 main + 4 underneath, 2x3 grid).
 // This runs on-device so we avoid Supabase Edge CPU limits.
+//
+// Performance notes:
+// - Resize/compress images using expo-image-manipulator (native) to avoid huge
+//   JS-side base64 conversions and memory spikes.
+// - Encode the final ArrayBuffer with base64-arraybuffer (faster than Buffer).
+// - Disable styles/sharedStrings for ExcelJS to reduce work.
 
 import ExcelJS from 'exceljs';
 import * as FileSystem from 'expo-file-system';
-import { Buffer } from 'buffer';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { encode as base64ArraybufferEncode } from 'base64-arraybuffer';
 
 import { shareFileNative } from './shareFile.native';
 
@@ -96,33 +103,64 @@ async function shareXlsx(fileUri: string) {
   });
 }
 
-async function fetchImageAsDataUri(url: string): Promise<string | null> {
+function supabaseThumb(url: string): string {
+  const trimmed = (url || '').trim();
+  if (!trimmed) return trimmed;
+
+  // Only touch HTTP(S)
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  // Only touch supabase-like URLs (safe heuristic)
+  if (!/supabase\./i.test(trimmed) && !/storage\.googleapis\.com\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const hasQuery = trimmed.includes('?');
+  const sep = hasQuery ? '&' : '?';
+  // Even if ignored, it's harmless. If supported, it reduces bytes massively.
+  const params = 'width=400&quality=60&resize=contain&format=origin';
+  return `${trimmed}${sep}${params}`;
+}
+
+/**
+ * Resize + compress via expo-image-manipulator and return a JPEG data URI.
+ * This keeps images small and avoids huge memory spikes.
+ */
+async function fetchImageAsDataUriResized(
+  url: string,
+  width = 360,
+  quality = 0.6
+): Promise<string | null> {
   try {
-    debugLog('fetch image', url);
     const started = Date.now();
+    debugLog('fetch/resize image', url);
 
-    const res = await fetch(url);
-    const status = res.status;
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    const result = await ImageManipulator.manipulateAsync(
+      url,
+      [{ resize: { width } }],
+      {
+        compress: quality,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }
+    );
 
-    if (!res.ok) {
-      debugLog('fetch image failed', url, status);
+    if (!result?.base64) {
+      debugLog('manipulateAsync returned no base64', url);
       return null;
     }
 
-    // ExcelJS is picky: use a full data URI so it can interpret the bytes correctly.
-    const mime = ct.includes('png') ? 'image/png' : 'image/jpeg';
+    debugLog('image resized', {
+      url,
+      outWidth: result.width,
+      outHeight: result.height,
+      base64Len: result.base64.length,
+      ms: Date.now() - started,
+    });
 
-    const arrayBuf = await res.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuf);
-    debugLog('image bytes', url, 'status', status, 'content-type', ct, 'bytes', bytes.byteLength, 'ms', Date.now() - started);
-    if (!bytes.byteLength) return null;
-
-    const b64 = Buffer.from(bytes).toString('base64');
-    debugLog('image base64 length', url, b64.length);
-    return `data:${mime};base64,${b64}`;
+    return `data:image/jpeg;base64,${result.base64}`;
   } catch (e) {
-    debugLog('fetch image error', url, e);
+    debugLog('fetch/resize error', url, e);
     return null;
   }
 }
@@ -192,10 +230,13 @@ export async function buildSubmissionSpreadsheetFile(
   addRow('PRIORITY LEVEL', row.priority_level);
   const p = Number(row.priority_level ?? '0');
   const priColor =
-    p === 1 ? 'FFEF4444' : // red
-    p === 2 ? 'FFF59E0B' : // amber
-    p === 3 ? 'FF22C55E' : // green
-    undefined;
+    p === 1
+      ? 'FFEF4444' // red
+      : p === 2
+        ? 'FFF59E0B' // amber
+        : p === 3
+          ? 'FF22C55E' // green
+          : undefined;
   if (priColor) {
     ws.getCell(`B${priRow}`).fill = {
       type: 'pattern',
@@ -230,26 +271,6 @@ export async function buildSubmissionSpreadsheetFile(
     ws.getRow(rr).height = 18;
   }
 
-  const supabaseThumb = (url: string): string => {
-    const trimmed = url.trim();
-    // Heuristic: if this is a Supabase storage or signed URL, append/merge
-    // a lightweight transform to get a smaller thumbnail. We keep width small
-    // and lower quality to reduce bytes massively while still being readable
-    // in Excel.
-    if (!/^https?:\/\//i.test(trimmed)) return trimmed;
-
-    // Only touch supabase-like URLs
-    if (!/supabase\./i.test(trimmed) && !/storage\.googleapis\.com\//i.test(trimmed)) {
-      return trimmed;
-    }
-
-    const hasQuery = trimmed.includes('?');
-    const sep = hasQuery ? '&' : '?';
-    // Supabase Image Transform (or CDN) style params. Even if unused, safe.
-    const params = 'width=400&quality=60&resize=contain';
-    return `${trimmed}${sep}${params}`;
-  };
-
   const urls = (row.photo_urls || [])
     .filter((u) => typeof u === 'string' && u.trim())
     .map((u) => supabaseThumb(u as string))
@@ -257,10 +278,10 @@ export async function buildSubmissionSpreadsheetFile(
 
   debugLog('photos to embed', urls.length, urls);
 
-  // Fetch images sequentially to avoid memory spikes; convert to base64 JPEG
+  // Fetch + resize sequentially (keeps memory down)
   const dataUris: (string | null)[] = [];
   for (const url of urls) {
-    const dataUri = await fetchImageAsDataUri(url);
+    const dataUri = await fetchImageAsDataUriResized(url, 360, 0.6);
     dataUris.push(dataUri);
   }
 
@@ -270,8 +291,7 @@ export async function buildSubmissionSpreadsheetFile(
     const dataUri = dataUris[i];
     if (!dataUri) continue;
 
-    const isPng = dataUri.startsWith('data:image/png');
-    const imageId = wb.addImage({ base64: dataUri, extension: isPng ? 'png' : 'jpeg' });
+    const imageId = wb.addImage({ base64: dataUri, extension: 'jpeg' });
     const colIndex = i % 2; // 0 or 1
     const rowBlock = Math.floor(i / 2); // 0,1,2
     const tlRow = imageTopRow + rowBlock * 12;
@@ -281,11 +301,18 @@ export async function buildSubmissionSpreadsheetFile(
     ws.addImage(imageId, `${colLetter}${tlRow}:${colLetter}${brRow}`);
   }
 
+  // Yield so React Native has a chance to render UI updates (spinner) before heavy work.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
   debugLog('writing workbook buffer...');
   const tWriteStart = Date.now();
-  const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
-  const bytes = new Uint8Array(buffer);
-  debugLog('workbook buffer size', bytes.byteLength, 'bytes, ms', Date.now() - tWriteStart);
+
+  const buffer = (await wb.xlsx.writeBuffer({
+    useStyles: false,
+    useSharedStrings: false,
+  } as any)) as ArrayBuffer;
+
+  debugLog('workbook buffer ms', Date.now() - tWriteStart);
 
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
   if (!baseDir) throw new Error('No writable directory available for export.');
@@ -300,11 +327,13 @@ export async function buildSubmissionSpreadsheetFile(
 
   debugLog('writing file to', dest);
   const tFsStart = Date.now();
-  await FileSystem.writeAsStringAsync(dest, Buffer.from(bytes).toString('base64'), {
+
+  const b64 = base64ArraybufferEncode(buffer);
+  await FileSystem.writeAsStringAsync(dest, b64, {
     encoding: (FileSystem as any).EncodingType.Base64,
   } as any);
-  debugLog('file written', dest, 'ms', Date.now() - tFsStart, 'totalMs', Date.now() - started);
 
+  debugLog('file written', dest, 'ms', Date.now() - tFsStart, 'totalMs', Date.now() - started);
   return dest;
 }
 
