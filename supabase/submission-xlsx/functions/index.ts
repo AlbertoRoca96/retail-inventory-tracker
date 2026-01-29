@@ -18,6 +18,10 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE_KEY =
   Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+const PHOTO_BUCKETS = ['submissions', 'photos'] as const;
+
+type PhotoBucket = (typeof PHOTO_BUCKETS)[number];
+
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -55,8 +59,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 type ImageBits = { bytes: Uint8Array; extension: 'jpeg' | 'png' };
 
 type AttemptResult =
-  | { ok: true; usedPath: string; img: ImageBits }
-  | { ok: false; tried: string[] };
+  | { ok: true; bucket: PhotoBucket; usedPath: string; method: string; img: ImageBits }
+  | { ok: false; tried: string[]; lastError?: string };
 
 function looksLikeFilePath(p: string): boolean {
   // super basic: if it ends in .jpg/.jpeg/.png treat as file.
@@ -86,20 +90,101 @@ function buildCandidatePaths(slot: number, rawPath: string): string[] {
   return candidates.filter((x, i) => candidates.indexOf(x) === i);
 }
 
+function encodeStoragePath(path: string): string {
+  // Encode each segment but preserve slashes.
+  return (path || '')
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+}
+
+async function fetchRenderThumb(
+  bucket: PhotoBucket,
+  path: string
+): Promise<{ ok: true; img: ImageBits; method: string } | { ok: false; error: string }> {
+  // Use the Storage render endpoint directly. This avoids `transform` support
+  // differences in supabase-js across runtimes.
+  const encoded = encodeStoragePath(path);
+  const url = `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/render/image/authenticated/${bucket}/${encoded}?width=360&quality=60&resize=contain`;
+
+  const res = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      apikey: SERVICE_ROLE_KEY,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    return { ok: false, error: `render ${res.status}: ${text || 'no body'}` };
+  }
+
+  const ct = res.headers.get('content-type') || '';
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  if (!bytes.byteLength) {
+    return { ok: false, error: 'render returned 0 bytes' };
+  }
+
+  const ext = inferExtFromContentTypeOrPath(ct, path);
+  return { ok: true, img: { bytes, extension: ext }, method: 'render' };
+}
+
+async function downloadObjectDirect(
+  admin: ReturnType<typeof createClient>,
+  bucket: PhotoBucket,
+  path: string
+): Promise<{ ok: true; img: ImageBits; method: string } | { ok: false; error: string }> {
+  const { data, error } = await admin.storage.from(bucket).download(path);
+  if (error || !data) {
+    return { ok: false, error: `download: ${error?.message || 'no data'}` };
+  }
+
+  const blob = data as Blob;
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  if (!bytes.byteLength) {
+    return { ok: false, error: 'download returned 0 bytes' };
+  }
+
+  const ext = inferExtFromContentTypeOrPath(blob.type, path);
+  return { ok: true, img: { bytes, extension: ext }, method: 'download' };
+}
+
+async function downloadStorageThumb(
+  admin: ReturnType<typeof createClient>,
+  bucket: PhotoBucket,
+  path: string
+): Promise<{ ok: true; img: ImageBits; method: string } | { ok: false; error: string }> {
+  // Try render first (small thumbnail), then fallback to raw object download.
+  const render = await fetchRenderThumb(bucket, path);
+  if (render.ok) return render;
+
+  const direct = await downloadObjectDirect(admin, bucket, path);
+  if (direct.ok) return direct;
+
+  return { ok: false, error: `${render.error} | ${direct.error}` };
+}
+
 async function tryDownloadThumb(
   admin: ReturnType<typeof createClient>,
-  bucket: string,
   candidates: string[]
 ): Promise<AttemptResult> {
   const tried: string[] = [];
-  for (const path of candidates) {
-    tried.push(path);
-    const img = await downloadStorageThumb(admin, bucket, path);
-    if (img) {
-      return { ok: true, usedPath: path, img };
+  let lastError = '';
+
+  for (const bucket of PHOTO_BUCKETS) {
+    for (const path of candidates) {
+      tried.push(`${bucket}:${path}`);
+      const res = await downloadStorageThumb(admin, bucket, path);
+      if (res.ok) {
+        return { ok: true, bucket, usedPath: path, method: res.method, img: res.img };
+      }
+      lastError = res.error;
     }
   }
-  return { ok: false, tried };
+
+  return { ok: false, tried, lastError };
 }
 
 function inferExtFromContentTypeOrPath(
@@ -114,31 +199,6 @@ function inferExtFromContentTypeOrPath(
   return 'jpeg';
 }
 
-async function downloadStorageThumb(
-  admin: ReturnType<typeof createClient>,
-  bucket: string,
-  path: string
-): Promise<ImageBits | null> {
-  // IMPORTANT: use transform to downscale server-side.
-  const { data, error } = await admin.storage.from(bucket).download(path, {
-    transform: {
-      width: 360,
-      quality: 60,
-      resize: 'contain',
-      format: 'origin',
-    },
-  } as any);
-
-  if (error || !data) return null;
-
-  const blob = data as Blob;
-  const buf = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  if (!bytes.byteLength) return null;
-
-  const ext = inferExtFromContentTypeOrPath(blob.type, path);
-  return { bytes, extension: ext };
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -206,7 +266,9 @@ Deno.serve(async (req) => {
     debugWs.columns = [
       { header: 'slot', width: 8 },
       { header: 'stored_path', width: 80 },
+      { header: 'bucket', width: 14 },
       { header: 'used_path', width: 80 },
+      { header: 'method', width: 12 },
       { header: 'status', width: 16 },
       { header: 'bytes', width: 12 },
       { header: 'ext', width: 8 },
@@ -221,7 +283,7 @@ Deno.serve(async (req) => {
       ws.addRow([label, safeString(value)]);
     };
 
-    addKV('EXPORT_VERSION', 'XLSX_EDGE_V8_6_PHOTOS_BASE64_TRY_FALLBACKS');
+    addKV('EXPORT_VERSION', 'XLSX_EDGE_V9_6_PHOTOS_RENDER_FALLBACKS');
     addKV('DATE', submission.date ?? '');
     addKV('BRAND', submission.brand ?? '');
     addKV('STORE SITE', submission.store_site ?? '');
@@ -267,28 +329,40 @@ Deno.serve(async (req) => {
     for (let i = 0; i < 6; i++) {
       const stored = paths[i];
       if (!stored) {
-        debugWs.addRow([i + 1, '', '', 'missing_path', 0, '', 'no photo path on submission row']);
+        debugWs.addRow([i + 1, '', '', '', '', 'missing_path', 0, '', 'no photo path on submission row']);
         continue;
       }
 
       const candidates = buildCandidatePaths(i + 1, stored);
-      const attempt = await tryDownloadThumb(admin, 'submissions', candidates);
+      const attempt = await tryDownloadThumb(admin, candidates);
 
       if (!attempt.ok) {
         debugWs.addRow([
           i + 1,
           stored,
           '',
+          '',
+          '',
           'download_failed',
           0,
           '',
-          `tried: ${attempt.tried.join(' | ')}`,
+          `tried: ${attempt.tried.join(' | ')} | lastError: ${attempt.lastError || 'n/a'}`,
         ]);
         continue;
       }
 
-      const { img, usedPath } = attempt;
-      debugWs.addRow([i + 1, stored, usedPath, 'ok', img.bytes.byteLength, img.extension, '']);
+      const { img, usedPath, bucket, method } = attempt;
+      debugWs.addRow([
+        i + 1,
+        stored,
+        bucket,
+        usedPath,
+        method,
+        'ok',
+        img.bytes.byteLength,
+        img.extension,
+        '',
+      ]);
 
       // ExcelJS supports base64 data URLs.
       const mime = img.extension === 'png' ? 'image/png' : 'image/jpeg';
