@@ -5,6 +5,8 @@
 import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 
+import Constants from 'expo-constants';
+
 import { supabase, resolvedSupabaseUrl } from './supabase';
 import { shareFileNative } from './shareFile.native';
 
@@ -52,17 +54,53 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoaFn(binary);
 }
 
+const sanitize = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return undefined;
+  return trimmed;
+};
+
+const isValidHttpUrl = (value?: string | null) => {
+  if (!value) return false;
+  return /^https?:\/\//i.test(value.trim());
+};
+
+const getConfigExtra = () => {
+  const expoConfig = Constants.expoConfig;
+  const manifest2 = (Constants as unknown as { manifest2?: { extra?: Record<string, unknown> } }).manifest2;
+  const legacyManifest = (Constants as unknown as { manifest?: { extra?: Record<string, unknown> } }).manifest;
+  return expoConfig?.extra ?? manifest2?.extra ?? legacyManifest?.extra ?? {};
+};
+
+const extra = getConfigExtra();
+const envXlsxServiceUrl = sanitize(process.env.EXPO_PUBLIC_XLSX_SERVICE_URL ?? process.env.XLSX_SERVICE_URL);
+const extraXlsxServiceUrl = sanitize(extra.xlsxServiceUrl as string | undefined);
+
+const resolvedXlsxServiceUrl =
+  (isValidHttpUrl(envXlsxServiceUrl) ? envXlsxServiceUrl : undefined) ??
+  (isValidHttpUrl(extraXlsxServiceUrl) ? extraXlsxServiceUrl : undefined) ??
+  undefined;
+
 async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
   const { data, error } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
   if (error || !token) throw new Error('You must be signed in.');
 
-  const baseUrl = (resolvedSupabaseUrl || '').replace(/\/+$/, '');
-  if (!baseUrl) throw new Error('Supabase URL missing.');
+  // Prefer the dedicated XLSX service when configured.
+  // This avoids Supabase Edge CPU limits and avoids iOS ExcelJS crashes.
+  const endpoint = (() => {
+    if (resolvedXlsxServiceUrl) {
+      const base = resolvedXlsxServiceUrl.replace(/\/+$/, '');
+      return `${base}/submission-xlsx`;
+    }
 
-  const url = `${baseUrl}/functions/v1/submission-xlsx`;
+    const baseUrl = (resolvedSupabaseUrl || '').replace(/\/+$/, '');
+    if (!baseUrl) throw new Error('Supabase URL missing.');
+    return `${baseUrl}/functions/v1/submission-xlsx`;
+  })();
 
-  const res = await fetch(url, {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -73,7 +111,8 @@ async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`submission-xlsx failed (${res.status}): ${text || 'Unknown error'}`);
+    const target = resolvedXlsxServiceUrl ? 'xlsx-service' : 'submission-xlsx';
+    throw new Error(`${target} failed (${res.status}): ${text || 'Unknown error'}`);
   }
 
   // IMPORTANT: Some production RN builds don’t support Response.blob().

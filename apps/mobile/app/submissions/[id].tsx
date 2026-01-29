@@ -253,11 +253,9 @@ export default function Submission() {
       }
 
       const tStart = Date.now();
-      // Generate on-device to guarantee all 6 images.
-      // Use retries with smaller presets to avoid iOS watchdog/OOM crashes.
-      const native = await import('../../src/lib/exportSpreadsheet.native');
-      const fn = (native as any).downloadSubmissionSpreadsheetWithRetries ?? (native as any).downloadSubmissionSpreadsheet;
-      await fn(submissionPayload as any, { fileNamePrefix: baseName });
+      // Generate XLSX on a dedicated server (or fallback to Supabase Edge) to avoid iOS ExcelJS crashes.
+      const remote = await import('../../src/lib/submissionSpreadsheet.native');
+      await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
     } catch (err: any) {
@@ -307,13 +305,12 @@ export default function Submission() {
         return;
       }
 
-      const native = await import('../../src/lib/exportSpreadsheet.native');
+      const remote = await import('../../src/lib/submissionSpreadsheet.native');
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const fn = (native as any).buildSubmissionSpreadsheetFileWithRetries ?? (native as any).buildSubmissionSpreadsheetFile;
-      const path = await fn(submissionPayload as any, { fileNamePrefix: baseName });
-      console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
+      const path = await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+      console.log('[sendSpreadsheetToChat] downloaded file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
       const tChatStart = Date.now();
       const result = await chat.sendExcelFileAttachmentMessageFromPath(
