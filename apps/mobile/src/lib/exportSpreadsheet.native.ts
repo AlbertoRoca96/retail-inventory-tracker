@@ -17,12 +17,17 @@ import { encode as base64ArraybufferEncode } from 'base64-arraybuffer';
 
 import { shareFileNative } from './shareFile.native';
 
-const DEBUG_XLSX = true;
+const DEBUG_XLSX = __DEV__;
 
 function debugLog(...args: any[]) {
   if (!DEBUG_XLSX) return;
   // eslint-disable-next-line no-console
   console.log('[xlsx.native]', ...args);
+}
+
+async function yieldToUI(ms = 0) {
+  // Let RN breathe between heavy steps so we don't look frozen or watchdog-crash.
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export type SubmissionSpreadsheet = {
@@ -128,22 +133,37 @@ function supabaseThumb(url: string): string {
  */
 async function fetchImageAsDataUriResized(
   url: string,
-  width = 360,
-  quality = 0.6
+  width = 300,
+  quality = 0.55
 ): Promise<string | null> {
   try {
     const started = Date.now();
     debugLog('fetch/resize image', url);
 
-    const result = await ImageManipulator.manipulateAsync(
-      url,
-      [{ resize: { width } }],
-      {
-        compress: quality,
-        format: ImageManipulator.SaveFormat.JPEG,
-        base64: true,
-      }
-    );
+    await yieldToUI(0);
+
+    const run = async (w: number, q: number) =>
+      ImageManipulator.manipulateAsync(
+        url,
+        [{ resize: { width: w } }],
+        {
+          compress: q,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        }
+      );
+
+    // First attempt
+    let result = await run(width, quality);
+
+    // If the base64 is still massive, retry smaller. This prevents
+    // `writeBuffer()` from ballooning memory and killing the process.
+    const len = result?.base64?.length ?? 0;
+    if (len > 1_200_000) {
+      debugLog('image too large, retry smaller', { url, len, width, quality });
+      await yieldToUI(0);
+      result = await run(240, Math.min(0.5, quality));
+    }
 
     if (!result?.base64) {
       debugLog('manipulateAsync returned no base64', url);
@@ -281,7 +301,8 @@ export async function buildSubmissionSpreadsheetFile(
   // Fetch + resize sequentially (keeps memory down)
   const dataUris: (string | null)[] = [];
   for (const url of urls) {
-    const dataUri = await fetchImageAsDataUriResized(url, 360, 0.6);
+    await yieldToUI(0);
+    const dataUri = await fetchImageAsDataUriResized(url, 300, 0.55);
     dataUris.push(dataUri);
   }
 
@@ -290,6 +311,8 @@ export async function buildSubmissionSpreadsheetFile(
   for (let i = 0; i < dataUris.length; i++) {
     const dataUri = dataUris[i];
     if (!dataUri) continue;
+
+    await yieldToUI(0);
 
     const imageId = wb.addImage({ base64: dataUri, extension: 'jpeg' });
     const colIndex = i % 2; // 0 or 1
@@ -302,10 +325,13 @@ export async function buildSubmissionSpreadsheetFile(
   }
 
   // Yield so React Native has a chance to render UI updates (spinner) before heavy work.
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await yieldToUI(80);
 
   debugLog('writing workbook buffer...');
   const tWriteStart = Date.now();
+
+  // Extra yield: the writeBuffer step is the heaviest.
+  await yieldToUI(0);
 
   const buffer = (await wb.xlsx.writeBuffer({
     useStyles: false,
