@@ -10,6 +10,14 @@ import * as Sharing from 'expo-sharing';
 import { Platform, Share } from 'react-native';
 import { Buffer } from 'buffer';
 
+const DEBUG_XLSX = true;
+
+function debugLog(...args: any[]) {
+  if (!DEBUG_XLSX) return;
+  // eslint-disable-next-line no-console
+  console.log('[xlsx.native]', ...args);
+}
+
 export type SubmissionSpreadsheet = {
   store_site: string;
   date: string;
@@ -79,6 +87,7 @@ async function ensureDir(path: string) {
 }
 
 async function shareXlsx(fileUri: string) {
+  debugLog('shareXlsx ->', fileUri);
   const canShare = await Sharing.isAvailableAsync();
   if (canShare) {
     await Sharing.shareAsync(fileUri, {
@@ -94,13 +103,23 @@ async function shareXlsx(fileUri: string) {
 
 async function fetchImageAsBase64(url: string): Promise<string | null> {
   try {
+    debugLog('fetch image', url);
+    const started = Date.now();
     const res = await fetch(url);
-    if (!res.ok) return null;
+    const status = res.status;
+    if (!res.ok) {
+      debugLog('fetch image failed', url, status);
+      return null;
+    }
     const arrayBuf = await res.arrayBuffer();
     const bytes = new Uint8Array(arrayBuf);
+    debugLog('image bytes', url, 'status', status, 'bytes', bytes.byteLength, 'ms', Date.now() - started);
     if (!bytes.byteLength) return null;
-    return Buffer.from(bytes).toString('base64');
-  } catch {
+    const b64 = Buffer.from(bytes).toString('base64');
+    debugLog('image base64 length', url, b64.length);
+    return b64;
+  } catch (e) {
+    debugLog('fetch image error', url, e);
     return null;
   }
 }
@@ -109,6 +128,14 @@ export async function buildSubmissionSpreadsheetFile(
   row: SubmissionSpreadsheet,
   opts: ExportOpts = {}
 ): Promise<string> {
+  const started = Date.now();
+  debugLog('buildSubmissionSpreadsheetFile start', {
+    store_site: row.store_site,
+    date: row.date,
+    brand: row.brand,
+    photoCount: row.photo_urls?.length ?? 0,
+  });
+
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('submission', {
     properties: { defaultRowHeight: 18 },
@@ -204,12 +231,16 @@ export async function buildSubmissionSpreadsheetFile(
     .filter((u) => typeof u === 'string' && u.trim())
     .slice(0, 6);
 
+  debugLog('photos to embed', urls.length);
+
   // Fetch images sequentially to avoid memory spikes; convert to base64 JPEG
   const base64s: (string | null)[] = [];
   for (const url of urls) {
     const b64 = await fetchImageAsBase64(url);
     base64s.push(b64);
   }
+
+  debugLog('photos fetched/base64', base64s.map((b, idx) => ({ idx, ok: !!b })));
 
   for (let i = 0; i < base64s.length; i++) {
     const b64 = base64s[i];
@@ -225,8 +256,11 @@ export async function buildSubmissionSpreadsheetFile(
     ws.addImage(imageId, `${colLetter}${tlRow}:${colLetter}${brRow}`);
   }
 
+  debugLog('writing workbook buffer...');
+  const tWriteStart = Date.now();
   const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
   const bytes = new Uint8Array(buffer);
+  debugLog('workbook buffer size', bytes.byteLength, 'bytes, ms', Date.now() - tWriteStart);
 
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
   if (!baseDir) throw new Error('No writable directory available for export.');
@@ -239,9 +273,12 @@ export async function buildSubmissionSpreadsheetFile(
   const fileName = `${prefix}-${iso}.xlsx`;
   const dest = exportDir + fileName;
 
+  debugLog('writing file to', dest);
+  const tFsStart = Date.now();
   await FileSystem.writeAsStringAsync(dest, Buffer.from(bytes).toString('base64'), {
     encoding: FileSystem.EncodingType.Base64,
   } as any);
+  debugLog('file written', dest, 'ms', Date.now() - tFsStart, 'totalMs', Date.now() - started);
 
   return dest;
 }

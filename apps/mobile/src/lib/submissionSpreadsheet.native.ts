@@ -31,9 +31,17 @@ export async function shareSubmissionSpreadsheetFromEdge(
   try {
     if (!payload) throw new Error('Spreadsheet payload missing');
 
+    console.log('[submissionSpreadsheet.native] share start', {
+      fileBase,
+      hasPayload: !!payload,
+      photos: payload.photo_urls?.length ?? 0,
+    });
+
     const dest = await buildSubmissionSpreadsheetFile(payload, {
       fileNamePrefix: sanitizeFileBase(fileBase),
     });
+
+    console.log('[submissionSpreadsheet.native] share, file ready', dest);
 
     await shareFileNative(dest, {
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -52,9 +60,17 @@ export async function downloadSubmissionSpreadsheetToPath(
   fileBase: string,
   payload: SubmissionSpreadsheet
 ): Promise<string> {
+  console.log('[submissionSpreadsheet.native] download path start', {
+    fileBase,
+    hasPayload: !!payload,
+    photos: payload.photo_urls?.length ?? 0,
+  });
+
   const dest = await buildSubmissionSpreadsheetFile(payload, {
     fileNamePrefix: sanitizeFileBase(fileBase),
   });
+
+  console.log('[submissionSpreadsheet.native] download path ready', dest);
   return dest;
 }
 

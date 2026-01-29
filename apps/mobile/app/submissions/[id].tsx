@@ -301,6 +301,11 @@ export default function Submission() {
     };
 
     try {
+      console.log('[shareSubmission] building spreadsheet payload', {
+        baseName,
+        photos: submissionPayload.photo_urls?.length ?? 0,
+      });
+
       if (Platform.OS === 'web') {
         const mod = await import('../../src/lib/exportSpreadsheet.web');
         await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
@@ -308,12 +313,14 @@ export default function Submission() {
         return;
       }
 
+      const tStart = Date.now();
       const edge = await import('../../src/lib/submissionSpreadsheet.native');
       await edge.shareSubmissionSpreadsheetFromEdge(
         row.id,
         baseName,
         submissionPayload as any
       );
+      console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       console.warn('[shareSubmission] failed', err);
@@ -344,6 +351,11 @@ export default function Submission() {
     };
 
     try {
+      console.log('[sendSpreadsheetToChat] start', {
+        baseName,
+        photos: submissionPayload.photo_urls?.length ?? 0,
+      });
+
       if (Platform.OS === 'web') {
         const mod = await import('../../src/lib/exportSpreadsheet.web');
         await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
@@ -359,11 +371,15 @@ export default function Submission() {
       const edge = await import('../../src/lib/submissionSpreadsheet.native');
       const chat = await import('../../src/lib/chat');
 
+      const tBuildStart = Date.now();
       const path = await edge.downloadSubmissionSpreadsheetToPath(
         row.id,
         baseName,
         submissionPayload as any
       );
+      console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
+
+      const tChatStart = Date.now();
       const result = await chat.sendExcelFileAttachmentMessageFromPath(
         row.team_id,
         null,
@@ -372,6 +388,8 @@ export default function Submission() {
         'Submission spreadsheet',
         { is_internal: true }
       );
+
+      console.log('[sendSpreadsheetToChat] chat send finished in', Date.now() - tChatStart, 'ms');
 
       if (!result.success) {
         throw new Error(result.error || 'Unable to send spreadsheet to chat');
