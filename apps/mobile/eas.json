@@ -37,8 +37,7 @@
       "node": "20.19.4",
       "distribution": "store",
       "ios": {
-        "image": "latest",
-        "autoIncrement": "buildNumber"
+        "image": "latest"
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
@@ -52,8 +51,7 @@
       "node": "20.19.4",
       "distribution": "store",
       "ios": {
-        "image": "latest",
-        "autoIncrement": "buildNumber"
+        "image": "latest"
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
