@@ -20,8 +20,9 @@ function sanitizeFileBase(input: string): string {
     .slice(0, 80);
 }
 
-// Note: we keep the old signature (submissionId, fileBase) for compatibility,
-// but we ignore submissionId because everything is built from the payload.
+// We keep the original signature (submissionId, fileBase, payload) so callers
+// don't need to change, but submissionId is not used here. Everything is
+// derived from the payload and built locally.
 export async function shareSubmissionSpreadsheetFromEdge(
   _submissionId: string,
   fileBase: string,
