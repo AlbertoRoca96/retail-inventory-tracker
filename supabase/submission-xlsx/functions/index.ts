@@ -12,9 +12,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import ExcelJS from 'https://esm.sh/exceljs@4.4.0?target=es2020&no-check';
-// ExcelJS expects a Node-like Buffer for image embedding in many runtimes.
-// Supabase Edge runs on Deno; use the std Node buffer polyfill.
-import { Buffer } from 'https://deno.land/std@0.224.0/node/buffer.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -42,6 +39,17 @@ function safeString(v: unknown): string {
   if (v === null || v === undefined) return '';
   if (Array.isArray(v)) return v.map((x) => (x == null ? '' : String(x))).join(', ');
   return String(v);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  // Deno has btoa; chunk to avoid call stack / max string limits.
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 type ImageBits = { bytes: Uint8Array; extension: 'jpeg' | 'png' };
@@ -164,7 +172,7 @@ Deno.serve(async (req) => {
       ws.addRow([label, safeString(value)]);
     };
 
-    addKV('EXPORT_VERSION', 'XLSX_EDGE_V5_6_PHOTOS_BUFFER');
+    addKV('EXPORT_VERSION', 'XLSX_EDGE_V7_6_PHOTOS_BASE64_COMPAT');
     addKV('DATE', submission.date ?? '');
     addKV('BRAND', submission.brand ?? '');
     addKV('STORE SITE', submission.store_site ?? '');
@@ -222,8 +230,14 @@ Deno.serve(async (req) => {
 
       debugWs.addRow([i + 1, p, 'ok', img.bytes.byteLength, img.extension, '']);
 
-      // IMPORTANT: wrap Uint8Array in a Node-like Buffer for ExcelJS
-      const imageId = wb.addImage({ buffer: Buffer.from(img.bytes), extension: img.extension });
+      // IMPORTANT: Supabase Edge bundler may not allow Node Buffer polyfills.
+      // ExcelJS supports base64 data URLs, so use that for maximum compatibility.
+      const mime = img.extension === 'png' ? 'image/png' : 'image/jpeg';
+      const base64 = bytesToBase64(img.bytes);
+      const imageId = wb.addImage({
+        base64: `data:${mime};base64,${base64}`,
+        extension: img.extension,
+      });
 
       const colIndex = i % 2; // 0/1
       const rowBlock = Math.floor(i / 2); // 0/1/2
