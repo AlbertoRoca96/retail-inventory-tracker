@@ -1,5 +1,9 @@
+<div style="font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';">
+
 # retail-inventory-tracker
 A phone-first field app to capture retail audits: login, create/view submissions, attach two photos, share/download entries, and admin grouping.
+
+**Docs font note:** This README prefers the `Inter`/system-ui font stack for readability (GitHub may fall back depending on your setup).
 
 ## Stack
 - Expo (React Native)
@@ -35,3 +39,5 @@ Expo Go includes many native modules out of the box. TestFlight/standalone build
 4. Scan the QR with the dev client. This reproduces the production runtime and surfaces missing-module crashes before shipping.
 
 If you ever add a library that requires native code (e.g., `react-native-gesture-handler`, `react-native-reanimated`, etc.), run `npx expo install <library>` and rebuild the dev client/TestFlight build so the native module is bundled.
+
+</div>
