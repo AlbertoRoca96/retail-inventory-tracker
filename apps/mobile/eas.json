@@ -33,11 +33,27 @@
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
+    "testflight": {
+      "node": "20.19.4",
+      "distribution": "store",
+      "ios": {
+        "image": "latest",
+        "autoIncrement": "buildNumber"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
+        "EXPO_USE_HERMES": "false",
+        "EXPO_POD_INSTALL_ARGS": "--repo-update",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+      }
+    },
     "production": {
       "node": "20.19.4",
       "distribution": "store",
       "ios": {
-        "image": "latest"
+        "image": "latest",
+        "autoIncrement": "buildNumber"
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
@@ -51,6 +67,12 @@
   "submit": {
     "preview": {
       "ios": {
+        "appleId": "alroca308@gmail.com"
+      }
+    },
+    "testflight": {
+      "ios": {
+        "ascAppId": "6756455733",
         "appleId": "alroca308@gmail.com"
       }
     },
