@@ -227,11 +227,32 @@ export async function buildSubmissionSpreadsheetFile(
     ws.getRow(rr).height = 18;
   }
 
+  const supabaseThumb = (url: string): string => {
+    const trimmed = url.trim();
+    // Heuristic: if this is a Supabase storage or signed URL, append/merge
+    // a lightweight transform to get a smaller thumbnail. We keep width small
+    // and lower quality to reduce bytes massively while still being readable
+    // in Excel.
+    if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+
+    // Only touch supabase-like URLs
+    if (!/supabase\./i.test(trimmed) && !/storage\.googleapis\.com\//i.test(trimmed)) {
+      return trimmed;
+    }
+
+    const hasQuery = trimmed.includes('?');
+    const sep = hasQuery ? '&' : '?';
+    // Supabase Image Transform (or CDN) style params. Even if unused, safe.
+    const params = 'width=400&quality=60&resize=contain';
+    return `${trimmed}${sep}${params}`;
+  };
+
   const urls = (row.photo_urls || [])
     .filter((u) => typeof u === 'string' && u.trim())
+    .map((u) => supabaseThumb(u as string))
     .slice(0, 6);
 
-  debugLog('photos to embed', urls.length);
+  debugLog('photos to embed', urls.length, urls);
 
   // Fetch images sequentially to avoid memory spikes; convert to base64 JPEG
   const base64s: (string | null)[] = [];
