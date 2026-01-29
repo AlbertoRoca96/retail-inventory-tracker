@@ -4,7 +4,6 @@
 
 import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Buffer } from 'buffer';
 
 import { supabase, resolvedSupabaseUrl } from './supabase';
 import { shareFileNative } from './shareFile.native';
@@ -28,6 +27,29 @@ async function ensureDir(path: string) {
   } catch {
     // ignore
   }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  // Prefer Buffer if available (fast + reliable)
+  const B = (globalThis as any).Buffer;
+  if (B && typeof B.from === 'function') {
+    return B.from(bytes).toString('base64');
+  }
+
+  // Fallback: btoa if available
+  const btoaFn = (globalThis as any).btoa as ((s: string) => string) | undefined;
+  if (!btoaFn) {
+    throw new Error('Base64 encoder not available (Buffer/btoa missing).');
+  }
+
+  // Chunked to avoid call stack limits
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoaFn(binary);
 }
 
 async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
@@ -54,8 +76,9 @@ async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
     throw new Error(`submission-xlsx failed (${res.status}): ${text || 'Unknown error'}`);
   }
 
-  const blob = await res.blob();
-  const buf = await blob.arrayBuffer();
+  // IMPORTANT: Some production RN builds don’t support Response.blob().
+  // arrayBuffer() is the most reliable way to get binary bytes.
+  const buf = await res.arrayBuffer();
   return new Uint8Array(buf);
 }
 
@@ -75,7 +98,8 @@ export async function downloadSubmissionSpreadsheetToPath(
   const safeBase = sanitizeFileBase(fileBase);
   const dest = `${exportDir}${safeBase}-${iso}.xlsx`;
 
-  await FileSystem.writeAsStringAsync(dest, Buffer.from(bytes).toString('base64'), {
+  const base64 = bytesToBase64(bytes);
+  await FileSystem.writeAsStringAsync(dest, base64, {
     encoding: FileSystem.EncodingType.Base64,
   } as any);
 
