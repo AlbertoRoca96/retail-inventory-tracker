@@ -49,6 +49,8 @@ export type SubmissionSpreadsheet = {
 
 type ExportOpts = {
   fileNamePrefix?: string;
+  /** Internal tweak: allows retry wrapper to adjust image size/quality. */
+  imagePreset?: ImagePreset;
 };
 
 const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -127,14 +129,36 @@ function supabaseThumb(url: string): string {
   return `${trimmed}${sep}${params}`;
 }
 
+type ImagePreset = { width: number; quality: number };
+
+function randomId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function downloadToTempFile(url: string): Promise<string> {
+  const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!baseDir) throw new Error('No writable directory available for image downloads.');
+  const dest = `${baseDir}xlsx-img-${randomId()}.jpg`;
+  const out = await FileSystem.downloadAsync(url, dest);
+  return out.uri;
+}
+
+async function safeDelete(uri: string) {
+  try {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Resize + compress via expo-image-manipulator and return a JPEG data URI.
- * This keeps images small and avoids huge memory spikes.
+ * IMPORTANT: download remote URLs to a local temp file first to reduce
+ * iOS memory spikes / crashes.
  */
 async function fetchImageAsDataUriResized(
   url: string,
-  width = 300,
-  quality = 0.55
+  preset: ImagePreset
 ): Promise<string | null> {
   try {
     const started = Date.now();
@@ -142,9 +166,12 @@ async function fetchImageAsDataUriResized(
 
     await yieldToUI(0);
 
+    // Download to local file first.
+    const tmp = await downloadToTempFile(url);
+
     const run = async (w: number, q: number) =>
       ImageManipulator.manipulateAsync(
-        url,
+        tmp,
         [{ resize: { width: w } }],
         {
           compress: q,
@@ -154,16 +181,18 @@ async function fetchImageAsDataUriResized(
       );
 
     // First attempt
-    let result = await run(width, quality);
+    let result = await run(preset.width, preset.quality);
 
     // If the base64 is still massive, retry smaller. This prevents
     // `writeBuffer()` from ballooning memory and killing the process.
     const len = result?.base64?.length ?? 0;
-    if (len > 1_200_000) {
-      debugLog('image too large, retry smaller', { url, len, width, quality });
+    if (len > 900_000) {
+      debugLog('image too large, retry smaller', { url, len, preset });
       await yieldToUI(0);
-      result = await run(240, Math.min(0.5, quality));
+      result = await run(Math.min(220, preset.width), Math.min(0.45, preset.quality));
     }
+
+    await safeDelete(tmp);
 
     if (!result?.base64) {
       debugLog('manipulateAsync returned no base64', url);
@@ -298,11 +327,13 @@ export async function buildSubmissionSpreadsheetFile(
 
   debugLog('photos to embed', urls.length, urls);
 
+  const preset: ImagePreset = opts.imagePreset ?? { width: 260, quality: 0.5 };
+
   // Fetch + resize sequentially (keeps memory down)
   const dataUris: (string | null)[] = [];
   for (const url of urls) {
     await yieldToUI(0);
-    const dataUri = await fetchImageAsDataUriResized(url, 300, 0.55);
+    const dataUri = await fetchImageAsDataUriResized(url, preset);
     dataUris.push(dataUri);
   }
 
@@ -363,12 +394,54 @@ export async function buildSubmissionSpreadsheetFile(
   return dest;
 }
 
+const RETRY_PRESETS: ImagePreset[] = [
+  { width: 260, quality: 0.5 },
+  { width: 220, quality: 0.45 },
+  { width: 200, quality: 0.42 },
+  { width: 180, quality: 0.4 },
+];
+
+export async function buildSubmissionSpreadsheetFileWithRetries(
+  row: SubmissionSpreadsheet,
+  opts: Omit<ExportOpts, 'imagePreset'> = {}
+): Promise<string> {
+  let lastErr: unknown = null;
+
+  for (const preset of RETRY_PRESETS) {
+    try {
+      debugLog('XLSX build attempt', preset);
+      const dest = await buildSubmissionSpreadsheetFile(row, { ...(opts as any), imagePreset: preset });
+      return dest;
+    } catch (e) {
+      lastErr = e;
+      debugLog('XLSX build attempt failed', preset, e);
+      await yieldToUI(50);
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error('Unable to generate spreadsheet.');
+}
+
+export async function downloadSubmissionSpreadsheetWithRetries(
+  row: SubmissionSpreadsheet,
+  opts: Omit<ExportOpts, 'imagePreset'> = {}
+): Promise<void> {
+  const dest = await buildSubmissionSpreadsheetFileWithRetries(row, opts);
+  await shareXlsx(dest);
+}
+
+// Backward-compatible exports
 export async function downloadSubmissionSpreadsheet(
   row: SubmissionSpreadsheet,
   opts: ExportOpts = {}
 ): Promise<void> {
-  const dest = await buildSubmissionSpreadsheetFile(row, opts);
-  await shareXlsx(dest);
+  // Prefer retry path even if callers still use the old function.
+  await downloadSubmissionSpreadsheetWithRetries(row, opts);
 }
 
-export default { downloadSubmissionSpreadsheet, buildSubmissionSpreadsheetFile };
+export default {
+  downloadSubmissionSpreadsheet,
+  downloadSubmissionSpreadsheetWithRetries,
+  buildSubmissionSpreadsheetFile,
+  buildSubmissionSpreadsheetFileWithRetries,
+};

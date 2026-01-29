@@ -253,10 +253,11 @@ export default function Submission() {
       }
 
       const tStart = Date.now();
-      // Edge XLSX export can hit Supabase CPU limits when embedding photos.
-      // Generate on-device instead to guarantee all 6 images.
+      // Generate on-device to guarantee all 6 images.
+      // Use retries with smaller presets to avoid iOS watchdog/OOM crashes.
       const native = await import('../../src/lib/exportSpreadsheet.native');
-      await native.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
+      const fn = (native as any).downloadSubmissionSpreadsheetWithRetries ?? (native as any).downloadSubmissionSpreadsheet;
+      await fn(submissionPayload as any, { fileNamePrefix: baseName });
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
     } catch (err: any) {
@@ -310,7 +311,8 @@ export default function Submission() {
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const path = await native.buildSubmissionSpreadsheetFile(submissionPayload as any, { fileNamePrefix: baseName });
+      const fn = (native as any).buildSubmissionSpreadsheetFileWithRetries ?? (native as any).buildSubmissionSpreadsheetFile;
+      const path = await fn(submissionPayload as any, { fileNamePrefix: baseName });
       console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
       const tChatStart = Date.now();
