@@ -12,6 +12,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import ExcelJS from 'https://esm.sh/exceljs@4.4.0?target=es2020&no-check';
+import { encodeBase64 } from 'jsr:@std/encoding/base64';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -46,14 +47,8 @@ function safeString(v: unknown): string {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  // Deno has btoa; chunk to avoid call stack / max string limits.
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
+  // IMPORTANT: avoid `String.fromCharCode` + `btoa`  its a CPU/memory hog on Edge and triggers WORKER_LIMIT.
+  return encodeBase64(bytes);
 }
 
 type ImageBits = { bytes: Uint8Array; extension: 'jpeg' | 'png' };
@@ -98,6 +93,45 @@ function encodeStoragePath(path: string): string {
     .join('/');
 }
 
+function normalizeToObjectKey(stored: string, bucket: PhotoBucket): string {
+  let s = (stored || '').trim();
+  if (!s) return '';
+
+  // Drop query string
+  s = s.split('?')[0];
+
+  const base = SUPABASE_URL.replace(/\/+$/, '');
+  const prefixes = [
+    `${base}/storage/v1/object/public/${bucket}/`,
+    `${base}/storage/v1/object/authenticated/${bucket}/`,
+    `${base}/storage/v1/render/image/public/${bucket}/`,
+    `${base}/storage/v1/render/image/authenticated/${bucket}/`,
+  ];
+  for (const p of prefixes) {
+    if (s.startsWith(p)) {
+      s = s.slice(p.length);
+      break;
+    }
+  }
+
+  // Strip `bucket/` if someone stored fullPath like `photos/dir/file.jpg`
+  if (s.startsWith(`${bucket}/`)) {
+    s = s.slice(bucket.length + 1);
+  }
+
+  // Decode safely per segment
+  try {
+    s = s
+      .split('/')
+      .map((seg) => decodeURIComponent(seg))
+      .join('/');
+  } catch {
+    // ignore
+  }
+
+  return s;
+}
+
 async function fetchRenderThumb(
   bucket: PhotoBucket,
   path: string
@@ -105,7 +139,9 @@ async function fetchRenderThumb(
   // Use the Storage render endpoint directly. This avoids `transform` support
   // differences in supabase-js across runtimes.
   const encoded = encodeStoragePath(path);
-  const url = `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/render/image/authenticated/${bucket}/${encoded}?width=360&quality=60&resize=contain`;
+  // Force origin format to avoid WebP bytes being mislabeled as JPEG/PNG.
+// Also shrink thumbnails a bit to reduce edge CPU/memory.
+const url = `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/render/image/authenticated/${bucket}/${encoded}?width=300&quality=55&resize=contain&format=origin`;
 
   const res = await fetch(url, {
     headers: {
@@ -120,6 +156,12 @@ async function fetchRenderThumb(
   }
 
   const ct = res.headers.get('content-type') || '';
+
+  // If WebP slips through, Excel won't render it. Bail so we try direct download.
+  if (ct.toLowerCase().includes('webp')) {
+    return { ok: false, error: `render returned webp (${ct})` };
+  }
+
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);
   if (!bytes.byteLength) {
@@ -127,7 +169,7 @@ async function fetchRenderThumb(
   }
 
   const ext = inferExtFromContentTypeOrPath(ct, path);
-  return { ok: true, img: { bytes, extension: ext }, method: 'render' };
+  return { ok: true, img: { bytes, extension: ext }, method: `render(${ct || 'unknown'})` };
 }
 
 async function downloadObjectDirect(
@@ -174,7 +216,9 @@ async function tryDownloadThumb(
   let lastError = '';
 
   for (const bucket of PHOTO_BUCKETS) {
-    for (const path of candidates) {
+    for (const rawPath of candidates) {
+      const path = normalizeToObjectKey(rawPath, bucket);
+      if (!path) continue;
       tried.push(`${bucket}:${path}`);
       const res = await downloadStorageThumb(admin, bucket, path);
       if (res.ok) {
@@ -283,7 +327,7 @@ Deno.serve(async (req) => {
       ws.addRow([label, safeString(value)]);
     };
 
-    addKV('EXPORT_VERSION', 'XLSX_EDGE_V9_6_PHOTOS_RENDER_FALLBACKS');
+    addKV('EXPORT_VERSION', 'XLSX_EDGE_V10_6_PHOTOS_RENDER_FAST_BASE64');
     addKV('DATE', submission.date ?? '');
     addKV('BRAND', submission.brand ?? '');
     addKV('STORE SITE', submission.store_site ?? '');
