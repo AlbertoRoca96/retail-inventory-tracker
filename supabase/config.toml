@@ -1,5 +1,10 @@
 # supabase/config.toml
+
 [functions.invite-user]
 verify_jwt = false
 # path is relative to THIS config file (the supabase/ dir)
 entrypoint = "./invite-user/functions/index.ts"
+
+[functions.submission-xlsx]
+verify_jwt = false
+entrypoint = "./submission-xlsx/functions/index.ts"

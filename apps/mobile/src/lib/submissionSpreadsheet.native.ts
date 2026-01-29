@@ -1,14 +1,16 @@
 // apps/mobile/src/lib/submissionSpreadsheet.native.ts
-// Native helpers for building the submission XLSX locally with ExcelJS
-// (6 embedded photos, 2x3 grid) and either sharing it or returning the
-// file path so it can be attached to chat.
+// Native: call the Supabase Edge Function `submission-xlsx` to get a real XLSX
+// (with images embedded), save to disk, then share or return the file path.
 
 import { Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Buffer } from 'buffer';
+
+import { supabase, resolvedSupabaseUrl } from './supabase';
 import { shareFileNative } from './shareFile.native';
-import {
-  buildSubmissionSpreadsheetFile,
-  SubmissionSpreadsheet,
-} from './exportSpreadsheet.native';
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XLSX_UTI = 'org.openxmlformats.spreadsheetml.sheet';
 
 function sanitizeFileBase(input: string): string {
   const base = (input || '').trim() || 'submission';
@@ -20,58 +22,84 @@ function sanitizeFileBase(input: string): string {
     .slice(0, 80);
 }
 
-// We keep the original signature (submissionId, fileBase, payload) so callers
-// don't need to change, but submissionId is not used here. Everything is
-// derived from the payload and built locally.
+async function ensureDir(path: string) {
+  try {
+    await FileSystem.makeDirectoryAsync(path, { intermediates: true });
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
+  const { data, error } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  if (error || !token) throw new Error('You must be signed in.');
+
+  const baseUrl = (resolvedSupabaseUrl || '').replace(/\/+$/, '');
+  if (!baseUrl) throw new Error('Supabase URL missing.');
+
+  const url = `${baseUrl}/functions/v1/submission-xlsx`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ submission_id: submissionId }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`submission-xlsx failed (${res.status}): ${text || 'Unknown error'}`);
+  }
+
+  const blob = await res.blob();
+  const buf = await blob.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+export async function downloadSubmissionSpreadsheetToPath(
+  submissionId: string,
+  fileBase: string
+): Promise<string> {
+  const bytes = await fetchSubmissionXlsx(submissionId);
+
+  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  if (!baseDir) throw new Error('No writable directory.');
+
+  const exportDir = baseDir + 'exports/';
+  await ensureDir(exportDir);
+
+  const iso = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeBase = sanitizeFileBase(fileBase);
+  const dest = `${exportDir}${safeBase}-${iso}.xlsx`;
+
+  await FileSystem.writeAsStringAsync(dest, Buffer.from(bytes).toString('base64'), {
+    encoding: FileSystem.EncodingType.Base64,
+  } as any);
+
+  return dest;
+}
+
+// Keep the old 3-arg signature for compatibility with callers.
 export async function shareSubmissionSpreadsheetFromEdge(
-  _submissionId: string,
-  fileBase: string,
-  payload?: SubmissionSpreadsheet
+  submissionId: string,
+  fileBase: string
 ) {
   try {
-    if (!payload) throw new Error('Spreadsheet payload missing');
-
-    console.log('[submissionSpreadsheet.native] share start', {
-      fileBase,
-      hasPayload: !!payload,
-      photos: payload.photo_urls?.length ?? 0,
-    });
-
-    const dest = await buildSubmissionSpreadsheetFile(payload, {
-      fileNamePrefix: sanitizeFileBase(fileBase),
-    });
-
-    console.log('[submissionSpreadsheet.native] share, file ready', dest);
+    const dest = await downloadSubmissionSpreadsheetToPath(submissionId, fileBase);
 
     await shareFileNative(dest, {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType: XLSX_MIME,
       dialogTitle: 'Share spreadsheet',
-      uti: 'org.openxmlformats.spreadsheetml.sheet',
+      uti: XLSX_UTI,
       message: 'Submission spreadsheet attached.',
     });
   } catch (err: any) {
     Alert.alert('Spreadsheet failed', err?.message ?? 'Unable to generate spreadsheet.');
     throw err;
   }
-}
-
-export async function downloadSubmissionSpreadsheetToPath(
-  _submissionId: string,
-  fileBase: string,
-  payload: SubmissionSpreadsheet
-): Promise<string> {
-  console.log('[submissionSpreadsheet.native] download path start', {
-    fileBase,
-    hasPayload: !!payload,
-    photos: payload.photo_urls?.length ?? 0,
-  });
-
-  const dest = await buildSubmissionSpreadsheetFile(payload, {
-    fileNamePrefix: sanitizeFileBase(fileBase),
-  });
-
-  console.log('[submissionSpreadsheet.native] download path ready', dest);
-  return dest;
 }
 
 export default { shareSubmissionSpreadsheetFromEdge, downloadSubmissionSpreadsheetToPath };

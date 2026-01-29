@@ -17,7 +17,6 @@ import Head from 'expo-router/head';
 import { supabase } from '../../src/lib/supabase';
 import { colors, typography, textA11yProps, theme } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
-import { shareCsvNative } from '../../src/lib/shareCsv';
 import LogoHeader from '../../src/components/LogoHeader';
 import { getSignedStorageUrl } from '../../src/lib/supabaseHelpers';
 
@@ -119,18 +118,6 @@ function toCsv(
     .join('\n');
 }
 
-function downloadCsvWeb(filename: string, text: string) {
-  const blob = new Blob([text], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  if (typeof document !== 'undefined') {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 500);
-}
-
 export default function Submission() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { fontScale, targetMinHeight } = useUISettings();
@@ -221,64 +208,6 @@ export default function Submission() {
 
   if (!row) return null;
 
-  // NOTE: Native no longer uses this; web-only for now.
-  const downloadSpreadsheetWithPhotos = async () => {
-    console.warn('[downloadSpreadsheetWithPhotos] tapped');
-
-    const photos: string[] = [];
-    const p1 = row.photo1_url || photo1Url || null;
-    const p2 = row.photo2_url || photo2Url || null;
-    const p3 = (row as any).photo3_url || null;
-    const p4 = (row as any).photo4_url || null;
-    const p5 = (row as any).photo5_url || null;
-    const p6 = (row as any).photo6_url || null;
-    if (p1) photos.push(p1);
-    if (p2) photos.push(p2);
-    if (p3) photos.push(p3);
-    if (p4) photos.push(p4);
-    if (p5) photos.push(p5);
-    if (p6) photos.push(p6);
-
-    const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
-
-    const submissionPayload = {
-      store_site: row.store_site || '',
-      date: row.date || '',
-      brand: row.brand || '',
-      store_location: row.store_location || '',
-      location: row.location || '',
-      conditions: row.conditions || '',
-      price_per_unit: row.price_per_unit ?? '',
-      shelf_space: row.shelf_space || '',
-      on_shelf: row.on_shelf ?? '',
-      tags: Array.isArray(row.tags) ? row.tags.join(', ') : (typeof row.tags === 'string' ? row.tags : ''),
-      notes: row.notes || '',
-      priority_level: row.priority_level ?? '',
-      submitted_by: submittedBy || '',
-      photo_urls: photos,
-    };
-
-    try {
-      if (isWeb) {
-        const mod = await import('../../src/lib/exportSpreadsheet.web');
-        await mod.downloadSubmissionSpreadsheet(submissionPayload as any, { fileNamePrefix: baseName });
-        flash('success', 'Spreadsheet downloaded');
-        return;
-      }
-
-      const edge = await import('../../src/lib/submissionSpreadsheet.native');
-      await edge.shareSubmissionSpreadsheetFromEdge(
-        row.id,
-        baseName,
-        submissionPayload as any
-      );
-      flash('success', 'Share sheet opened');
-    } catch (err: any) {
-      Alert.alert('Spreadsheet failed', err?.message ?? 'Unable to generate spreadsheet');
-      flash('error', 'Unable to generate spreadsheet');
-    }
-  };
-
   const shareSubmission = async () => {
     console.warn('[shareSubmission] tapped');
 
@@ -315,17 +244,14 @@ export default function Submission() {
 
       const tStart = Date.now();
       const edge = await import('../../src/lib/submissionSpreadsheet.native');
-      await edge.shareSubmissionSpreadsheetFromEdge(
-        row.id,
-        baseName,
-        submissionPayload as any
-      );
+      await edge.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
     } catch (err: any) {
       console.warn('[shareSubmission] failed', err);
       Alert.alert('Share failed', err?.message ?? 'Unable to share this submission.');
       flash('error', 'Could not share submission');
+    } finally {
     }
   };
 
@@ -372,11 +298,7 @@ export default function Submission() {
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const path = await edge.downloadSubmissionSpreadsheetToPath(
-        row.id,
-        baseName,
-        submissionPayload as any
-      );
+      const path = await edge.downloadSubmissionSpreadsheetToPath(row.id, baseName);
       console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
       const tChatStart = Date.now();
@@ -400,6 +322,7 @@ export default function Submission() {
       console.warn('[sendSpreadsheetToChat] failed', err);
       Alert.alert('Send failed', err?.message ?? 'Unable to send spreadsheet to chat.');
       flash('error', 'Unable to send spreadsheet to chat');
+    } finally {
     }
   };
 
