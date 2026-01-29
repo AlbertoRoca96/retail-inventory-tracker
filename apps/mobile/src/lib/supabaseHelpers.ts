@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { Buffer } from 'buffer';
 import { supabase } from './supabase';
 

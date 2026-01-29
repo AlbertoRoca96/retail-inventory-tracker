@@ -3,7 +3,7 @@
 // (with images embedded), save to disk, then share or return the file path.
 
 import { Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 
 import { supabase, resolvedSupabaseUrl } from './supabase';
 import { shareFileNative } from './shareFile.native';

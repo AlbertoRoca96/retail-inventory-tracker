@@ -5,10 +5,10 @@
 // This runs on-device so we avoid Supabase Edge CPU limits.
 
 import ExcelJS from 'exceljs';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-import { Platform, Share } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { Buffer } from 'buffer';
+
+import { shareFileNative } from './shareFile.native';
 
 const DEBUG_XLSX = true;
 
@@ -88,17 +88,12 @@ async function ensureDir(path: string) {
 
 async function shareXlsx(fileUri: string) {
   debugLog('shareXlsx ->', fileUri);
-  const canShare = await Sharing.isAvailableAsync();
-  if (canShare) {
-    await Sharing.shareAsync(fileUri, {
-      mimeType: MIME_XLSX,
-      dialogTitle: 'Share spreadsheet',
-      UTI: Platform.OS === 'ios' ? IOS_UTI_XLSX : undefined,
-    });
-    return;
-  }
-
-  await Share.share({ url: fileUri, title: 'Share spreadsheet' });
+  await shareFileNative(fileUri, {
+    mimeType: MIME_XLSX,
+    dialogTitle: 'Share spreadsheet',
+    uti: IOS_UTI_XLSX,
+    message: 'Submission spreadsheet attached.',
+  });
 }
 
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
@@ -306,7 +301,7 @@ export async function buildSubmissionSpreadsheetFile(
   debugLog('writing file to', dest);
   const tFsStart = Date.now();
   await FileSystem.writeAsStringAsync(dest, Buffer.from(bytes).toString('base64'), {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: (FileSystem as any).EncodingType.Base64,
   } as any);
   debugLog('file written', dest, 'ms', Date.now() - tFsStart, 'totalMs', Date.now() - started);
 
