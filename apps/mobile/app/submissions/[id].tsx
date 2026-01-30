@@ -319,7 +319,6 @@ export default function Submission() {
         return;
       }
 
-      const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
 
@@ -341,23 +340,19 @@ export default function Submission() {
 
       console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
-      const tChatStart = Date.now();
-      const result = await chat.sendExcelFileAttachmentMessageFromPath(
-        row.team_id,
-        null,
-        path,
-        `${baseName}.xlsx`,
-        'Submission spreadsheet',
-        { is_internal: true }
-      );
+      // Let the user choose a chat + recipient (team chat / submission chat / DM)
+      router.push({
+        pathname: '/chat/send-attachment',
+        params: {
+          teamId: row.team_id,
+          submissionId: row.id,
+          localPath: path,
+          fileName: `${baseName}.xlsx`,
+          type: 'excel',
+        },
+      });
 
-      console.log('[sendSpreadsheetToChat] chat send finished in', Date.now() - tChatStart, 'ms');
-
-      if (!result.success) {
-        throw new Error(result.error || 'Unable to send spreadsheet to chat');
-      }
-
-      flash('success', 'Spreadsheet sent to team chat');
+      flash('success', 'Choose where to send…');
     } catch (err: any) {
       console.warn('[sendSpreadsheetToChat] failed', err);
       Alert.alert('Send failed', err?.message ?? 'Unable to send spreadsheet to chat.');

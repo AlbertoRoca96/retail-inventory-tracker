@@ -174,26 +174,53 @@ export default function DirectConversation() {
           {isMe ? 'You' : peerName}
         </Text>
         <Text style={[styles.messageBody, { color: isMe ? colors.white : colors.text }]}>{item.body}</Text>
-        {item.attachment_type === 'image' && (item.attachment_signed_url || item.attachment_url) ? (
-          <TouchableOpacity
-            style={styles.attachmentPreview}
-            onPress={() => {
-              const url = (item.attachment_signed_url || item.attachment_url)!;
-              router.push({
-                pathname: '/chat/attachment',
-                params: {
-                  url,
-                  type: 'image',
-                  name: url.split('/').pop() || 'image',
-                },
-              });
-            }}
-          >
-            <Image
-              source={{ uri: item.attachment_signed_url || item.attachment_url || undefined }}
-              style={styles.attachmentImage}
-            />
-          </TouchableOpacity>
+        {item.attachment_type && (item.attachment_signed_url || item.attachment_url) ? (
+          item.attachment_type === 'image' ? (
+            <TouchableOpacity
+              style={styles.attachmentPreview}
+              onPress={() => {
+                const url = (item.attachment_signed_url || item.attachment_url)!;
+                router.push({
+                  pathname: '/chat/attachment',
+                  params: {
+                    url,
+                    type: 'image',
+                    name: url.split('/').pop() || 'image',
+                  },
+                });
+              }}
+            >
+              <Image
+                source={{ uri: item.attachment_signed_url || item.attachment_url || undefined }}
+                style={styles.attachmentImage}
+              />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.attachmentFileRow}
+              onPress={() => {
+                const url = (item.attachment_signed_url || item.attachment_url)!;
+                router.push({
+                  pathname: '/chat/attachment',
+                  params: {
+                    url,
+                    type: item.attachment_type,
+                    name: url.split('/').pop() || `attachment.${item.attachment_type}`,
+                  },
+                });
+              }}
+            >
+              <Text style={[styles.attachmentFileIcon, { color: isMe ? '#e0f2fe' : theme.colors.blue }]}>📎</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.attachmentFileTitle, { color: isMe ? colors.white : colors.text }]}>
+                  {String(item.attachment_type).toUpperCase()} attachment
+                </Text>
+                <Text style={[styles.attachmentFileSub, { color: isMe ? '#e0f2fe' : '#64748b' }]}>
+                  Tap to open
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )
         ) : null}
         <Text style={[styles.timestamp, { color: isMe ? '#e0f2fe' : '#94a3b8' }]}>
           {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -346,6 +373,20 @@ const styles = StyleSheet.create({
     width: 220,
     height: 150,
   },
+  attachmentFileRow: {
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(2),
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    flexDirection: 'row',
+    gap: theme.spacing(2),
+    alignItems: 'center',
+  },
+  attachmentFileIcon: { fontSize: 20 },
+  attachmentFileTitle: { ...typography.body, fontWeight: '800' },
+  attachmentFileSub: { ...typography.label },
   composer: {
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',

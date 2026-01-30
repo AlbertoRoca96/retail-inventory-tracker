@@ -50,11 +50,21 @@ export async function uploadAvatarAndGetPublicUrl(
 }
 
 function guessMimeType(path: string): string {
-  const lower = path.toLowerCase();
+  const lower = (path || '').toLowerCase();
+
+  // Images
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.heic')) return 'image/heic';
-  return 'image/jpeg';
+
+  // Docs
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+  return 'application/octet-stream';
 }
 
 /**
@@ -104,8 +114,37 @@ export async function uploadSubmissionPhoto({
 }
 
 /**
+ * Upload any local file URI into Supabase Storage.
+ * Uses the same 0-byte-safe ArrayBuffer pipeline.
+ */
+export async function uploadLocalFileToStorage({
+  bucket,
+  path,
+  uri,
+  contentType,
+}: {
+  bucket: string;
+  path: string;
+  uri: string;
+  contentType?: string;
+}): Promise<{ path: string; publicUrl: string | null }> {
+  if (!uri) throw new Error('uploadLocalFileToStorage requires a uri');
+  const ct = contentType || guessMimeType(path);
+
+  const data = await uploadSubmissionPhoto({
+    bucket,
+    path,
+    uri,
+    contentType: ct,
+  });
+
+  const publicUrl = await getSignedStorageUrl(bucket, path);
+  return { path: data.path, publicUrl };
+}
+
+/**
  * Upload helper that matches the existing codebase signature.
- * Internally uses GPT's ArrayBuffer method.
+ * Internally uses the same ArrayBuffer method.
  */
 export async function uploadFileToStorage({
   bucket,
@@ -120,16 +159,10 @@ export async function uploadFileToStorage({
     throw new Error('uploadFileToStorage requires a uri');
   }
 
-  const contentType = photo.mimeType || guessMimeType(path);
-
-  // Use GPT's exact method
-  const data = await uploadSubmissionPhoto({
+  return uploadLocalFileToStorage({
     bucket,
     path,
     uri: photo.uri,
-    contentType,
+    contentType: photo.mimeType || undefined,
   });
-
-  const publicUrl = await getSignedStorageUrl(bucket, path);
-  return { path: data.path, publicUrl };
 }

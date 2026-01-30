@@ -1,6 +1,6 @@
 // apps/mobile/src/lib/chat.ts
 import { supabase } from './supabase';
-import { getSignedStorageUrl, uploadFileToStorage } from './supabaseHelpers';
+import { getSignedStorageUrl, uploadFileToStorage, uploadLocalFileToStorage } from './supabaseHelpers';
 import { generateUuid } from './uuid';
 
 // Types for chat functionality
@@ -290,33 +290,25 @@ export async function sendExcelFileAttachmentMessageFromPath(
     const { is_internal = true, is_revised = false } = options;
 
     const normalizedName = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-    const objectName = `${Date.now()}-${normalizedName}`;
-    const storagePath = `${teamId}/excel/${objectName}`;
+    const safeName = normalizedName.replace(/[^a-z0-9_.-]/gi, '-');
+    const messageId = generateUuid();
+    const storagePath = `teams/${teamId}/messages/${messageId}/${Date.now()}-${safeName}`;
 
-    const response = await fetch(localPath);
-    const blob = await response.blob();
-
-    const { error: uploadError } = await supabase.storage
-      .from('chat')
-      .upload(storagePath, blob, {
-        contentType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        upsert: true,
-      });
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('chat')
-      .getPublicUrl(storagePath);
+    const uploaded = await uploadLocalFileToStorage({
+      bucket: 'chat',
+      path: storagePath,
+      uri: localPath,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
 
     const result = await sendSubmissionMessage({
+      id: messageId,
       team_id: teamId,
       submission_id: submissionId,
       body: message,
       is_internal,
       is_revised,
-      attachment_path: publicUrl,
+      attachment_path: uploaded.path,
       attachment_type: 'excel',
     });
 

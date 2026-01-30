@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getSignedStorageUrl } from './supabaseHelpers';
+import { getSignedStorageUrl, uploadLocalFileToStorage } from './supabaseHelpers';
 import { generateUuid } from './uuid';
 
 export type DirectMessage = {
@@ -108,6 +108,49 @@ export async function sendDirectMessage(options: {
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Unable to send message' };
+  }
+}
+
+export async function sendDirectFileAttachmentFromPath(options: {
+  teamId: string;
+  recipientId: string;
+  localPath: string;
+  fileName: string;
+  attachmentType: 'excel' | 'pdf' | 'csv' | 'image';
+  body?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const messageId = generateUuid();
+    const safeName = (options.fileName || 'attachment').replace(/[^a-z0-9_.-]/gi, '-');
+    const storagePath = `teams/${options.teamId}/direct/${messageId}/${Date.now()}-${safeName}`;
+
+    const contentType = (() => {
+      if (options.attachmentType === 'excel') {
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      }
+      if (options.attachmentType === 'pdf') return 'application/pdf';
+      if (options.attachmentType === 'csv') return 'text/csv';
+      if (options.attachmentType === 'image') return undefined;
+      return undefined;
+    })();
+
+    const uploaded = await uploadLocalFileToStorage({
+      bucket: 'chat',
+      path: storagePath,
+      uri: options.localPath,
+      contentType,
+    });
+
+    return await sendDirectMessage({
+      id: messageId,
+      teamId: options.teamId,
+      recipientId: options.recipientId,
+      body: options.body ?? '',
+      attachmentPath: uploaded.path,
+      attachmentType: options.attachmentType,
+    });
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Unable to send attachment' };
   }
 }
 

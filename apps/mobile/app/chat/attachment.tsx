@@ -72,7 +72,7 @@ export default function AttachmentViewerScreen() {
       <View style={styles.viewer}>
         {meta.kind === 'image' ? (
           <Image source={{ uri: meta.url }} style={styles.image} resizeMode="contain" />
-        ) : (
+        ) : meta.kind === 'pdf' ? (
           <WebView
             source={{ uri: viewerUrl }}
             startInLoadingState
@@ -83,6 +83,13 @@ export default function AttachmentViewerScreen() {
               </View>
             )}
           />
+        ) : (
+          <View style={styles.center}>
+            <Text style={styles.noPreviewTitle}>No in-app preview for {meta.kind.toUpperCase()}</Text>
+            <Text style={styles.subtitle}>
+              Use Share / Download to open it in Excel / Files. (Office Online preview doesnt work with signed URLs.)
+            </Text>
+          </View>
         )}
       </View>
     </SafeAreaView>
@@ -115,5 +122,6 @@ const styles = StyleSheet.create({
   viewer: { flex: 1, backgroundColor: colors.surfaceMuted },
   image: { flex: 1, width: '100%', height: '100%' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing(4) },
-  subtitle: { ...typography.body, color: colors.textMuted },
+  subtitle: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
+  noPreviewTitle: { ...typography.body, fontWeight: '800', color: colors.text, marginBottom: theme.spacing(1), textAlign: 'center' },
 });

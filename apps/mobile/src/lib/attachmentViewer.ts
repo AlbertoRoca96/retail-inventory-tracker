@@ -88,13 +88,14 @@ export function buildViewerUrl(meta: AttachmentMeta): string {
   // PDFs usually render fine in WebView.
   if (meta.kind === 'pdf') return meta.url;
 
-  // Office docs: use Office Online viewer inside our WebView.
-  // This is still an external service, but NOT Safari, and it previews like Slack.
+  // Office docs: do NOT try Office Online preview.
+  // It often fails for signed URLs (tokenized / expiring) and shows "File not found".
+  // We intentionally show a "no preview" state and rely on Share/Download.
   if (meta.kind === 'excel' || meta.kind === 'word' || meta.kind === 'powerpoint') {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(meta.url)}`;
+    return meta.url;
   }
 
-  // CSV/text: just load URL.
+  // CSV/text/file: just load URL (screen may decide to not preview).
   return meta.url;
 }
 
