@@ -2,15 +2,9 @@
   "name": "rws-xlsx-writer",
   "version": "0.1.0",
   "private": true,
-  "main": "build/index.js",
-  "types": "build/index.d.ts",
-  "scripts": {
-    "build": "tsc -p tsconfig.json"
-  },
-  "dependencies": {
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
     "expo-modules-core": "*"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.2"
   }
 }
