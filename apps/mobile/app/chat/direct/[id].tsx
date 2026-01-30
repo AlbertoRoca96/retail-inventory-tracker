@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, Linking, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, ActivityIndicator } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -177,7 +177,17 @@ export default function DirectConversation() {
         {item.attachment_type === 'image' && (item.attachment_signed_url || item.attachment_url) ? (
           <TouchableOpacity
             style={styles.attachmentPreview}
-            onPress={() => Linking.openURL((item.attachment_signed_url || item.attachment_url)!)}
+            onPress={() => {
+              const url = (item.attachment_signed_url || item.attachment_url)!;
+              router.push({
+                pathname: '/chat/attachment',
+                params: {
+                  url,
+                  type: 'image',
+                  name: url.split('/').pop() || 'image',
+                },
+              });
+            }}
           >
             <Image
               source={{ uri: item.attachment_signed_url || item.attachment_url || undefined }}

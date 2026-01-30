@@ -1,6 +1,6 @@
 // apps/mobile/app/chat/team.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, Linking } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import LogoHeader from '../../src/components/LogoHeader';
 import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, resolveAttachmentUrl, type SubmissionMessage } from '../../src/lib/chat';
+import { guessFileNameFromUrl } from '../../src/lib/attachmentViewer';
 import { uploadFileToStorage, type PhotoLike } from '../../src/lib/supabaseHelpers';
 import { generateUuid } from '../../src/lib/uuid';
 
@@ -223,7 +224,18 @@ export default function TeamChat() {
       Alert.alert('Attachment unavailable', 'Unable to open this attachment.');
       return;
     }
-    await Linking.openURL(url);
+
+    const nameFromPath = (item.attachment_path || '').split('/').pop() || '';
+    const name = nameFromPath || guessFileNameFromUrl(url);
+
+    router.push({
+      pathname: '/chat/attachment',
+      params: {
+        url,
+        type: item.attachment_type || 'file',
+        name,
+      },
+    });
   };
 
   const renderMessage = ({ item, index }: { item: SubmissionMessage; index: number }) => {

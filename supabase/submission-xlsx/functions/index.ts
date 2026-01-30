@@ -319,9 +319,27 @@ Deno.serve(async (req) => {
     addKV('TAGS', submission.tags ?? []);
     addKV('NOTES', submission.notes ?? '');
     addKV('PRIORITY LEVEL', submission.priority_level ?? '');
+    // Resolve created-by to a friendly name (display_name/email) like the PDF/export file naming.
+    const createdById: string | null = submission.created_by ?? submission.user_id ?? null;
+    let createdByName = createdById ?? '';
+    if (createdById) {
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('display_name,email')
+        .eq('id', createdById)
+        .maybeSingle();
+
+      const display = (profile as any)?.display_name as string | null | undefined;
+      const email = (profile as any)?.email as string | null | undefined;
+      createdByName =
+        display?.trim() ||
+        (email ? email.split('@')[0] : '') ||
+        createdById.slice(0, 8);
+    }
+
     addKV('SUBMISSION ID', submission.id ?? '');
     addKV('TEAM ID', submission.team_id ?? '');
-    addKV('CREATED BY', submission.created_by ?? '');
+    addKV('CREATED BY', createdByName);
 
     ws.addRow(['', '']);
     const hdr = ws.addRow(['PHOTOS', '']);

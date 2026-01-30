@@ -1,6 +1,6 @@
 // apps/mobile/app/chat/[id].tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, StyleSheet, Linking } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -8,6 +8,7 @@ import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
 import Input from '../../src/components/Input';
 import { fetchSubmissionMessages, sendSubmissionMessage, sendCsvAttachmentMessage, subscribeToSubmissionMessages, resolveAttachmentUrl, type SubmissionMessage } from '../../src/lib/chat';
+import { guessFileNameFromUrl } from '../../src/lib/attachmentViewer';
 
 export default function SubmissionChat() {
   const params = useLocalSearchParams<{ id: string; team?: string }>();
@@ -156,7 +157,18 @@ export default function SubmissionChat() {
       Alert.alert('Attachment unavailable', 'Unable to open this attachment.');
       return;
     }
-    await Linking.openURL(url);
+
+    const nameFromPath = (item.attachment_path || '').split('/').pop() || '';
+    const name = nameFromPath || guessFileNameFromUrl(url);
+
+    router.push({
+      pathname: '/chat/attachment',
+      params: {
+        url,
+        type: item.attachment_type || 'file',
+        name,
+      },
+    });
   };
 
   const renderMessage = ({ item, index }: { item: SubmissionMessage; index: number }) => {

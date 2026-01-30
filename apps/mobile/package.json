@@ -23,7 +23,6 @@
     "base64-arraybuffer": "^1.0.2",
     "buffer": "^6.0.3",
     "exceljs": "^4.4.0",
-    "rws-xlsx-writer": "file:modules/rws-xlsx-writer",
     "expo": "~54.0.31",
     "expo-build-properties": "^1.0.10",
     "expo-constants": "~18.0.12",
@@ -50,6 +49,8 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
+    "react-native-webview": "13.15.0",
+    "rws-xlsx-writer": "file:modules/rws-xlsx-writer",
     "tslib": "^2.6.3",
     "xlsx": "0.18.5",
     "zod": "^3.23.8"
