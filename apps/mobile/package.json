@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "lint": "echo \"(add eslint later)\" && exit 0",
     "postinstall": "patch-package && npm run bump:build",
-    "bump:build": "node scripts/prepare-build-meta.js"
+    "bump:build": "node scripts/prepare-build-meta.js",
+    "eas-build-post-install": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then (command -v brew >/dev/null 2>&1 && (brew list cmake >/dev/null 2>&1 || brew install cmake) && (brew list ninja >/dev/null 2>&1 || brew install ninja)) || true; fi"
   },
   "engines": {
     "node": ">=20.19.4"
