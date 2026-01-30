@@ -13,9 +13,10 @@ import {
   type AttachmentMeta,
 } from '../../src/lib/attachmentViewer';
 import { buildDocumentPreview } from '../../src/lib/documentPreview';
+import { fetchRemoteDocumentPreview } from '../../src/lib/documentPreviewRemote';
 
 export default function AttachmentViewerScreen() {
-  const params = useLocalSearchParams<{ url?: string; type?: string; name?: string }>();
+  const params = useLocalSearchParams<{ url?: string; type?: string; name?: string; kind?: string; messageId?: string }>();
   const [sharing, setSharing] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -32,6 +33,9 @@ export default function AttachmentViewerScreen() {
   }, [params.url, params.name, params.type]);
 
   const viewerUrl = useMemo(() => (meta ? buildViewerUrl(meta) : ''), [meta]);
+
+  const messageKind = typeof params.kind === 'string' ? params.kind : '';
+  const messageId = typeof params.messageId === 'string' ? params.messageId : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +56,21 @@ export default function AttachmentViewerScreen() {
         setPreviewError(null);
         setPreviewHtml(null);
 
+        // Prefer server-side preview when we have a message reference.
+        if ((meta.kind === 'excel' || meta.kind === 'csv') && messageKind && messageId) {
+          const remote = await fetchRemoteDocumentPreview({
+            kind: messageKind === 'direct_message' ? 'direct_message' : 'submission_message',
+            id: messageId,
+            max_rows: 60,
+            max_cols: 20,
+          });
+          if (!cancelled) {
+            setPreviewHtml(remote.html);
+          }
+          return;
+        }
+
+        // Fallback: on-device preview.
         const res = await buildDocumentPreview(meta);
         if (!cancelled) {
           setPreviewHtml(res.html);
@@ -69,7 +88,7 @@ export default function AttachmentViewerScreen() {
     return () => {
       cancelled = true;
     };
-  }, [meta?.url, meta?.kind, meta?.name]);
+  }, [meta?.url, meta?.kind, meta?.name, messageKind, messageId]);
 
   const onShare = async () => {
     if (!meta) return;

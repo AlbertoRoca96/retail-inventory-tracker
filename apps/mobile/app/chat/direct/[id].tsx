@@ -186,6 +186,8 @@ export default function DirectConversation() {
                     url,
                     type: 'image',
                     name: url.split('/').pop() || 'image',
+                    kind: 'direct_message',
+                    messageId: item.id,
                   },
                 });
               }}
@@ -206,6 +208,8 @@ export default function DirectConversation() {
                     url,
                     type: item.attachment_type,
                     name: url.split('/').pop() || `attachment.${item.attachment_type}`,
+                    kind: 'direct_message',
+                    messageId: item.id,
                   },
                 });
               }}

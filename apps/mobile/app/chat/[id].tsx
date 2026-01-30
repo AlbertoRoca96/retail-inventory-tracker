@@ -167,6 +167,8 @@ export default function SubmissionChat() {
         url,
         type: item.attachment_type || 'file',
         name,
+        kind: 'submission_message',
+        messageId: item.id,
       },
     });
   };
