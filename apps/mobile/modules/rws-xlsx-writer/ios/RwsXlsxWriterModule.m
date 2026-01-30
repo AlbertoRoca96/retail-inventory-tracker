@@ -1,7 +1,7 @@
 #import "RwsXlsxWriterModule.h"
 
 #import <Foundation/Foundation.h>
-#import <xlsxwriter.h>
+#import "xlsxwriter.h"
 
 @implementation RwsXlsxWriterModule
 
