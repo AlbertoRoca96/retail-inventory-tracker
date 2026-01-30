@@ -147,7 +147,9 @@ async function fetchRenderThumb(
   const url =
     `${SUPABASE_URL.replace(/\/+$/, '')}` +
     `/storage/v1/render/image/authenticated/${bucket}/${encoded}` +
-    `?width=220&quality=50&resize=contain&format=jpeg`;
+    // Square thumbs so each image is already centered within its box.
+    // This makes the grid match the PDF contain + centered feel.
+    `?width=260&height=260&quality=55&resize=contain&format=jpeg&background=ffffff`;
 
   const res = await fetch(url, {
     headers: {
@@ -295,9 +297,11 @@ Deno.serve(async (req) => {
     wb.created = new Date();
 
     const ws = wb.addWorksheet('submission');
+    // Make the sheet symmetric so the 2x3 photo grid looks like the PDF.
+    // (If columns have different widths, images will look off-center.)
     ws.columns = [
-      { header: 'Field', key: 'label', width: 22 },
-      { header: 'Value', key: 'value', width: 48 },
+      { header: 'Field', key: 'label', width: 44 },
+      { header: 'Value', key: 'value', width: 44 },
     ];
 
     const addKV = (label: string, value: unknown) => ws.addRow([label, safeString(value)]);
