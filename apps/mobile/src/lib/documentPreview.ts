@@ -16,7 +16,7 @@ export type DocumentPreviewResult = {
   localUri: string;
 };
 
-const MAX_BYTES_FOR_PREVIEW = 3_000_000; // 3MB (YAGNI: raise when we actually need it)
+const MAX_BYTES_FOR_PREVIEW = 50_000_000; // 50MB
 const MAX_ROWS = 60;
 const MAX_COLS = 20;
 
@@ -84,11 +84,20 @@ function buildHtmlTable(grid: unknown[][], title: string) {
 </html>`;
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0B';
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1) return `${mb.toFixed(1)}MB`;
+  return `${Math.round(bytes / 1024)}KB`;
+}
+
 async function ensurePreviewableSize(localUri: string) {
   const info = await FileSystem.getInfoAsync(localUri, { size: true });
   const size = (info as any)?.size as number | undefined;
   if (typeof size === 'number' && size > MAX_BYTES_FOR_PREVIEW) {
-    throw new Error(`File is too large to preview (${Math.round(size / 1024)}KB). Use Share/Download instead.`);
+    throw new Error(
+      `File is too large to preview (${formatBytes(size)}). Use Share/Download instead.`
+    );
   }
 }
 
@@ -114,7 +123,8 @@ export async function buildDocumentPreview(meta: AttachmentMeta): Promise<Docume
 
     if (!base64) throw new Error('Unable to read spreadsheet data');
 
-    const wb = XLSX.read(base64, { type: 'base64' });
+    // sheetRows keeps parsing bounded; we only preview the first MAX_ROWS anyway.
+    const wb = XLSX.read(base64, { type: 'base64', sheetRows: MAX_ROWS + 1 });
     const sheetName = wb.SheetNames?.[0];
     if (!sheetName) throw new Error('Spreadsheet has no sheets');
 
