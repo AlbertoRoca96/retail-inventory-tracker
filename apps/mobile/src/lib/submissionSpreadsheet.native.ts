@@ -53,6 +53,29 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function isRetryableStatus(status: number): boolean {
+  // 502/503/504 = upstream/timeout; 546 = supabase edge WORKER_LIMIT.
+  return status === 502 || status === 503 || status === 504 || status === 546;
+}
+
 async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
   const { data, error } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
@@ -63,24 +86,60 @@ async function fetchSubmissionXlsx(submissionId: string): Promise<Uint8Array> {
 
   const endpoint = `${baseUrl}/functions/v1/submission-xlsx`;
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ submission_id: submissionId }),
-  });
+  const body = JSON.stringify({ submission_id: submissionId });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`submission-xlsx failed (${res.status}): ${text || 'Unknown error'}`);
+  const maxAttempts = 4;
+  const timeoutMs = 45_000;
+
+  let lastErr: unknown = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetchWithTimeout(
+        endpoint,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body,
+        },
+        timeoutMs
+      );
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+
+        // Retry on transient edge/upstream failures.
+        if (isRetryableStatus(res.status) && attempt < maxAttempts) {
+          const backoff = 600 * Math.pow(2, attempt - 1);
+          console.warn('[submission-xlsx] retrying', { attempt, status: res.status, backoff });
+          await sleep(backoff);
+          continue;
+        }
+
+        throw new Error(`submission-xlsx failed (${res.status}): ${text || 'Unknown error'}`);
+      }
+
+      const buf = await res.arrayBuffer();
+      return new Uint8Array(buf);
+    } catch (err) {
+      lastErr = err;
+
+      // Retry on fetch timeouts/network errors as well.
+      if (attempt < maxAttempts) {
+        const backoff = 600 * Math.pow(2, attempt - 1);
+        console.warn('[submission-xlsx] request failed, retrying', { attempt, backoff, err });
+        await sleep(backoff);
+        continue;
+      }
+
+      throw err instanceof Error ? err : new Error(String(err));
+    }
   }
 
-  // IMPORTANT: Some production RN builds don’t support Response.blob().
-  // arrayBuffer() is the most reliable way to get binary bytes.
-  const buf = await res.arrayBuffer();
-  return new Uint8Array(buf);
+  throw lastErr instanceof Error ? lastErr : new Error('submission-xlsx failed');
 }
 
 export async function downloadSubmissionSpreadsheetToPath(

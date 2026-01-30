@@ -142,10 +142,12 @@ async function fetchRenderThumb(
 ): Promise<{ ok: true; img: ImageBits; method: string } | { ok: false; error: string }> {
   const encoded = encodeStoragePath(path);
 
+  // Force JPEG output to keep bytes small and Excel-friendly.
+  // origin can return PNG (huge) depending on input.
   const url =
     `${SUPABASE_URL.replace(/\/+$/, '')}` +
     `/storage/v1/render/image/authenticated/${bucket}/${encoded}` +
-    `?width=220&quality=50&resize=contain&format=origin`;
+    `?width=220&quality=50&resize=contain&format=jpeg`;
 
   const res = await fetch(url, {
     headers: {
@@ -163,6 +165,9 @@ async function fetchRenderThumb(
   if (ct.toLowerCase().includes('webp')) {
     return { ok: false, error: `render returned webp (${ct})` };
   }
+
+  // We requested JPEG, so if the CDN respects it, we should get image/jpeg.
+  // If it doesn't, we still infer extension from headers/path below.
 
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);

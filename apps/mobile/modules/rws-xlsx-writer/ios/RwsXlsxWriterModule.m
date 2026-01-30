@@ -1,6 +1,7 @@
 #import "RwsXlsxWriterModule.h"
 
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import "xlsxwriter.h"
 
 @implementation RwsXlsxWriterModule
@@ -45,23 +46,83 @@ static void ApplyBordersToArea(lxw_worksheet *worksheet, int firstRow, int lastR
   }
 }
 
+static double ColumnWidthToPixels(double widthChars) {
+  // Rough Excel conversion: px  approx = trunc(7 * width + 5)
+  // Good enough for centering offsets.
+  return floor(7.0 * widthChars + 5.0);
+}
+
+static double RowHeightPointsToPixels(double heightPoints) {
+  // 72pt = 96px
+  return heightPoints * (96.0 / 72.0);
+}
+
 static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *imagePaths, int startRow) {
   // 2 columns (A,B), 3 blocks (6 slots). Each block is 12 rows tall.
-  // We insert at top-left cell of each block and scale the image down.
+  // Goal: mimic PDF layout: contain + centered.
+
+  // Must match worksheet_set_column widths below (44 chars)
+  const double colWidthChars = 44.0;
+  const double cellWidthPx = ColumnWidthToPixels(colWidthChars);
+
+  // Must match ApplyBordersToArea row height (18 points)
+  const double rowHeightPt = 18.0;
+  const double rowHeightPx = RowHeightPointsToPixels(rowHeightPt);
+
+  const int rowsPerBlock = 12;
+  const double slotHeightPx = rowHeightPx * (double)rowsPerBlock;
+  const double slotWidthPx = cellWidthPx;
+
+  const double pad = 6.0;
+  const double maxW = slotWidthPx - 2.0 * pad;
+  const double maxH = slotHeightPx - 2.0 * pad;
+
   for (NSInteger i = 0; i < MIN((NSInteger)6, imagePaths.count); i++) {
     NSString *path = imagePaths[i];
     if (!path.length) continue;
 
     int col = (int)(i % 2);
     int block = (int)(i / 2);
-    int row = startRow + block * 12;
+    int row = startRow + block * rowsPerBlock;
+
+    UIImage *img = [UIImage imageWithContentsOfFile:path];
 
     lxw_image_options options;
     memset(&options, 0, sizeof(options));
-    options.x_scale = 0.35;
-    options.y_scale = 0.35;
-    options.x_offset = 2;
-    options.y_offset = 2;
+
+    if (!img) {
+      // If we can't read dimensions, fall back to conservative scale.
+      options.x_scale = 0.35;
+      options.y_scale = 0.35;
+      options.x_offset = (int)pad;
+      options.y_offset = (int)pad;
+      worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options);
+      continue;
+    }
+
+    const double imgW = (double)img.size.width * (double)img.scale;
+    const double imgH = (double)img.size.height * (double)img.scale;
+
+    if (imgW <= 1.0 || imgH <= 1.0) {
+      options.x_scale = 0.35;
+      options.y_scale = 0.35;
+      options.x_offset = (int)pad;
+      options.y_offset = (int)pad;
+      worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options);
+      continue;
+    }
+
+    const double scale = MIN(maxW / imgW, maxH / imgH);
+    const double outW = imgW * scale;
+    const double outH = imgH * scale;
+
+    const double offX = (slotWidthPx - outW) / 2.0;
+    const double offY = (slotHeightPx - outH) / 2.0;
+
+    options.x_scale = scale;
+    options.y_scale = scale;
+    options.x_offset = (int)MAX(0.0, floor(offX));
+    options.y_offset = (int)MAX(0.0, floor(offY));
 
     worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options);
   }
