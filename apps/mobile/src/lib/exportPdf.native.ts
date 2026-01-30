@@ -177,9 +177,11 @@ export async function createSubmissionPdf(
   </div>
 </body></html>`;
 
-  // 1) Render HTML → PDF file in memory (base64) so we can write it exactly
-  // where we want in the app container.
-  const { base64 } = await Print.printToFileAsync({ html, base64: true });
+  // 1) Render HTML → PDF to a temp file.
+  // DO NOT request base64 here.
+  // Base64 strings can get huge (especially with inline images) and can fail
+  // unpredictably on-device when writing to disk.
+  const { uri: tmpPdfUri } = await Print.printToFileAsync({ html });
 
   // 2) Give it a nice name and move into app documents/exports/pdf folder.
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
@@ -198,12 +200,19 @@ export async function createSubmissionPdf(
   const dest = `${exportDir}${fileName}`;
 
   try {
-    await FileSystem.writeAsStringAsync(dest, base64 as string, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    // If the file already exists, nuke it so copy doesn't fail.
+    await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+
+    // Copy the generated temp PDF to the exports directory.
+    await FileSystem.copyAsync({ from: tmpPdfUri, to: dest });
+
+    // Cleanup best-effort.
+    await FileSystem.deleteAsync(tmpPdfUri, { idempotent: true }).catch(() => {});
+
     return dest;
   } catch (error) {
-    throw new Error('Failed to write PDF file to exports directory.');
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to write PDF file to exports directory. dest=${dest} err=${msg}`);
   }
 }
 
