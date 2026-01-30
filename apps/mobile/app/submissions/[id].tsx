@@ -253,9 +253,17 @@ export default function Submission() {
       }
 
       const tStart = Date.now();
-      // Generate XLSX on a dedicated server (or fallback to Supabase Edge) to avoid iOS ExcelJS crashes.
-      const remote = await import('../../src/lib/submissionSpreadsheet.native');
-      await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+
+      if (Platform.OS === 'ios') {
+        // iOS: streaming native XLSX writer (libxlsxwriter) to avoid ExcelJS crashes.
+        const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
+        await streaming.shareStreamingSubmissionSpreadsheet(submissionPayload as any, baseName);
+      } else {
+        // Android: fall back to server/edge for now.
+        const remote = await import('../../src/lib/submissionSpreadsheet.native');
+        await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+      }
+
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
     } catch (err: any) {
@@ -305,12 +313,19 @@ export default function Submission() {
         return;
       }
 
-      const remote = await import('../../src/lib/submissionSpreadsheet.native');
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const path = await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
-      console.log('[sendSpreadsheetToChat] downloaded file at', path, 'in', Date.now() - tBuildStart, 'ms');
+      const path = await (async () => {
+        if (Platform.OS === 'ios') {
+          const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
+          return await streaming.buildStreamingSubmissionSpreadsheetToPath(submissionPayload as any, baseName);
+        }
+        const remote = await import('../../src/lib/submissionSpreadsheet.native');
+        return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+      })();
+
+      console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
       const tChatStart = Date.now();
       const result = await chat.sendExcelFileAttachmentMessageFromPath(

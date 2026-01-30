@@ -1,0 +1,7 @@
+{
+  "name": "RwsXlsxWriter",
+  "platforms": ["ios"],
+  "ios": {
+    "modules": ["RwsXlsxWriterModule"]
+  }
+}

@@ -22,6 +22,7 @@
     "base64-arraybuffer": "^1.0.2",
     "buffer": "^6.0.3",
     "exceljs": "^4.4.0",
+    "rws-xlsx-writer": "file:modules/rws-xlsx-writer",
     "expo": "~54.0.31",
     "expo-build-properties": "^1.0.10",
     "expo-constants": "~18.0.12",
