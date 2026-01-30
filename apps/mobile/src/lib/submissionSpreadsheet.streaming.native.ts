@@ -4,7 +4,6 @@
 // This avoids ExcelJS OOM/watchdog crashes.
 
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 
 import { shareFileNative } from './shareFile.native';
@@ -39,13 +38,6 @@ function sanitizeFileBase(input: string): string {
     .slice(0, 80);
 }
 
-async function ensureDir(path: string) {
-  try {
-    await FileSystem.makeDirectoryAsync(path, { intermediates: true });
-  } catch {
-    // ignore
-  }
-}
 
 function toStringSafe(v: unknown): string {
   if (v == null) return '';
@@ -58,34 +50,12 @@ function toStringSafe(v: unknown): string {
   }
 }
 
-function getWritableBaseDir(): string {
-  // Prefer cache for temp-like work. It also tends to be more reliable than documents.
-  const cache = FileSystem.cacheDirectory ?? null;
-  const doc = FileSystem.documentDirectory ?? null;
-  const base = cache || doc;
-
-  if (!base) {
-    // Make the error useful. If these are null, FileSystem isn't properly available.
-    throw new Error(
-      `No writable directory (platform=${Platform.OS}, documentDirectory=${String(doc)}, cacheDirectory=${String(cache)})`
-    );
-  }
-
-  return base;
-}
-
-async function downloadToTemp(url: string): Promise<string> {
-  const baseDir = getWritableBaseDir();
-
-  const dest = `${baseDir}xlsx-photo-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`;
-  const out = await FileSystem.downloadAsync(url, dest);
-  return out.uri;
-}
-
-async function resizeToJpegFile(inputUri: string): Promise<string> {
-  // Keep these conservative: we care about stability, not print-quality.
+async function fetchAndResizeToJpegFile(url: string): Promise<string> {
+  // IMPORTANT: Do NOT use expo-file-system directories here.
+  // On some TestFlight builds, FileSystem.documentDirectory/cacheDirectory can be null.
+  // ImageManipulator can fetch remote URLs and writes its output into an internal cache.
   const result = await ImageManipulator.manipulateAsync(
-    inputUri,
+    url,
     [{ resize: { width: 260 } }],
     { compress: 0.55, format: ImageManipulator.SaveFormat.JPEG }
   );
@@ -115,14 +85,11 @@ export async function buildStreamingSubmissionSpreadsheetToPath(
   const available = await native.isAvailable();
   if (!available) throw new Error('Native XLSX writer not available.');
 
-  const baseDir = getWritableBaseDir();
-
-  const exportDir = baseDir + 'exports/';
-  await ensureDir(exportDir);
-
-  const iso = new Date().toISOString().replace(/[:.]/g, '-');
+  // Let native module choose an output path in NSTemporaryDirectory.
+  // We still keep the filename prefix to be nice.
+  // (We pass it as the title prefix only; actual file naming is native-side.)
   const safeBase = sanitizeFileBase(fileNamePrefix);
-  const destUri = `${exportDir}${safeBase}-${iso}.xlsx`;
+  void safeBase;
 
   // Prepare rows (keep it dead simple; native module does formatting)
   const rows = [
@@ -140,39 +107,28 @@ export async function buildStreamingSubmissionSpreadsheetToPath(
     ...(payload.submitted_by ? [{ label: 'SUBMITTED BY', value: toStringSafe(payload.submitted_by) }] : []),
   ];
 
-  // Download + resize photos to local JPEG files.
+  // Fetch + resize photos to local JPEG files.
+  // NOTE: These files live in internal cache; iOS can clean them up later.
   const imagePaths: string[] = [];
-  const toCleanUp: string[] = [];
 
   const urls = (payload.photo_urls || []).filter(Boolean).slice(0, 6);
   for (const url of urls) {
-    const tmp = await downloadToTemp(url);
-    toCleanUp.push(tmp);
-    const resized = await resizeToJpegFile(tmp);
-    // resizeToJpegFile may return a new uri; best-effort cleanup tmp still.
-    if (resized !== tmp) toCleanUp.push(resized);
-
-    const p = await toFilePath(resized);
+    const resizedUri = await fetchAndResizeToJpegFile(url);
+    const p = await toFilePath(resizedUri);
     imagePaths.push(p);
   }
 
-  const destPath = await toFilePath(destUri);
+  // destPath empty => native creates temp file and returns the absolute path.
+  const producedPath: string = await native.writeSubmissionXlsx({
+    destPath: '',
+    title: (payload.store_site || payload.store_location || 'SUBMISSION').toUpperCase(),
+    rows,
+    imagePaths,
+  });
 
-  try {
-    await native.writeSubmissionXlsx({
-      destPath,
-      title: (payload.store_site || payload.store_location || 'SUBMISSION').toUpperCase(),
-      rows,
-      imagePaths,
-    });
-
-    return destUri;
-  } finally {
-    // Best-effort temp cleanup
-    await Promise.all(
-      toCleanUp.map((u) => FileSystem.deleteAsync(u, { idempotent: true }).catch(() => null))
-    );
-  }
+  // native returns a plain path; share expects file://
+  const uri = producedPath.startsWith('file://') ? producedPath : `file://${producedPath}`;
+  return uri;
 }
 
 export async function shareStreamingSubmissionSpreadsheet(

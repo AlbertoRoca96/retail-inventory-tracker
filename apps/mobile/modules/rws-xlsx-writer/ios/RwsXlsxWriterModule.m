@@ -73,13 +73,31 @@ EX_EXPORT_METHOD_AS(writeSubmissionXlsx,
                     rejecter:(EXPromiseRejectBlock)reject)
 {
   NSString *destPath = ToNSString(args[@"destPath"]);
+  // Accept file:// URIs too.
+  if ([destPath hasPrefix:@"file://"]) {
+    destPath = [destPath substringFromIndex:7];
+  }
   NSString *title = ToNSString(args[@"title"]);
   NSArray *rows = (NSArray *)args[@"rows"];
   NSArray *imagePaths = (NSArray *)args[@"imagePaths"];
 
   if (!destPath.length) {
-    reject(@"bad_args", @"destPath is required", nil);
-    return;
+    // Auto-generate an output path in a guaranteed-writable temp directory.
+    NSString *tmp = NSTemporaryDirectory();
+    NSString *exportsDir = [tmp stringByAppendingPathComponent:@"exports"]; 
+
+    NSError *dirErr = nil;
+    [[NSFileManager defaultManager] createDirectoryAtPath:exportsDir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:&dirErr];
+    if (dirErr) {
+      reject(@"fs_fail", [NSString stringWithFormat:@"Unable to create exports dir: %@", dirErr], nil);
+      return;
+    }
+
+    NSString *fileName = [NSString stringWithFormat:@"submission-%@.xlsx", [[NSUUID UUID] UUIDString]];
+    destPath = [exportsDir stringByAppendingPathComponent:fileName];
   }
 
   // Create workbook

@@ -15,7 +15,7 @@ export type WriteSubmissionXlsxArgs = {
 };
 
 export type RwsXlsxWriterNativeModule = {
-  isAvailable(): boolean;
+  isAvailable(): Promise<boolean>;
   writeSubmissionXlsx(args: WriteSubmissionXlsxArgs): Promise<string>;
 };
 
