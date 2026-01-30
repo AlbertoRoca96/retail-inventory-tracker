@@ -2,7 +2,7 @@
 // Native: call the Supabase Edge Function `submission-xlsx` to get a real XLSX
 // (with images embedded), save to disk, then share or return the file path.
 
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 
 import Constants from 'expo-constants';
@@ -127,9 +127,31 @@ export async function downloadSubmissionSpreadsheetToPath(
 ): Promise<string> {
   const bytes = await fetchSubmissionXlsx(submissionId);
 
+  const base64 = bytesToBase64(bytes);
+  const iso = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeBase = sanitizeFileBase(fileBase);
+  const fileName = `${safeBase}-${iso}.xlsx`;
+
   const cache = FileSystem.cacheDirectory ?? null;
   const doc = FileSystem.documentDirectory ?? null;
   const baseDir = cache || doc;
+
+  // If Expo FileSystem directories are unavailable (your TestFlight iOS case),
+  // fall back to native temp writer.
+  if (!baseDir && Platform.OS === 'ios') {
+    const mod = await import('rws-xlsx-writer');
+    const native = (mod as any).default;
+    const ok = await native?.isAvailable?.();
+    if (!ok) {
+      throw new Error(
+        `No writable directory and native writer unavailable (documentDirectory=${String(doc)}, cacheDirectory=${String(cache)})`
+      );
+    }
+
+    const producedPath: string = await native.writeBase64ToTempFile({ base64, fileName });
+    return producedPath.startsWith('file://') ? producedPath : `file://${producedPath}`;
+  }
+
   if (!baseDir) {
     throw new Error(
       `No writable directory (platform=native, documentDirectory=${String(doc)}, cacheDirectory=${String(cache)})`
@@ -139,11 +161,8 @@ export async function downloadSubmissionSpreadsheetToPath(
   const exportDir = baseDir + 'exports/';
   await ensureDir(exportDir);
 
-  const iso = new Date().toISOString().replace(/[:.]/g, '-');
-  const safeBase = sanitizeFileBase(fileBase);
-  const dest = `${exportDir}${safeBase}-${iso}.xlsx`;
+  const dest = `${exportDir}${fileName}`;
 
-  const base64 = bytesToBase64(bytes);
   await FileSystem.writeAsStringAsync(dest, base64, {
     encoding: FileSystem.EncodingType.Base64,
   } as any);

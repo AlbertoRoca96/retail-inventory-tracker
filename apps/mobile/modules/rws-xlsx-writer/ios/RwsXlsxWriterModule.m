@@ -67,6 +67,60 @@ static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *image
   }
 }
 
+static NSString *EnsureExportsDirOrReject(EXPromiseRejectBlock reject) {
+  NSString *tmp = NSTemporaryDirectory();
+  NSString *exportsDir = [tmp stringByAppendingPathComponent:@"exports"]; 
+
+  NSError *dirErr = nil;
+  [[NSFileManager defaultManager] createDirectoryAtPath:exportsDir
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:&dirErr];
+  if (dirErr) {
+    reject(@"fs_fail", [NSString stringWithFormat:@"Unable to create exports dir: %@", dirErr], nil);
+    return nil;
+  }
+  return exportsDir;
+}
+
+EX_EXPORT_METHOD_AS(writeBase64ToTempFile,
+                    writeBase64ToTempFile:(NSDictionary *)args
+                    resolver:(EXPromiseResolveBlock)resolve
+                    rejecter:(EXPromiseRejectBlock)reject)
+{
+  NSString *base64 = ToNSString(args[@"base64"]);
+  NSString *fileName = ToNSString(args[@"fileName"]);
+
+  if (!base64.length) {
+    reject(@"bad_args", @"base64 is required", nil);
+    return;
+  }
+
+  NSString *exportsDir = EnsureExportsDirOrReject(reject);
+  if (!exportsDir) return;
+
+  if (!fileName.length) {
+    fileName = [NSString stringWithFormat:@"file-%@.bin", [[NSUUID UUID] UUIDString]];
+  }
+
+  NSString *destPath = [exportsDir stringByAppendingPathComponent:fileName];
+
+  NSData *data = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+  if (!data || data.length == 0) {
+    reject(@"bad_args", @"Unable to decode base64 (empty)", nil);
+    return;
+  }
+
+  NSError *writeErr = nil;
+  BOOL ok = [data writeToFile:destPath options:NSDataWritingAtomic error:&writeErr];
+  if (!ok || writeErr) {
+    reject(@"fs_fail", [NSString stringWithFormat:@"Unable to write file: %@", writeErr], nil);
+    return;
+  }
+
+  resolve(destPath);
+}
+
 EX_EXPORT_METHOD_AS(writeSubmissionXlsx,
                     writeSubmissionXlsx:(NSDictionary *)args
                     resolver:(EXPromiseResolveBlock)resolve
@@ -82,19 +136,8 @@ EX_EXPORT_METHOD_AS(writeSubmissionXlsx,
   NSArray *imagePaths = (NSArray *)args[@"imagePaths"];
 
   if (!destPath.length) {
-    // Auto-generate an output path in a guaranteed-writable temp directory.
-    NSString *tmp = NSTemporaryDirectory();
-    NSString *exportsDir = [tmp stringByAppendingPathComponent:@"exports"]; 
-
-    NSError *dirErr = nil;
-    [[NSFileManager defaultManager] createDirectoryAtPath:exportsDir
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:&dirErr];
-    if (dirErr) {
-      reject(@"fs_fail", [NSString stringWithFormat:@"Unable to create exports dir: %@", dirErr], nil);
-      return;
-    }
+    NSString *exportsDir = EnsureExportsDirOrReject(reject);
+    if (!exportsDir) return;
 
     NSString *fileName = [NSString stringWithFormat:@"submission-%@.xlsx", [[NSUUID UUID] UUIDString]];
     destPath = [exportsDir stringByAppendingPathComponent:fileName];
