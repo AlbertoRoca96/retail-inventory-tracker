@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
@@ -12,10 +12,14 @@ import {
   shareAttachment,
   type AttachmentMeta,
 } from '../../src/lib/attachmentViewer';
+import { buildDocumentPreview } from '../../src/lib/documentPreview';
 
 export default function AttachmentViewerScreen() {
   const params = useLocalSearchParams<{ url?: string; type?: string; name?: string }>();
   const [sharing, setSharing] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const meta = useMemo<AttachmentMeta | null>(() => {
     const url = typeof params.url === 'string' ? params.url : '';
@@ -28,6 +32,44 @@ export default function AttachmentViewerScreen() {
   }, [params.url, params.name, params.type]);
 
   const viewerUrl = useMemo(() => (meta ? buildViewerUrl(meta) : ''), [meta]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!meta) return;
+
+      // Only build previews for certain document types.
+      if (meta.kind !== 'excel' && meta.kind !== 'csv') {
+        setPreviewHtml(null);
+        setPreviewError(null);
+        setPreviewLoading(false);
+        return;
+      }
+
+      try {
+        setPreviewLoading(true);
+        setPreviewError(null);
+        setPreviewHtml(null);
+
+        const res = await buildDocumentPreview(meta);
+        if (!cancelled) {
+          setPreviewHtml(res.html);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setPreviewError(err?.message || 'Unable to preview this document.');
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [meta?.url, meta?.kind, meta?.name]);
 
   const onShare = async () => {
     if (!meta) return;
@@ -83,12 +125,24 @@ export default function AttachmentViewerScreen() {
               </View>
             )}
           />
+        ) : meta.kind === 'excel' || meta.kind === 'csv' ? (
+          previewLoading ? (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" color={theme.colors.blue} />
+              <Text style={styles.subtitle}>Building preview…</Text>
+            </View>
+          ) : previewHtml ? (
+            <WebView originWhitelist={['*']} source={{ html: previewHtml }} />
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.noPreviewTitle}>Preview unavailable</Text>
+              <Text style={styles.subtitle}>{previewError || 'Use Share / Download to open it in another app.'}</Text>
+            </View>
+          )
         ) : (
           <View style={styles.center}>
             <Text style={styles.noPreviewTitle}>No in-app preview for {meta.kind.toUpperCase()}</Text>
-            <Text style={styles.subtitle}>
-              Use Share / Download to open it in Excel / Files. (Office Online preview doesnt work with signed URLs.)
-            </Text>
+            <Text style={styles.subtitle}>Use Share / Download to open it in another app.</Text>
           </View>
         )}
       </View>
