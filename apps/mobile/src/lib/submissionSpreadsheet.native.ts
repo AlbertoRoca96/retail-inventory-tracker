@@ -127,8 +127,14 @@ export async function downloadSubmissionSpreadsheetToPath(
 ): Promise<string> {
   const bytes = await fetchSubmissionXlsx(submissionId);
 
-  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  if (!baseDir) throw new Error('No writable directory.');
+  const cache = FileSystem.cacheDirectory ?? null;
+  const doc = FileSystem.documentDirectory ?? null;
+  const baseDir = cache || doc;
+  if (!baseDir) {
+    throw new Error(
+      `No writable directory (platform=native, documentDirectory=${String(doc)}, cacheDirectory=${String(cache)})`
+    );
+  }
 
   const exportDir = baseDir + 'exports/';
   await ensureDir(exportDir);

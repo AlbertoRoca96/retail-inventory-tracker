@@ -58,9 +58,24 @@ function toStringSafe(v: unknown): string {
   }
 }
 
+function getWritableBaseDir(): string {
+  // Prefer cache for temp-like work. It also tends to be more reliable than documents.
+  const cache = FileSystem.cacheDirectory ?? null;
+  const doc = FileSystem.documentDirectory ?? null;
+  const base = cache || doc;
+
+  if (!base) {
+    // Make the error useful. If these are null, FileSystem isn't properly available.
+    throw new Error(
+      `No writable directory (platform=${Platform.OS}, documentDirectory=${String(doc)}, cacheDirectory=${String(cache)})`
+    );
+  }
+
+  return base;
+}
+
 async function downloadToTemp(url: string): Promise<string> {
-  const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-  if (!baseDir) throw new Error('No writable directory.');
+  const baseDir = getWritableBaseDir();
 
   const dest = `${baseDir}xlsx-photo-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`;
   const out = await FileSystem.downloadAsync(url, dest);
@@ -100,8 +115,7 @@ export async function buildStreamingSubmissionSpreadsheetToPath(
   const available = await native.isAvailable();
   if (!available) throw new Error('Native XLSX writer not available.');
 
-  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  if (!baseDir) throw new Error('No writable directory.');
+  const baseDir = getWritableBaseDir();
 
   const exportDir = baseDir + 'exports/';
   await ensureDir(exportDir);
