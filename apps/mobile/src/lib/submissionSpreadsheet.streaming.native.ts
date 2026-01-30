@@ -113,9 +113,16 @@ export async function buildStreamingSubmissionSpreadsheetToPath(
 
   const urls = (payload.photo_urls || []).filter(Boolean).slice(0, 6);
   for (const url of urls) {
-    const resizedUri = await fetchAndResizeToJpegFile(url);
-    const p = await toFilePath(resizedUri);
-    imagePaths.push(p);
+    try {
+      const resizedUri = await fetchAndResizeToJpegFile(url);
+      const p = await toFilePath(resizedUri);
+      imagePaths.push(p);
+    } catch (err) {
+      // Dont fail the whole spreadsheet because one image is borked.
+      // This avoids falling back to Edge (which is the one that randomly 546/502s).
+      console.warn('[streaming-xlsx] failed to fetch/resize image, skipping', { url, err });
+      continue;
+    }
   }
 
   // destPath empty => native creates temp file and returns the absolute path.
