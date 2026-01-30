@@ -255,9 +255,16 @@ export default function Submission() {
       const tStart = Date.now();
 
       if (Platform.OS === 'ios') {
-        // iOS: streaming native XLSX writer (libxlsxwriter) to avoid ExcelJS crashes.
-        const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
-        await streaming.shareStreamingSubmissionSpreadsheet(submissionPayload as any, baseName);
+        // iOS: try streaming native XLSX writer first.
+        try {
+          const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
+          await streaming.shareStreamingSubmissionSpreadsheet(submissionPayload as any, baseName);
+        } catch (streamErr) {
+          // Fallback: use server/edge export so the button still works.
+          console.warn('[shareSubmission] streaming XLSX failed, falling back to remote', streamErr);
+          const remote = await import('../../src/lib/submissionSpreadsheet.native');
+          await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+        }
       } else {
         // Android: fall back to server/edge for now.
         const remote = await import('../../src/lib/submissionSpreadsheet.native');
@@ -318,8 +325,14 @@ export default function Submission() {
       const tBuildStart = Date.now();
       const path = await (async () => {
         if (Platform.OS === 'ios') {
-          const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
-          return await streaming.buildStreamingSubmissionSpreadsheetToPath(submissionPayload as any, baseName);
+          try {
+            const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
+            return await streaming.buildStreamingSubmissionSpreadsheetToPath(submissionPayload as any, baseName);
+          } catch (streamErr) {
+            console.warn('[sendSpreadsheetToChat] streaming XLSX failed, falling back to remote', streamErr);
+            const remote = await import('../../src/lib/submissionSpreadsheet.native');
+            return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+          }
         }
         const remote = await import('../../src/lib/submissionSpreadsheet.native');
         return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
