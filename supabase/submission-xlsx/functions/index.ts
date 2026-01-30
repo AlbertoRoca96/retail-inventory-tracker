@@ -341,6 +341,9 @@ Deno.serve(async (req) => {
       ws.getRow(imageTopRow0 + 1 + rr).height = 20;
     }
 
+    const expectedSlots = paths.map((p, idx) => (p ? idx + 1 : null)).filter(Boolean) as number[];
+    const embeddedSlots: number[] = [];
+
     for (let i = 0; i < 6; i++) {
       const slot = i + 1;
       const stored = paths[i];
@@ -387,6 +390,24 @@ Deno.serve(async (req) => {
         tl: { col: colIndex, row: topRow0 },
         ext: { width: 260, height: 260 },
       });
+
+      embeddedSlots.push(slot);
+    }
+
+    // STRICT: if submission row has photo paths, we must embed them all.
+    // Otherwise we create a tiny XLSX with missing photos, which is worse than failing.
+    if (expectedSlots.length > 0 && embeddedSlots.length !== expectedSlots.length) {
+      const missing = expectedSlots.filter((s) => !embeddedSlots.includes(s));
+      return json(
+        {
+          error: 'missing_photos',
+          message: `Expected ${expectedSlots.length} photos but embedded ${embeddedSlots.length}.`,
+          expectedSlots,
+          embeddedSlots,
+          missingSlots: missing,
+        },
+        502
+      );
     }
 
     if (debug) {
