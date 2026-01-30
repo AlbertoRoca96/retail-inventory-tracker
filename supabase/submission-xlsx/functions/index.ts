@@ -1,14 +1,19 @@
 // supabase/submission-xlsx/functions/index.ts
 // Supabase Edge Function: submission-xlsx
 //
-// Generates a real XLSX spreadsheet for a submission, embedding up to 6 photos
-// in a 2x3 grid (like the PDF layout).
+// Build an XLSX export for a single submission, including up to six photos.
 //
-// Key optimizations (so this survives Edge compute limits):
-// - Use Supabase image render transforms (small thumbnails)
-// - Embed images via base64 data URLs (bundler-compatible)
-// - Disable shared strings/styles where possible
-// - Avoid expensive formatting loops
+// Deploy:
+//   supabase functions deploy submission-xlsx --no-verify-jwt
+//
+// POST /functions/v1/submission-xlsx
+// Body: { submission_id: string, debug?: boolean }
+//
+// WORKER_LIMIT/546 survival notes:
+// - Prefer Storage render thumbnails over raw downloads.
+// - Keep thumbnails SMALL (220px) + JPEG-friendly.
+// - Avoid String.fromCharCode/btoa (CPU+RAM spike).
+// - Debug sheet is optional (it costs memory).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import ExcelJS from 'https://esm.sh/exceljs@4.4.0?target=es2020&no-check';
@@ -20,7 +25,6 @@ const SERVICE_ROLE_KEY =
   Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const PHOTO_BUCKETS = ['submissions', 'photos'] as const;
-
 type PhotoBucket = (typeof PHOTO_BUCKETS)[number];
 
 const corsHeaders: Record<string, string> = {
@@ -33,10 +37,7 @@ const corsHeaders: Record<string, string> = {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-    },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
 
@@ -47,7 +48,7 @@ function safeString(v: unknown): string {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  // IMPORTANT: avoid `String.fromCharCode` + `btoa`  its a CPU/memory hog on Edge and triggers WORKER_LIMIT.
+  // IMPORTANT: avoid String.fromCharCode+btoa  it's a CPU/memory hog on Edge.
   return encodeBase64(bytes);
 }
 
@@ -57,36 +58,39 @@ type AttemptResult =
   | { ok: true; bucket: PhotoBucket; usedPath: string; method: string; img: ImageBits }
   | { ok: false; tried: string[]; lastError?: string };
 
+function inferExtFromContentTypeOrPath(
+  contentType: string | null | undefined,
+  path: string
+): 'jpeg' | 'png' {
+  const ct = (contentType || '').toLowerCase();
+  if (ct.includes('png')) return 'png';
+  if (ct.includes('jpeg') || ct.includes('jpg')) return 'jpeg';
+  const lower = (path || '').toLowerCase();
+  if (lower.endsWith('.png')) return 'png';
+  return 'jpeg';
+}
+
 function looksLikeFilePath(p: string): boolean {
-  // super basic: if it ends in .jpg/.jpeg/.png treat as file.
   return /\.(jpe?g|png)$/i.test(p.trim());
 }
 
 function buildCandidatePaths(slot: number, rawPath: string): string[] {
   const p = (rawPath || '').trim();
   if (!p) return [];
-
-  // If it's already a file path, trust it first.
   const candidates: string[] = [p];
 
   const base = p.endsWith('/') ? p.slice(0, -1) : p;
 
-  // If the stored value looks like a folder prefix, try the canonical names.
-  // This covers cases where DB mistakenly stores:
-  //   teams/<team>/submissions/<submissionId>
-  // instead of:
-  //   teams/<team>/submissions/<submissionId>/photo1.jpg
+  // If DB stored a folder prefix, try canonical filenames.
   if (!looksLikeFilePath(base)) {
-    const fileStem = `${base}/photo${slot}`;
-    candidates.push(`${fileStem}.jpg`, `${fileStem}.jpeg`, `${fileStem}.png`);
+    const stem = `${base}/photo${slot}`;
+    candidates.push(`${stem}.jpg`, `${stem}.jpeg`, `${stem}.png`);
   }
 
-  // De-dupe while preserving order
   return candidates.filter((x, i) => candidates.indexOf(x) === i);
 }
 
 function encodeStoragePath(path: string): string {
-  // Encode each segment but preserve slashes.
   return (path || '')
     .split('/')
     .map((seg) => encodeURIComponent(seg))
@@ -97,7 +101,7 @@ function normalizeToObjectKey(stored: string, bucket: PhotoBucket): string {
   let s = (stored || '').trim();
   if (!s) return '';
 
-  // Drop query string
+  // drop query string
   s = s.split('?')[0];
 
   const base = SUPABASE_URL.replace(/\/+$/, '');
@@ -107,6 +111,7 @@ function normalizeToObjectKey(stored: string, bucket: PhotoBucket): string {
     `${base}/storage/v1/render/image/public/${bucket}/`,
     `${base}/storage/v1/render/image/authenticated/${bucket}/`,
   ];
+
   for (const p of prefixes) {
     if (s.startsWith(p)) {
       s = s.slice(p.length);
@@ -114,12 +119,11 @@ function normalizeToObjectKey(stored: string, bucket: PhotoBucket): string {
     }
   }
 
-  // Strip `bucket/` if someone stored fullPath like `photos/dir/file.jpg`
+  // If someone stored fullPath like "photos/dir/file.jpg"
   if (s.startsWith(`${bucket}/`)) {
     s = s.slice(bucket.length + 1);
   }
 
-  // Decode safely per segment
   try {
     s = s
       .split('/')
@@ -136,12 +140,12 @@ async function fetchRenderThumb(
   bucket: PhotoBucket,
   path: string
 ): Promise<{ ok: true; img: ImageBits; method: string } | { ok: false; error: string }> {
-  // Use the Storage render endpoint directly. This avoids `transform` support
-  // differences in supabase-js across runtimes.
   const encoded = encodeStoragePath(path);
-  // Force origin format to avoid WebP bytes being mislabeled as JPEG/PNG.
-// Also shrink thumbnails a bit to reduce edge CPU/memory.
-const url = `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/render/image/authenticated/${bucket}/${encoded}?width=300&quality=55&resize=contain&format=origin`;
+
+  const url =
+    `${SUPABASE_URL.replace(/\/+$/, '')}` +
+    `/storage/v1/render/image/authenticated/${bucket}/${encoded}` +
+    `?width=220&quality=50&resize=contain&format=origin`;
 
   const res = await fetch(url, {
     headers: {
@@ -156,8 +160,6 @@ const url = `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/render/image/authent
   }
 
   const ct = res.headers.get('content-type') || '';
-
-  // If WebP slips through, Excel won't render it. Bail so we try direct download.
   if (ct.toLowerCase().includes('webp')) {
     return { ok: false, error: `render returned webp (${ct})` };
   }
@@ -198,13 +200,10 @@ async function downloadStorageThumb(
   bucket: PhotoBucket,
   path: string
 ): Promise<{ ok: true; img: ImageBits; method: string } | { ok: false; error: string }> {
-  // Try render first (small thumbnail), then fallback to raw object download.
   const render = await fetchRenderThumb(bucket, path);
   if (render.ok) return render;
-
   const direct = await downloadObjectDirect(admin, bucket, path);
   if (direct.ok) return direct;
-
   return { ok: false, error: `${render.error} | ${direct.error}` };
 }
 
@@ -221,28 +220,13 @@ async function tryDownloadThumb(
       if (!path) continue;
       tried.push(`${bucket}:${path}`);
       const res = await downloadStorageThumb(admin, bucket, path);
-      if (res.ok) {
-        return { ok: true, bucket, usedPath: path, method: res.method, img: res.img };
-      }
+      if (res.ok) return { ok: true, bucket, usedPath: path, method: res.method, img: res.img };
       lastError = res.error;
     }
   }
 
   return { ok: false, tried, lastError };
 }
-
-function inferExtFromContentTypeOrPath(
-  contentType: string | null | undefined,
-  path: string
-): 'jpeg' | 'png' {
-  const ct = (contentType || '').toLowerCase();
-  if (ct.includes('png')) return 'png';
-  if (ct.includes('jpeg') || ct.includes('jpg')) return 'jpeg';
-  const lower = (path || '').toLowerCase();
-  if (lower.endsWith('.png')) return 'png';
-  return 'jpeg';
-}
-
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -262,7 +246,9 @@ Deno.serve(async (req) => {
     if (!jwt) return json({ error: 'missing_bearer_token' }, 401);
 
     const body = await req.json().catch(() => ({}));
-    const submissionId: string = String(body?.submission_id || '').trim();
+    const submissionId = String(body?.submission_id || '').trim();
+    const debug = Boolean(body?.debug);
+
     if (!submissionId) return json({ error: 'submission_id required' }, 400);
 
     // user auth
@@ -288,6 +274,7 @@ Deno.serve(async (req) => {
     const teamId: string | null = submission.team_id ?? null;
     if (!teamId) return json({ error: 'submission_missing_team_id' }, 400);
 
+    // membership check (schema: team_members(team_id,user_id))
     const { data: member, error: memberErr } = await admin
       .from('team_members')
       .select('team_id,user_id')
@@ -298,36 +285,19 @@ Deno.serve(async (req) => {
     if (memberErr) return json({ error: memberErr.message }, 400);
     if (!member) return json({ error: 'forbidden' }, 403);
 
-    // build XLSX
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Retail Inventory Tracker';
     wb.created = new Date();
 
     const ws = wb.addWorksheet('submission');
-
-    // Debug sheet (second tab  so the main export opens first)
-    const debugWs = wb.addWorksheet('debug');
-    debugWs.columns = [
-      { header: 'slot', width: 8 },
-      { header: 'stored_path', width: 80 },
-      { header: 'bucket', width: 14 },
-      { header: 'used_path', width: 80 },
-      { header: 'method', width: 12 },
-      { header: 'status', width: 16 },
-      { header: 'bytes', width: 12 },
-      { header: 'ext', width: 8 },
-      { header: 'note', width: 60 },
-    ];
     ws.columns = [
       { header: 'Field', key: 'label', width: 22 },
       { header: 'Value', key: 'value', width: 48 },
     ];
 
-    const addKV = (label: string, value: unknown) => {
-      ws.addRow([label, safeString(value)]);
-    };
+    const addKV = (label: string, value: unknown) => ws.addRow([label, safeString(value)]);
 
-    addKV('EXPORT_VERSION', 'XLSX_EDGE_V10_6_PHOTOS_RENDER_FAST_BASE64');
+    addKV('EXPORT_VERSION', 'XLSX_EDGE_V11_SMALL_THUMBS_DEBUG_OPTIONAL');
     addKV('DATE', submission.date ?? '');
     addKV('BRAND', submission.brand ?? '');
     addKV('STORE SITE', submission.store_site ?? '');
@@ -348,6 +318,8 @@ Deno.serve(async (req) => {
     const hdr = ws.addRow(['PHOTOS', '']);
     hdr.font = { bold: true };
 
+    const debugRows: any[] = [];
+
     const paths: (string | null)[] = [
       submission.photo1_path ?? null,
       submission.photo2_path ?? null,
@@ -357,32 +329,28 @@ Deno.serve(async (req) => {
       submission.photo6_path ?? null,
     ];
 
-    // Image grid placement:
-    // IMPORTANT: ExcelJS `tl.row/col` are 0-based.
-    // We want images to start below the PHOTOS header, so use the current
-    // rowCount (1-based) and convert to 0-based by subtracting 1.
-    const imageTopRow0 = ws.rowCount + 1; // one blank row below current content, already 0-based
+    const imageTopRow0 = ws.rowCount + 1;
 
-    // Reserve some row heights so images are visible in Excel without manual resizing.
-    // 3 blocks * 14 rows = 42 rows.
-    for (let rr = 0; rr < 42; rr++) {
-      ws.getRow(imageTopRow0 + 1 + rr).height = 24;
+    // Reserve a smaller visual area (36 rows = 3 blocks * 12 rows)
+    for (let rr = 0; rr < 36; rr++) {
+      ws.getRow(imageTopRow0 + 1 + rr).height = 20;
     }
 
-    // Download + embed, in order.
     for (let i = 0; i < 6; i++) {
+      const slot = i + 1;
       const stored = paths[i];
+
       if (!stored) {
-        debugWs.addRow([i + 1, '', '', '', '', 'missing_path', 0, '', 'no photo path on submission row']);
+        debugRows.push([slot, '', '', '', '', 'missing_path', 0, '', 'no photo path on submission row']);
         continue;
       }
 
-      const candidates = buildCandidatePaths(i + 1, stored);
+      const candidates = buildCandidatePaths(slot, stored);
       const attempt = await tryDownloadThumb(admin, candidates);
 
       if (!attempt.ok) {
-        debugWs.addRow([
-          i + 1,
+        debugRows.push([
+          slot,
           stored,
           '',
           '',
@@ -396,37 +364,42 @@ Deno.serve(async (req) => {
       }
 
       const { img, usedPath, bucket, method } = attempt;
-      debugWs.addRow([
-        i + 1,
-        stored,
-        bucket,
-        usedPath,
-        method,
-        'ok',
-        img.bytes.byteLength,
-        img.extension,
-        '',
-      ]);
+      debugRows.push([slot, stored, bucket, usedPath, method, 'ok', img.bytes.byteLength, img.extension, '']);
 
-      // ExcelJS supports base64 data URLs.
       const mime = img.extension === 'png' ? 'image/png' : 'image/jpeg';
       const base64 = bytesToBase64(img.bytes);
+
       const imageId = wb.addImage({
         base64: `data:${mime};base64,${base64}`,
         extension: img.extension,
       });
 
-      const colIndex = i % 2; // 0/1
-      const rowBlock = Math.floor(i / 2); // 0/1/2
-      const topRow0 = imageTopRow0 + rowBlock * 14;
+      const colIndex = i % 2;
+      const rowBlock = Math.floor(i / 2);
+      const topRow0 = imageTopRow0 + rowBlock * 12;
 
       ws.addImage(imageId, {
         tl: { col: colIndex, row: topRow0 },
-        ext: { width: 320, height: 320 },
+        ext: { width: 260, height: 260 },
       });
     }
 
-    // Crucial: minimize overhead
+    if (debug) {
+      const debugWs = wb.addWorksheet('debug');
+      debugWs.columns = [
+        { header: 'slot', width: 8 },
+        { header: 'stored_path', width: 80 },
+        { header: 'bucket', width: 14 },
+        { header: 'used_path', width: 80 },
+        { header: 'method', width: 18 },
+        { header: 'status', width: 16 },
+        { header: 'bytes', width: 12 },
+        { header: 'ext', width: 8 },
+        { header: 'note', width: 60 },
+      ];
+      for (const row of debugRows) debugWs.addRow(row);
+    }
+
     const xlsxBuffer = (await wb.xlsx.writeBuffer({
       useStyles: false,
       useSharedStrings: false,
@@ -443,8 +416,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Content-Type':
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${fileName}"`,
         'Cache-Control': 'no-store',
       },

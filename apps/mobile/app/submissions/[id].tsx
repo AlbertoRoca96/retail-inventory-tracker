@@ -254,22 +254,9 @@ export default function Submission() {
 
       const tStart = Date.now();
 
-      if (Platform.OS === 'ios') {
-        // iOS: try streaming native XLSX writer first.
-        try {
-          const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
-          await streaming.shareStreamingSubmissionSpreadsheet(submissionPayload as any, baseName);
-        } catch (streamErr) {
-          // Fallback: use server/edge export so the button still works.
-          console.warn('[shareSubmission] streaming XLSX failed, falling back to remote', streamErr);
-          const remote = await import('../../src/lib/submissionSpreadsheet.native');
-          await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
-        }
-      } else {
-        // Android: fall back to server/edge for now.
-        const remote = await import('../../src/lib/submissionSpreadsheet.native');
-        await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
-      }
+      // Native: always use the Supabase Edge function export.
+      const remote = await import('../../src/lib/submissionSpreadsheet.native');
+      await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
 
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
@@ -323,20 +310,8 @@ export default function Submission() {
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const path = await (async () => {
-        if (Platform.OS === 'ios') {
-          try {
-            const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
-            return await streaming.buildStreamingSubmissionSpreadsheetToPath(submissionPayload as any, baseName);
-          } catch (streamErr) {
-            console.warn('[sendSpreadsheetToChat] streaming XLSX failed, falling back to remote', streamErr);
-            const remote = await import('../../src/lib/submissionSpreadsheet.native');
-            return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
-          }
-        }
-        const remote = await import('../../src/lib/submissionSpreadsheet.native');
-        return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
-      })();
+      const remote = await import('../../src/lib/submissionSpreadsheet.native');
+      const path = await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
 
       console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 

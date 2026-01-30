@@ -123,9 +123,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     sanitizeOrigin(process.env.EXPO_PUBLIC_WEB_ORIGIN ?? process.env.WEB_ORIGIN) ??
     FALLBACK_WEB_ORIGIN;
 
-  const xlsxServiceUrl =
-    sanitize(process.env.EXPO_PUBLIC_XLSX_SERVICE_URL ?? process.env.XLSX_SERVICE_URL) ??
-    undefined;
 
   return {
     ...config,
@@ -211,7 +208,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supabaseUrl,
       supabaseAnonKey,
       webOrigin,
-      xlsxServiceUrl,
     },
     web: {
       bundler: "metro",
