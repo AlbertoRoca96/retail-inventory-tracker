@@ -254,9 +254,21 @@ export default function Submission() {
 
       const tStart = Date.now();
 
-      // Native: always use the Supabase Edge function export.
-      const remote = await import('../../src/lib/submissionSpreadsheet.native');
-      await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+      // Native (iOS): prefer the streaming XLSX writer (no Edge 546 tantrums).
+      // Fallback to Supabase Edge if the native module isn't available.
+      if (Platform.OS === 'ios') {
+        try {
+          const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
+          await streaming.shareStreamingSubmissionSpreadsheet(submissionPayload as any, baseName);
+        } catch (streamErr) {
+          console.warn('[shareSubmission] streaming XLSX failed, falling back to edge', streamErr);
+          const remote = await import('../../src/lib/submissionSpreadsheet.native');
+          await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+        }
+      } else {
+        const remote = await import('../../src/lib/submissionSpreadsheet.native');
+        await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
+      }
 
       console.log('[shareSubmission] finished in', Date.now() - tStart, 'ms');
       flash('success', 'Share sheet opened');
@@ -310,8 +322,22 @@ export default function Submission() {
       const chat = await import('../../src/lib/chat');
 
       const tBuildStart = Date.now();
-      const remote = await import('../../src/lib/submissionSpreadsheet.native');
-      const path = await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+
+      const path = await (async () => {
+        if (Platform.OS === 'ios') {
+          try {
+            const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
+            return await streaming.buildStreamingSubmissionSpreadsheetToPath(submissionPayload as any, baseName);
+          } catch (streamErr) {
+            console.warn('[sendSpreadsheetToChat] streaming XLSX failed, falling back to edge', streamErr);
+            const remote = await import('../../src/lib/submissionSpreadsheet.native');
+            return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+          }
+        }
+
+        const remote = await import('../../src/lib/submissionSpreadsheet.native');
+        return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
+      })();
 
       console.log('[sendSpreadsheetToChat] built file at', path, 'in', Date.now() - tBuildStart, 'ms');
 
