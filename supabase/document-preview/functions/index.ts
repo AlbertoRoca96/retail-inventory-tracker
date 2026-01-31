@@ -38,6 +38,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5?target=es2020&no-check';
 import JSZip from 'https://esm.sh/jszip@3.10.1?target=es2020';
 import { XMLParser } from 'https://esm.sh/fast-xml-parser@4.4.1?target=es2020';
+import * as ImageScript from 'https://deno.land/x/imagescript@1.2.15/mod.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -401,6 +402,43 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function maybeMakeThumbnail(
+  bytes: Uint8Array,
+  mime: string,
+  opts: { maxDim: number; jpegQuality: number }
+): Promise<{ bytes: Uint8Array; mime: string }> {
+  const lower = (mime || '').toLowerCase();
+  const supported =
+    lower === 'image/png' ||
+    lower === 'image/jpeg' ||
+    lower === 'image/jpg' ||
+    lower === 'image/webp' ||
+    lower === 'image/gif' ||
+    lower === 'image/bmp';
+
+  if (!supported) return { bytes, mime };
+
+  try {
+    const img = await ImageScript.Image.decode(bytes);
+
+    const maxDim = clamp(opts.maxDim, 64, 2048);
+    const jpegQuality = clamp(opts.jpegQuality, 20, 95);
+
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const targetW = Math.max(1, Math.round(img.width * scale));
+    const targetH = Math.max(1, Math.round(img.height * scale));
+
+    const resized = scale < 1 ? img.resize(targetW, targetH) : img;
+
+    // Encode as JPEG for size. (Even if original was PNG)
+    const out = await resized.encodeJPEG(jpegQuality);
+    return { bytes: new Uint8Array(out), mime: 'image/jpeg' };
+  } catch {
+    // If decoding fails, fall back to original bytes.
+    return { bytes, mime };
+  }
+}
+
 function normalizeZipPath(p: string): string {
   return String(p || '').replace(/^\//, '');
 }
@@ -542,15 +580,19 @@ async function extractXlsxImagesByCell(
 
     const mediaBytes = new Uint8Array(await mediaEntry.async('uint8array'));
 
-    if (out.included >= maxImages || totalIncludedBytes + mediaBytes.length > maxTotalImageBytes) {
+    const originalMime = guessImageMimeFromPath(mediaPath);
+
+    // Make thumbnails so we can actually embed them in the HTML without blowing up.
+    const thumb = await maybeMakeThumbnail(mediaBytes, originalMime, { maxDim: 900, jpegQuality: 70 });
+
+    if (out.included >= maxImages || totalIncludedBytes + thumb.bytes.length > maxTotalImageBytes) {
       out.omitted += 1;
-      out.omittedBytes += mediaBytes.length;
+      out.omittedBytes += thumb.bytes.length;
       continue;
     }
 
-    const mime = guessImageMimeFromPath(mediaPath);
-    const b64 = toBase64(mediaBytes);
-    const dataUri = `data:${mime};base64,${b64}`;
+    const b64 = toBase64(thumb.bytes);
+    const dataUri = `data:${thumb.mime};base64,${b64}`;
 
     const key = `${row}:${col}`;
     out.imagesByCell[key] ||= [];
@@ -675,8 +717,8 @@ Deno.serve(async (req) => {
       images = await extractXlsxImagesByCell(bytes, {
         maxRows,
         maxCols,
-        maxImages: 12,
-        maxTotalImageBytes: 2_000_000,
+        maxImages: 20,
+        maxTotalImageBytes: 6_000_000,
       });
     }
 
