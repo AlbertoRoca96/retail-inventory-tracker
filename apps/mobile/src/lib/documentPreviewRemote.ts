@@ -1,6 +1,9 @@
 // apps/mobile/src/lib/documentPreviewRemote.ts
-// Call the Supabase Edge Function `document-preview` to render an XLSX/CSV preview
-// server-side. This avoids parsing huge spreadsheets on-device.
+// Call the Supabase Edge Function `document-preview` to render a preview for chat attachments
+// server-side.
+//
+// - XLSX/CSV: returns lightweight HTML
+// - Images/PDF/Office docs: returns a signed URL (and optional Office Online embed URL)
 
 import { supabase, resolvedSupabaseUrl } from './supabase';
 
@@ -11,12 +14,23 @@ export type DocumentPreviewRequest = {
   max_cols?: number;
 };
 
-export type DocumentPreviewResponse = {
-  ok: true;
-  html: string;
-  title: string;
-  meta?: Record<string, unknown>;
-};
+export type DocumentPreviewResponse =
+  | {
+      ok: true;
+      mode: 'html';
+      html: string;
+      title: string;
+      url?: string;
+      meta?: Record<string, unknown>;
+    }
+  | {
+      ok: true;
+      mode: 'url';
+      url: string;
+      office_embed_url?: string | null;
+      title: string;
+      meta?: Record<string, unknown>;
+    };
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,6 +38,44 @@ function sleep(ms: number) {
 
 function isRetryableStatus(status: number): boolean {
   return status === 502 || status === 503 || status === 504 || status === 546;
+}
+
+function coerceResponse(data: any): DocumentPreviewResponse {
+  // Backward compat: older edge function returned { ok:true, html, title }
+  if (data?.ok && typeof data?.html === 'string') {
+    return {
+      ok: true,
+      mode: 'html',
+      html: data.html,
+      title: String(data?.title || 'Preview'),
+      url: typeof data?.url === 'string' ? data.url : undefined,
+      meta: data?.meta,
+    };
+  }
+
+  if (data?.ok && data?.mode === 'html' && typeof data?.html === 'string') {
+    return {
+      ok: true,
+      mode: 'html',
+      html: data.html,
+      title: String(data?.title || 'Preview'),
+      url: typeof data?.url === 'string' ? data.url : undefined,
+      meta: data?.meta,
+    };
+  }
+
+  if (data?.ok && data?.mode === 'url' && typeof data?.url === 'string') {
+    return {
+      ok: true,
+      mode: 'url',
+      url: data.url,
+      office_embed_url: typeof data?.office_embed_url === 'string' ? data.office_embed_url : null,
+      title: String(data?.title || 'Attachment'),
+      meta: data?.meta,
+    };
+  }
+
+  throw new Error(data?.error || 'Preview response missing html/url');
 }
 
 export async function fetchRemoteDocumentPreview(
@@ -70,11 +122,8 @@ export async function fetchRemoteDocumentPreview(
         throw new Error(`document-preview failed (${res.status}): ${text || 'Unknown error'}`);
       }
 
-      const data = (await res.json()) as any;
-      if (!data?.ok || !data?.html) {
-        throw new Error(data?.error || 'Preview response missing html');
-      }
-      return data as DocumentPreviewResponse;
+      const jsonData = (await res.json()) as any;
+      return coerceResponse(jsonData);
     } catch (err) {
       lastErr = err;
       if (attempt < maxAttempts) {

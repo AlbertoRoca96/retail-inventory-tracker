@@ -21,6 +21,8 @@ export default function AttachmentViewerScreen() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
+  const [officeEmbedUrl, setOfficeEmbedUrl] = useState<string | null>(null);
 
   const meta = useMemo<AttachmentMeta | null>(() => {
     const url = typeof params.url === 'string' ? params.url : '';
@@ -32,7 +34,12 @@ export default function AttachmentViewerScreen() {
     return { url, kind, name };
   }, [params.url, params.name, params.type]);
 
-  const viewerUrl = useMemo(() => (meta ? buildViewerUrl(meta) : ''), [meta]);
+  const effectiveMeta = useMemo<AttachmentMeta | null>(() => {
+    if (!meta) return null;
+    return remoteUrl ? { ...meta, url: remoteUrl } : meta;
+  }, [meta, remoteUrl]);
+
+  const viewerUrl = useMemo(() => (effectiveMeta ? buildViewerUrl(effectiveMeta) : ''), [effectiveMeta]);
 
   const messageKind = typeof params.kind === 'string' ? params.kind : '';
   const messageId = typeof params.messageId === 'string' ? params.messageId : '';
@@ -43,7 +50,53 @@ export default function AttachmentViewerScreen() {
     const run = async () => {
       if (!meta) return;
 
-      // Only build previews for certain document types.
+      // If we have a message reference, prefer server-side preview/signing.
+      // This enables:
+      // - XLSX/CSV HTML previews
+      // - docx/pptx previews via Office Online using a signed URL
+      // - consistent signed URLs for images/pdfs
+      if (messageKind && messageId) {
+        try {
+          setPreviewLoading(true);
+          setPreviewError(null);
+          setPreviewHtml(null);
+          setRemoteUrl(null);
+          setOfficeEmbedUrl(null);
+
+          const remote = await fetchRemoteDocumentPreview({
+            kind: messageKind === 'direct_message' ? 'direct_message' : 'submission_message',
+            id: messageId,
+            max_rows: 60,
+            max_cols: 20,
+          });
+
+          if (cancelled) return;
+
+          if (remote.mode === 'html') {
+            setPreviewHtml(remote.html);
+            setRemoteUrl(remote.url ?? null);
+            setOfficeEmbedUrl(null);
+          } else {
+            setPreviewHtml(null);
+            setRemoteUrl(remote.url);
+            setOfficeEmbedUrl(remote.office_embed_url ?? null);
+          }
+
+          return;
+        } catch (err: any) {
+          if (!cancelled) {
+            setPreviewError(err?.message || 'Unable to preview this attachment.');
+          }
+        } finally {
+          if (!cancelled) setPreviewLoading(false);
+        }
+      }
+
+      // No message reference: ensure we don't keep stale remote URLs.
+      setRemoteUrl(null);
+      setOfficeEmbedUrl(null);
+
+      // Local-only preview: only for CSV/XLSX.
       if (meta.kind !== 'excel' && meta.kind !== 'csv') {
         setPreviewHtml(null);
         setPreviewError(null);
@@ -55,20 +108,6 @@ export default function AttachmentViewerScreen() {
         setPreviewLoading(true);
         setPreviewError(null);
         setPreviewHtml(null);
-
-        // Prefer server-side preview when we have a message reference.
-        if ((meta.kind === 'excel' || meta.kind === 'csv') && messageKind && messageId) {
-          const remote = await fetchRemoteDocumentPreview({
-            kind: messageKind === 'direct_message' ? 'direct_message' : 'submission_message',
-            id: messageId,
-            max_rows: 60,
-            max_cols: 20,
-          });
-          if (!cancelled) {
-            setPreviewHtml(remote.html);
-          }
-          return;
-        }
 
         // Fallback: on-device preview.
         const res = await buildDocumentPreview(meta);
@@ -91,10 +130,10 @@ export default function AttachmentViewerScreen() {
   }, [meta?.url, meta?.kind, meta?.name, messageKind, messageId]);
 
   const onShare = async () => {
-    if (!meta) return;
+    if (!effectiveMeta) return;
     try {
       setSharing(true);
-      await shareAttachment(meta);
+      await shareAttachment(effectiveMeta);
     } catch (err: any) {
       Alert.alert('Share failed', err?.message ?? 'Unable to share this attachment.');
     } finally {
@@ -131,9 +170,9 @@ export default function AttachmentViewerScreen() {
       </View>
 
       <View style={styles.viewer}>
-        {meta.kind === 'image' ? (
-          <Image source={{ uri: meta.url }} style={styles.image} resizeMode="contain" />
-        ) : meta.kind === 'pdf' ? (
+        {effectiveMeta?.kind === 'image' ? (
+          <Image source={{ uri: effectiveMeta.url }} style={styles.image} resizeMode="contain" />
+        ) : effectiveMeta?.kind === 'pdf' ? (
           <WebView
             source={{ uri: viewerUrl }}
             startInLoadingState
@@ -144,7 +183,7 @@ export default function AttachmentViewerScreen() {
               </View>
             )}
           />
-        ) : meta.kind === 'excel' || meta.kind === 'csv' ? (
+        ) : effectiveMeta?.kind === 'excel' || effectiveMeta?.kind === 'csv' ? (
           previewLoading ? (
             <View style={styles.center}>
               <ActivityIndicator size="large" color={theme.colors.blue} />
@@ -158,9 +197,29 @@ export default function AttachmentViewerScreen() {
               <Text style={styles.subtitle}>{previewError || 'Use Share / Download to open it in another app.'}</Text>
             </View>
           )
+        ) : effectiveMeta?.kind === 'word' || effectiveMeta?.kind === 'powerpoint' ? (
+          officeEmbedUrl ? (
+            <WebView
+              source={{ uri: officeEmbedUrl }}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color={theme.colors.blue} />
+                  <Text style={styles.subtitle}>Loading preview…</Text>
+                </View>
+              )}
+            />
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.noPreviewTitle}>Preview unavailable</Text>
+              <Text style={styles.subtitle}>
+                {previewError || 'Use Share / Download to open it in another app.'}
+              </Text>
+            </View>
+          )
         ) : (
           <View style={styles.center}>
-            <Text style={styles.noPreviewTitle}>No in-app preview for {meta.kind.toUpperCase()}</Text>
+            <Text style={styles.noPreviewTitle}>No in-app preview for {effectiveMeta?.kind?.toUpperCase?.() || 'FILE'}</Text>
             <Text style={styles.subtitle}>Use Share / Download to open it in another app.</Text>
           </View>
         )}
