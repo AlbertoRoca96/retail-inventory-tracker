@@ -596,10 +596,10 @@ async function extractXlsxImagesByCell(
 
     const key = `${row}:${col}`;
     out.imagesByCell[key] ||= [];
-    out.imagesByCell[key].push({ mime, dataUri, bytes: mediaBytes.length });
+    out.imagesByCell[key].push({ mime: thumb.mime, dataUri, bytes: thumb.bytes.length });
 
     out.included += 1;
-    totalIncludedBytes += mediaBytes.length;
+    totalIncludedBytes += thumb.bytes.length;
   }
 
   return out;
