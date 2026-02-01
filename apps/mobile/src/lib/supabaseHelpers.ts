@@ -13,6 +13,41 @@ function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
   return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
 }
 
+function safeExtFromUri(uri: string): string {
+  const clean = (uri || '').split('?')[0];
+  const last = clean.split('/').pop() || '';
+  const ext = (last.includes('.') ? last.split('.').pop() : '') || '';
+  const normalized = ext.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return normalized || 'jpg';
+}
+
+async function ensureFileUri(uri: string): Promise<string> {
+  // Expo ImagePicker can return `content://` on Android.
+  // Supabase upload needs real bytes; the most reliable approach is copying
+  // the content URI into our cache so we can read it as a normal file.
+  if (!uri) throw new Error('ensureFileUri requires a uri');
+
+  if (uri.startsWith('file://')) return uri;
+
+  if (uri.startsWith('content://')) {
+    const ext = safeExtFromUri(uri);
+    const dest = `${FileSystem.cacheDirectory}rit-upload-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}.${ext}`;
+
+    try {
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      return dest;
+    } catch (e) {
+      // If copy fails, we fall back to the original uri and let the read step throw.
+      console.warn('[upload] Failed to copy content uri to cache', { uri, dest, error: e });
+      return uri;
+    }
+  }
+
+  return uri;
+}
+
 export async function getSignedStorageUrl(
   bucket: string,
   path: string,
@@ -84,21 +119,23 @@ export async function uploadSubmissionPhoto({
 }) {
   let bytes: Uint8Array | null = null;
 
+  const safeUri = await ensureFileUri(uri);
+
   // Preferred: Expo File API (if available)
   const FileCtor = (FileSystem as any).File;
   if (FileCtor) {
-    const file = new FileCtor(uri);
+    const file = new FileCtor(safeUri);
     bytes = await file.bytes();
   } else {
     // Fallback: base64 read
-    const base64 = await FileSystem.readAsStringAsync(uri, {
+    const base64 = await FileSystem.readAsStringAsync(safeUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
     bytes = base64 ? new Uint8Array(Buffer.from(base64, 'base64')) : null;
   }
 
   if (!bytes || bytes.byteLength === 0) {
-    throw new Error(`uploadSubmissionPhoto: got 0 bytes from uri=${uri}`);
+    throw new Error(`uploadSubmissionPhoto: got 0 bytes from uri=${uri} safeUri=${safeUri}`);
   }
 
   const ab = toArrayBuffer(bytes);
