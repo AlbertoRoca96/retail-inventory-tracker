@@ -860,7 +860,7 @@ export default function NewFormScreen() {
     v: FormValues,
     effectiveTeamId: string,
     submissionId: string,
-    uploads: { path: string; publicUrl: string | null }[]
+    uploads: ({ path: string; publicUrl: string | null } | null)[]
   ) => {
     return {
       id: submissionId,
@@ -899,36 +899,43 @@ export default function NewFormScreen() {
   const uploadSubmissionPhotos = useCallback(
     async (team: string, submissionId: string, photoList: Photo[]) => {
       const maxPhotos = 6;
-      const tasks: Promise<{ path: string; publicUrl: string | null } | null>[] = [];
+      const uploads: ({ path: string; publicUrl: string | null } | null)[] = Array.from(
+        { length: maxPhotos },
+        () => null
+      );
+      const failures: { index: number; message: string }[] = [];
 
       for (let i = 0; i < Math.min(photoList.length, maxPhotos); i++) {
         const photo = photoList[i];
         if (!photo?.uri) continue;
 
-        tasks.push(
-          (async () => {
-            const ext = (photo.fileName?.split('.').pop() || 'jpg')
-              .replace(/[^a-z0-9]/gi, '')
-              .toLowerCase() || 'jpg';
-            const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}.${ext}`;
-            try {
-              const uploaded = await uploadFileToStorage({
-                bucket: 'submissions',
-                path,
-                photo,
-              });
-              return uploaded;
-            } catch (err) {
-              console.warn('photo upload failed for index', i, err);
-              return null;
-            }
-          })()
-        );
+        const rawExt =
+          photo.fileName?.split('.').pop() ||
+          photo.uri.split('?')[0].split('.').pop() ||
+          'jpg';
+        const ext = rawExt.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+
+        const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}.${ext}`;
+
+        try {
+          uploads[i] = await uploadFileToStorage({
+            bucket: 'submissions',
+            path,
+            photo,
+          });
+        } catch (err: any) {
+          const msg = err?.message ? String(err.message) : String(err);
+          console.warn('photo upload failed for index', i, { uri: photo.uri, error: msg });
+          failures.push({ index: i, message: msg });
+        }
       }
 
-      const results = await Promise.all(tasks);
-      // Preserve index alignment: results[i] corresponds to photo i
-      return results.filter(Boolean) as { path: string; publicUrl: string | null }[];
+      if (failures.length) {
+        const which = failures.map((f) => `#${f.index + 1}`).join(', ');
+        throw new Error(`Failed to upload photo(s): ${which}. Please try again.`);
+      }
+
+      return uploads;
     },
     []
   );
@@ -968,7 +975,7 @@ export default function NewFormScreen() {
           throw new Error('No team found for this user. Ask an admin to add you to a team.');
         }
 
-        let uploadedAssets: { path: string; publicUrl: string | null }[] = [];
+        let uploadedAssets: ({ path: string; publicUrl: string | null } | null)[] = [];
         if (photos.length) {
           setBanner({ kind: 'info', text: 'Uploading photos…' });
           uploadedAssets = await uploadSubmissionPhotos(effectiveTeamId, submissionId, photos);
