@@ -10,7 +10,7 @@ export type DirectMessage = {
   recipient_id: string;
   body: string;
   attachment_url?: string | null;
-  attachment_type?: 'image' | 'csv' | 'pdf' | 'excel' | null;
+  attachment_type?: 'image' | 'csv' | 'pdf' | 'excel' | 'word' | 'powerpoint' | 'file' | null;
   attachment_signed_url?: string | null;
 };
 
@@ -89,7 +89,7 @@ export async function sendDirectMessage(options: {
   body: string;
   attachmentPath?: string | null;
   attachmentUrl?: string | null;
-  attachmentType?: 'image' | 'csv' | 'pdf' | 'excel' | null;
+  attachmentType?: 'image' | 'csv' | 'pdf' | 'excel' | 'word' | 'powerpoint' | 'file' | null;
 }): Promise<{ success: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Not authenticated' };
@@ -116,7 +116,7 @@ export async function sendDirectFileAttachmentFromPath(options: {
   recipientId: string;
   localPath: string;
   fileName: string;
-  attachmentType: 'excel' | 'pdf' | 'csv' | 'image';
+  attachmentType: 'excel' | 'pdf' | 'csv' | 'image' | 'word' | 'powerpoint' | 'file';
   body?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
@@ -128,9 +128,15 @@ export async function sendDirectFileAttachmentFromPath(options: {
       if (options.attachmentType === 'excel') {
         return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       }
+      if (options.attachmentType === 'word') {
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      }
+      if (options.attachmentType === 'powerpoint') {
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      }
       if (options.attachmentType === 'pdf') return 'application/pdf';
       if (options.attachmentType === 'csv') return 'text/csv';
-      if (options.attachmentType === 'image') return undefined;
+      // image/file: let helper infer from path or blob
       return undefined;
     })();
 

@@ -3,6 +3,7 @@ import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoid
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../../../src/hooks/useAuth';
@@ -40,6 +41,7 @@ export default function DirectConversation() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const flatListRef = useRef<FlatList<DirectMessage>>(null);
   const subscriptionRef = useRef<any>(null);
@@ -214,6 +216,62 @@ export default function DirectConversation() {
     }
   };
 
+  const handleAttachFile = async () => {
+    if (!teamId || uploadingFile || !peerId) return;
+    try {
+      setUploadingFile(true);
+      const res = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: '*/*',
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      const name = a.name || `attachment-${Date.now()}`;
+      const lower = name.toLowerCase();
+
+      const attachmentType: any =
+        (a.mimeType || '').startsWith('image/') ? 'image' :
+        lower.endsWith('.pdf') ? 'pdf' :
+        lower.endsWith('.csv') ? 'csv' :
+        lower.endsWith('.xlsx') || lower.endsWith('.xls') ? 'excel' :
+        lower.endsWith('.docx') || lower.endsWith('.doc') ? 'word' :
+        lower.endsWith('.pptx') || lower.endsWith('.ppt') ? 'powerpoint' :
+        'file';
+
+      const messageId = generateUuid();
+      const safeName = name.replace(/[^a-z0-9_.-]/gi, '-');
+      const storagePath = `teams/${teamId}/direct/${messageId}/${Date.now()}-${safeName}`;
+
+      const uploaded = await uploadFileToStorage({
+        bucket: 'chat',
+        path: storagePath,
+        photo: {
+          uri: a.uri,
+          fileName: safeName,
+          mimeType: a.mimeType || undefined,
+        },
+      });
+
+      const body = newMessage.trim() || (attachmentType === 'image' ? 'Shared a photo' : 'Shared a file');
+      const resultSend = await sendDirectMessage({
+        id: messageId,
+        teamId,
+        recipientId: peerId,
+        body,
+        attachmentPath: uploaded.path,
+        attachmentType,
+      });
+      if (!resultSend.success) throw new Error(resultSend.error || 'Unable to send attachment');
+      setNewMessage('');
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not share attachment');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
   const initials = (name: string) =>
     (name || '')
       .trim()
@@ -285,11 +343,15 @@ export default function DirectConversation() {
             >
               <Text style={[styles.attachmentFileIcon, { color: isMe ? '#e0f2fe' : theme.colors.blue }]}>📎</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.attachmentFileTitle, { color: isMe ? colors.white : colors.text }]}>
-                  {String(item.attachment_type).toUpperCase()} attachment
+                <Text style={[styles.attachmentFileTitle, { color: isMe ? colors.white : colors.text }]} numberOfLines={1}>
+                  {((item.attachment_url || item.attachment_signed_url || '')
+                    .split('?')[0]
+                    .split('/')
+                    .filter(Boolean)
+                    .pop()) || 'attachment'}
                 </Text>
                 <Text style={[styles.attachmentFileSub, { color: isMe ? '#e0f2fe' : '#64748b' }]}>
-                  Tap to open
+                  {String(item.attachment_type || 'file').toUpperCase()}  Tap to open
                 </Text>
               </View>
             </TouchableOpacity>
@@ -392,12 +454,23 @@ export default function DirectConversation() {
               <TouchableOpacity
                 style={styles.attachmentButton}
                 onPress={handleAttachPhoto}
-                disabled={uploadingImage}
+                disabled={uploadingImage || uploadingFile}
               >
                 <Ionicons
                   name="image-outline"
                   size={22}
-                  color={uploadingImage ? '#94a3b8' : theme.colors.blue}
+                  color={uploadingImage || uploadingFile ? '#94a3b8' : theme.colors.blue}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.attachmentButton}
+                onPress={handleAttachFile}
+                disabled={uploadingImage || uploadingFile}
+              >
+                <Ionicons
+                  name="attach-outline"
+                  size={22}
+                  color={uploadingImage || uploadingFile ? '#94a3b8' : theme.colors.blue}
                 />
               </TouchableOpacity>
               <TextInput
@@ -409,9 +482,9 @@ export default function DirectConversation() {
                 onChangeText={setNewMessage}
               />
               <TouchableOpacity
-                style={[styles.sendButton, { opacity: sending || !newMessage.trim() ? 0.6 : 1 }]}
+                style={[styles.sendButton, { opacity: sending || uploadingImage || uploadingFile || !newMessage.trim() ? 0.6 : 1 }]}
                 onPress={sendMessageNow}
-                disabled={sending || uploadingImage || !newMessage.trim()}
+                disabled={sending || uploadingImage || uploadingFile || !newMessage.trim()}
               >
                 <Text style={[styles.sendText, { fontSize: Math.round(15 * fontScale) }]}>{sending ? '...' : 'Send'}</Text>
               </TouchableOpacity>

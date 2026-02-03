@@ -13,7 +13,7 @@ export type SubmissionMessage = {
   body: string;
   is_internal: boolean;
   attachment_path?: string | null;
-  attachment_type?: 'csv' | 'image' | 'pdf' | 'excel' | null;
+  attachment_type?: 'csv' | 'image' | 'pdf' | 'excel' | 'word' | 'powerpoint' | 'file' | null;
   attachment_signed_url?: string | null;
   is_revised: boolean;
 };
@@ -93,7 +93,7 @@ export type NewMessage = {
   body: string;
   is_internal?: boolean;
   attachment_path?: string;
-  attachment_type?: 'csv' | 'image' | 'pdf' | 'excel';
+  attachment_type?: 'csv' | 'image' | 'pdf' | 'excel' | 'word' | 'powerpoint' | 'file';
   is_revised?: boolean;
 };
 

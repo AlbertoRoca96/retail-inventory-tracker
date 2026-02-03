@@ -352,7 +352,11 @@ export default function TeamChat() {
               onPress={() => openAttachment(item)}
             >
               <Text style={styles.attachmentText}>
-                📎 {item.attachment_type.toUpperCase()} attachment
+                📎 {((item.attachment_path || item.attachment_signed_url || '')
+                  .split('?')[0]
+                  .split('/')
+                  .filter(Boolean)
+                  .pop()) || 'attachment'}
               </Text>
             </TouchableOpacity>
           )
@@ -480,15 +484,13 @@ export default function TeamChat() {
                     const name = a.name || `attachment-${Date.now()}`;
                     const lower = name.toLowerCase();
                     const attachmentType: any =
+                      (a.mimeType || '').startsWith('image/') ? 'image' :
                       lower.endsWith('.pdf') ? 'pdf' :
                       lower.endsWith('.csv') ? 'csv' :
-                      lower.endsWith('.xlsx') ? 'excel' :
-                      (a.mimeType || '').startsWith('image/') ? 'image' :
-                      null;
-                    if (!attachmentType) {
-                      Alert.alert('Unsupported file', 'Please choose a PDF, CSV, XLSX, or image.');
-                      return;
-                    }
+                      lower.endsWith('.xlsx') || lower.endsWith('.xls') ? 'excel' :
+                      lower.endsWith('.docx') || lower.endsWith('.doc') ? 'word' :
+                      lower.endsWith('.pptx') || lower.endsWith('.ppt') ? 'powerpoint' :
+                      'file';
                     if (attachmentType === 'image') {
                       setPendingPhoto({ uri: a.uri, fileName: name, mimeType: a.mimeType || 'image/jpeg' });
                       setPendingFile(null);
