@@ -44,6 +44,7 @@ export default function DirectConversation() {
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
 
   const flatListRef = useRef<FlatList<DirectMessage>>(null);
   const subscriptionRef = useRef<any>(null);
@@ -174,8 +175,9 @@ export default function DirectConversation() {
   };
 
   const handleAttachPhoto = async () => {
-    if (!teamId || uploadingImage) return;
+    if (!teamId || uploadingImage || pickerBusy) return;
     try {
+      setPickerBusy(true);
       setUploadingImage(true);
       const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permissions.status !== 'granted') {
@@ -215,12 +217,14 @@ export default function DirectConversation() {
       Alert.alert('Upload failed', error?.message || 'Could not share photo');
     } finally {
       setUploadingImage(false);
+      setPickerBusy(false);
     }
   };
 
   const handleAttachFile = async () => {
-    if (!teamId || uploadingFile || !peerId) return;
+    if (!teamId || uploadingFile || pickerBusy || !peerId) return;
     try {
+      setPickerBusy(true);
       setUploadingFile(true);
       const res = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
@@ -268,9 +272,13 @@ export default function DirectConversation() {
       setNewMessage('');
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error: any) {
-      Alert.alert('Upload failed', error?.message || 'Could not share attachment');
+      const msg = String(error?.message || '');
+      if (!msg.includes('Different document picking in progress')) {
+        Alert.alert('Upload failed', error?.message || 'Could not share attachment');
+      }
     } finally {
       setUploadingFile(false);
+      setPickerBusy(false);
     }
   };
 
@@ -483,7 +491,7 @@ export default function DirectConversation() {
               onChangeText={setNewMessage}
               placeholder="Message"
               fontScale={fontScale}
-              disabled={sending || uploadingImage || uploadingFile}
+              disabled={sending || uploadingImage || uploadingFile || pickerBusy}
               canSend={!!newMessage.trim()}
               sending={sending || uploadingImage || uploadingFile}
               onSend={sendMessageNow}

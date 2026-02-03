@@ -27,6 +27,7 @@ export default function TeamChat() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<PhotoLike | null>(null);
   const [pendingFile, setPendingFile] = useState<{
     uri: string;
@@ -266,8 +267,9 @@ export default function TeamChat() {
   };
 
   const handleAttachPhoto = async () => {
-    if (!teamInfo || uploadingImage) return;
+    if (!teamInfo || uploadingImage || pickerBusy) return;
     try {
+      setPickerBusy(true);
       setUploadingImage(true);
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permission.status !== 'granted') {
@@ -291,12 +293,14 @@ export default function TeamChat() {
       Alert.alert('Photo selection failed', error?.message || 'Unable to select a photo right now.');
     } finally {
       setUploadingImage(false);
+      setPickerBusy(false);
     }
   };
 
   const handleAttachFile = async () => {
-    if (!teamInfo || uploadingImage) return;
+    if (!teamInfo || uploadingImage || pickerBusy) return;
     try {
+      setPickerBusy(true);
       const res = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
         multiple: false,
@@ -330,7 +334,12 @@ export default function TeamChat() {
       });
       setPendingPhoto(null);
     } catch (err: any) {
-      Alert.alert('Attach failed', err?.message || 'Unable to pick a file.');
+      const msg = String(err?.message || '');
+      if (!msg.includes('Different document picking in progress')) {
+        Alert.alert('Attach failed', err?.message || 'Unable to pick a file.');
+      }
+    } finally {
+      setPickerBusy(false);
     }
   };
 
@@ -531,7 +540,7 @@ export default function TeamChat() {
               onChangeText={setNewMessage}
               placeholder="Message"
               fontScale={fontScale}
-              disabled={sending || uploadingImage}
+              disabled={sending || uploadingImage || pickerBusy}
               canSend={!!newMessage.trim() || !!pendingPhoto || !!pendingFile}
               sending={sending || uploadingImage}
               onSend={sendMessage}

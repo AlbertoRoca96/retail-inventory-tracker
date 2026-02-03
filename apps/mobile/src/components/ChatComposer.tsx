@@ -54,7 +54,8 @@ export default function ChatComposer({
         icon: 'image-outline' as const,
         onPress: () => {
           setMenuOpen(false);
-          onPickPhoto();
+          // iOS gets cranky if we launch a picker while closing a modal.
+          setTimeout(() => onPickPhoto(), 150);
         },
       },
       {
@@ -63,7 +64,8 @@ export default function ChatComposer({
         icon: 'attach-outline' as const,
         onPress: () => {
           setMenuOpen(false);
-          onPickFile();
+          // iOS gets cranky if we launch a picker while closing a modal.
+          setTimeout(() => onPickFile(), 150);
         },
       },
     ],
