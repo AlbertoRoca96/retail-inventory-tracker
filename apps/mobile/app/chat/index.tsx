@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
+import { useUISettings } from '../../src/lib/uiSettings';
 import Button from '../../src/components/Button';
 import LogoHeader from '../../src/components/LogoHeader';
 import Banner from '../../src/components/Banner';
@@ -21,6 +22,8 @@ import { fetchTeamMessages, type ChatRoom, type SubmissionMessage } from '../../
 
 export default function ChatOverview() {
   const { session, ready } = useAuth();
+  const { fontScale } = useUISettings();
+
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,15 +125,15 @@ export default function ChatOverview() {
         <View style={styles.chatRoomContent}>
           <View style={styles.chatRoomInfo}>
             <View style={styles.headerRow}>
-              <Text style={styles.chatRoomName} numberOfLines={1}>
+              <Text style={[styles.chatRoomName, { fontSize: Math.round(16 * fontScale) }]} numberOfLines={1}>
                 {title}
               </Text>
               {lastMessageTime ? <Text style={styles.timeText}>{lastMessageTime}</Text> : null}
             </View>
-            <Text style={styles.chatRoomSubtitle} numberOfLines={1}>
+            <Text style={[styles.chatRoomSubtitle, { fontSize: Math.round(12 * fontScale) }]} numberOfLines={1}>
               {subtitle}
             </Text>
-            <Text style={styles.lastMessage} numberOfLines={2}>
+            <Text style={[styles.lastMessage, { fontSize: Math.round(13 * fontScale) }]} numberOfLines={2}>
               {lastMessageBody}
             </Text>
           </View>
@@ -207,7 +210,7 @@ export default function ChatOverview() {
       )}
 
       <View style={styles.quickActions}>
-        <Text style={styles.quickActionsTitle}>Start a new chat</Text>
+        <Text style={[styles.quickActionsTitle, { fontSize: Math.round(14 * fontScale) }]}>Start a new chat</Text>
         <Button
           title="New Team Chat"
           onPress={() => router.push('/chat/team')}

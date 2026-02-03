@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet, SafeAreaView, Image } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../../src/lib/supabase';
 import { useAuth } from '../../../src/hooks/useAuth';
 import { colors, theme, typography } from '../../../src/theme';
+import { useUISettings } from '../../../src/lib/uiSettings';
+import { getSignedStorageUrl } from '../../../src/lib/supabaseHelpers';
 import LogoHeader from '../../../src/components/LogoHeader';
 
 interface MemberRow {
@@ -17,7 +19,10 @@ export default function DirectMessageRoster() {
   const params = useLocalSearchParams<{ team?: string }>();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState('Team');
+  const { fontScale } = useUISettings();
+
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [avatarMap, setAvatarMap] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,7 +63,28 @@ export default function DirectMessageRoster() {
       const filtered = (roster as any[])
         ?.filter((row) => row.user_id !== session!.user.id)
         .map((row) => ({ user_id: row.user_id, display_name: row.display_name, email: row.email }));
-      setMembers(filtered || []);
+      const finalMembers = filtered || [];
+      setMembers(finalMembers);
+
+      // Pull avatars in one shot (then sign them).
+      const ids = finalMembers.map((m) => m.user_id).filter(Boolean);
+      if (ids.length) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, avatar_path')
+          .in('id', ids);
+        const rows = (profiles as any[]) || [];
+        const next: Record<string, string | null> = {};
+        await Promise.all(
+          rows.map(async (p) => {
+            const path = p.avatar_path as string | null;
+            next[p.id] = path ? await getSignedStorageUrl('avatars', path, 60 * 60 * 4) : null;
+          })
+        );
+        setAvatarMap(next);
+      } else {
+        setAvatarMap({});
+      }
     } catch (error) {
       console.error('direct roster load failed', error);
       setMembers([]);
@@ -105,18 +131,44 @@ export default function DirectMessageRoster() {
           data={members}
           keyExtractor={(item) => item.user_id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.memberRow}
-              onPress={() => router.push({ pathname: `/chat/direct/${item.user_id}`, params: { team: teamId! } })}
-            >
-              <View>
-                <Text style={styles.memberName}>{item.display_name || item.email || item.user_id.slice(0, 8)}</Text>
-                {item.email ? <Text style={styles.memberEmail}>{item.email}</Text> : null}
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          )}
+          renderItem={({ item }) => {
+            const label = item.display_name || item.email || item.user_id.slice(0, 8);
+            const initials = label
+              .trim()
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((p) => p[0]?.toUpperCase())
+              .join('') || 'U';
+            const avatar = avatarMap[item.user_id] || null;
+
+            return (
+              <TouchableOpacity
+                style={styles.memberRow}
+                onPress={() => router.push({ pathname: `/chat/direct/${item.user_id}`, params: { team: teamId! } })}
+              >
+                <View style={styles.memberLeft}>
+                  <View style={styles.avatarCircle}>
+                    {avatar ? (
+                      <Image source={{ uri: avatar }} style={styles.avatarImage} />
+                    ) : (
+                      <Text style={[styles.avatarText, { fontSize: Math.round(12 * fontScale) }]}>{initials}</Text>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.memberName, { fontSize: Math.round(16 * fontScale) }]} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    {item.email ? (
+                      <Text style={[styles.memberEmail, { fontSize: Math.round(13 * fontScale) }]} numberOfLines={1}>
+                        {item.email}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+            );
+          }}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.subtitle}>No teammates available for direct messages.</Text>
@@ -159,6 +211,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  memberLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+    flex: 1,
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e2e8f0',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+  },
+  avatarText: {
+    ...typography.label,
+    fontWeight: '800',
+    color: '#0f172a',
   },
   memberName: {
     ...typography.body,

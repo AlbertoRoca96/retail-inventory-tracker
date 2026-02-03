@@ -82,8 +82,7 @@ export default function AccountSettings() {
     setSimplifiedMode = () => {},
     largeText = false,
     setLargeText = () => {},
-    highContrast = false,
-    setHighContrast = () => {},
+    fontScale = 1,
   } = useUISettings() || ({} as any);
 
   // hidden <input type="file"> for web avatar selection
@@ -298,10 +297,10 @@ export default function AccountSettings() {
 
   // accessibility-aware sizing
   const basePad = simplifiedMode ? theme.spacing(3) : theme.spacing(2);
-  const labelSize = (simplifiedMode || largeText) ? 16 : 14;
+  const labelSize = Math.round(((simplifiedMode || largeText) ? 16 : 14) * fontScale);
   const inputHeight = (simplifiedMode || largeText) ? 52 : 44;
   const buttonMinHeight = simplifiedMode ? 56 : 48;
-  const btnBg = highContrast ? '#0f172a' : colors.accentBlue;
+  const btnBg = colors.accentBlue;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -340,7 +339,7 @@ export default function AccountSettings() {
           style={{
             backgroundColor: colors.white,
             borderWidth: 1,
-            borderColor: highContrast ? '#000' : '#111',
+            borderColor: '#111',
             borderRadius: 8,
             paddingHorizontal: 12,
             paddingVertical: 8,
@@ -350,31 +349,24 @@ export default function AccountSettings() {
       </View>
 
       <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
-        <Text style={{ fontWeight: '800', marginBottom: 6 }}>ACCESSIBILITY</Text>
+        <Text style={{ fontWeight: '800', marginBottom: 6, fontSize: Math.round(16 * fontScale) }}>ACCESSIBILITY</Text>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={{ fontWeight: '700', marginBottom: 2 }}>Simplified mode</Text>
-            <Text style={{ color: '#374151' }}>Larger text and buttons for easier reading and tapping.</Text>
+            <Text style={{ fontWeight: '700', marginBottom: 2, fontSize: Math.round(14 * fontScale) }}>Simplified mode</Text>
+            <Text style={{ color: '#374151', fontSize: Math.round(13 * fontScale) }}>Larger text and buttons for easier reading and tapping.</Text>
           </View>
           <Switch value={simplifiedMode} onValueChange={setSimplifiedMode} />
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={{ fontWeight: '700', marginBottom: 2 }}>Large text mode</Text>
-            <Text style={{ color: '#374151' }}>Bumps body & button text sizes even more.</Text>
+            <Text style={{ fontWeight: '700', marginBottom: 2, fontSize: Math.round(14 * fontScale) }}>Large text mode</Text>
+            <Text style={{ color: '#374151', fontSize: Math.round(13 * fontScale) }}>Bumps body & button text sizes even more.</Text>
           </View>
           <Switch value={largeText} onValueChange={setLargeText} />
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
-          <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={{ fontWeight: '700', marginBottom: 2 }}>High-contrast mode</Text>
-            <Text style={{ color: '#374151' }}>Stronger color contrast for text & UI.</Text>
-          </View>
-          <Switch value={highContrast} onValueChange={setHighContrast} />
-        </View>
       </View>
 
       {isAdmin ? (

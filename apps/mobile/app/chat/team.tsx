@@ -1,13 +1,15 @@
 // apps/mobile/app/chat/team.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, Keyboard } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../src/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
+import { useUISettings } from '../../src/lib/uiSettings';
 import Button from '../../src/components/Button';
 import LogoHeader from '../../src/components/LogoHeader';
 import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, resolveAttachmentUrl, type SubmissionMessage } from '../../src/lib/chat';
@@ -17,19 +19,39 @@ import { generateUuid } from '../../src/lib/uuid';
 
 export default function TeamChat() {
   const { session, ready } = useAuth();
+  const { fontScale } = useUISettings();
   const [messages, setMessages] = useState<SubmissionMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<PhotoLike | null>(null);
+  const [pendingFile, setPendingFile] = useState<{
+    uri: string;
+    fileName: string;
+    mimeType?: string | null;
+    attachmentType: NonNullable<SubmissionMessage['attachment_type']>;
+  } | null>(null);
   const [teamInfo, setTeamInfo] = useState<{ id: string; name: string } | null>(null);
   const [roster, setRoster] = useState<Record<string, { name: string; email?: string }>>({});
   
   const flatListRef = useRef<FlatList>(null);
   const subscriptionRef = useRef<any>(null);
   const insets = useSafeAreaInsets();
-  const keyboardOffset = Platform.OS === 'ios' ? insets.top + 64 : 0;
+  // Keep this small: LogoHeader already consumes the top safe area.
+  // A large offset creates weird gaps/overlaps depending on device.
+  const keyboardOffset = Platform.OS === 'ios' ? 0 : 0;
+
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!ready || !session?.user) return;
@@ -113,13 +135,14 @@ export default function TeamChat() {
     // Subscribe to real-time updates
     subscriptionRef.current = subscribeToTeamMessages(teamInfo.id, (payload) => {
       if (payload.eventType === 'INSERT' && payload.new?.is_internal) {
-        setMessages(prev => [...prev, payload.new]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === payload.new!.id)) return prev;
+          return [...prev, payload.new!];
+        });
       } else if (payload.eventType === 'UPDATE' && payload.new?.is_internal) {
-        setMessages(prev => 
-          prev.map(msg => msg.id === payload.new?.id ? payload.new : msg)
-        );
+        setMessages((prev) => prev.map((msg) => (msg.id === payload.new?.id ? payload.new! : msg)));
       } else if (payload.eventType === 'DELETE') {
-        setMessages(prev => prev.filter(msg => msg.id !== payload.old?.id));
+        setMessages((prev) => prev.filter((msg) => msg.id !== payload.old?.id));
       }
     });
 
@@ -133,31 +156,81 @@ export default function TeamChat() {
   const sendMessage = async () => {
     if (!teamInfo || sending) return;
     const trimmed = newMessage.trim();
-    if (!trimmed && !pendingPhoto) return;
+    if (!trimmed && !pendingPhoto && !pendingFile) return;
+
+    const pickedPhoto = pendingPhoto;
+    const pickedFile = pendingFile;
+
+    const messageId = generateUuid();
+    const body = trimmed || (pickedPhoto ? 'Shared a photo' : pickedFile ? 'Shared a file' : '');
+
+    // Optimistic insert so the sender sees it instantly.
+    const optimistic: SubmissionMessage = {
+      id: messageId,
+      created_at: new Date().toISOString(),
+      team_id: teamInfo.id,
+      submission_id: null,
+      sender_id: session!.user.id,
+      body,
+      is_internal: true,
+      attachment_path: pickedPhoto ? pickedPhoto.uri : pickedFile ? pickedFile.fileName : null,
+      attachment_type: pickedPhoto ? 'image' : pickedFile ? pickedFile.attachmentType : null,
+      attachment_signed_url: pickedPhoto ? pickedPhoto.uri : null,
+      is_revised: false,
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+    setNewMessage('');
+    setPendingPhoto(null);
+    setPendingFile(null);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
 
     try {
       setSending(true);
-      const messageId = generateUuid();
+
       let attachmentPath: string | null = null;
       let attachmentType: SubmissionMessage['attachment_type'] | null = null;
       let attachmentSignedUrl: string | null = null;
 
-      if (pendingPhoto) {
+      if (pickedPhoto) {
         setUploadingImage(true);
-        const safeExt = (pendingPhoto.fileName?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
-        const safeName = (pendingPhoto.fileName || `team-chat-${Date.now()}.${safeExt}`).replace(/[^a-z0-9_.-]/gi, '-');
+        const safeExt = (pickedPhoto.fileName?.split('.').pop() || 'jpg')
+          .replace(/[^a-z0-9]/gi, '')
+          .toLowerCase() || 'jpg';
+        const safeName = (pickedPhoto.fileName || `team-chat-${Date.now()}.${safeExt}`)
+          .replace(/[^a-z0-9_.-]/gi, '-');
         const storagePath = `teams/${teamInfo.id}/messages/${messageId}/${safeName}`;
+
         const uploaded = await uploadFileToStorage({
           bucket: 'chat',
           path: storagePath,
-          photo: pendingPhoto,
+          photo: pickedPhoto,
         });
+
         attachmentPath = uploaded.path;
         attachmentSignedUrl = uploaded.publicUrl;
         attachmentType = 'image';
+      } else if (pickedFile) {
+        setUploadingImage(true);
+        const safeName = (pickedFile.fileName || `attachment-${Date.now()}`)
+          .replace(/[^a-z0-9_.-]/gi, '-');
+        const storagePath = `teams/${teamInfo.id}/messages/${messageId}/${safeName}`;
+
+        const uploaded = await uploadFileToStorage({
+          bucket: 'chat',
+          path: storagePath,
+          photo: {
+            uri: pickedFile.uri,
+            fileName: safeName,
+            mimeType: pickedFile.mimeType || undefined,
+          },
+        });
+
+        attachmentPath = uploaded.path;
+        attachmentSignedUrl = uploaded.publicUrl;
+        attachmentType = pickedFile.attachmentType;
       }
 
-      const body = trimmed || (attachmentType ? 'Shared a photo' : '');
       const result = await sendSubmissionMessage({
         id: messageId,
         team_id: teamInfo.id,
@@ -168,20 +241,21 @@ export default function TeamChat() {
         attachment_type: attachmentType ?? undefined,
       });
 
-      if (!result.success) {
+      if (!result.success || !result.message) {
         throw new Error(result.error || 'Failed to send message');
       }
-      if (result.message && attachmentSignedUrl) {
-        result.message.attachment_signed_url = attachmentSignedUrl;
-      }
 
-      setNewMessage('');
-      setPendingPhoto(null);
+      // Reconcile optimistic with server row (correct created_at, attachment path, etc.)
+      const serverMsg: SubmissionMessage = {
+        ...result.message,
+        attachment_signed_url: attachmentSignedUrl ?? (result.message as any).attachment_signed_url ?? null,
+      };
 
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? serverMsg : m)));
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
     } catch (error) {
+      // Remove optimistic bubble if the send failed.
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to send message');
     } finally {
       setSending(false);
@@ -250,17 +324,17 @@ export default function TeamChat() {
         isMe ? styles.myMessage : styles.otherMessage,
       ]}>
         <View style={styles.messageHeader}>
-          <Text style={styles.senderName}>
+          <Text style={[styles.senderName, { fontSize: Math.round(12 * fontScale) }]}>
             {senderSummary}
           </Text>
-          <Text style={styles.messageTime}>
+          <Text style={[styles.messageTime, { fontSize: Math.round(11 * fontScale) }]}>
             {new Date(item.created_at).toLocaleTimeString([], { 
               hour: '2-digit', 
               minute: '2-digit' 
             })}
           </Text>
         </View>
-        <Text style={styles.messageBody}>{item.body}</Text>
+        <Text style={[styles.messageBody, { fontSize: Math.round(14 * fontScale), lineHeight: Math.round(18 * fontScale) }]}>{item.body}</Text>
         {item.attachment_type && (item.attachment_signed_url || item.attachment_path) ? (
           item.attachment_type === 'image' ? (
             <TouchableOpacity
@@ -337,7 +411,12 @@ export default function TeamChat() {
               renderItem={renderMessage}
               keyExtractor={(item) => item.id}
               style={styles.messagesList}
-              contentContainerStyle={[styles.messagesListContent, { paddingBottom: theme.spacing(6) + insets.bottom }]}
+              contentContainerStyle={[
+                styles.messagesListContent,
+                {
+                  paddingBottom: theme.spacing(4) + (keyboardVisible ? theme.spacing(1) : insets.bottom),
+                },
+              ]}
               showsVerticalScrollIndicator={false}
               onContentSizeChange={() => {
                 flatListRef.current?.scrollToEnd({ animated: false });
@@ -345,15 +424,30 @@ export default function TeamChat() {
             />
           )}
 
-          <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, theme.spacing(1)) }]}
+          <View
+            style={[
+              styles.inputContainer,
+              { paddingBottom: keyboardVisible ? theme.spacing(1) : Math.max(insets.bottom, theme.spacing(1)) },
+            ]}
           >
-            {pendingPhoto ? (
+            {pendingPhoto || pendingFile ? (
               <View style={styles.pendingAttachment}>
-                <Image source={{ uri: pendingPhoto.uri }} style={styles.pendingAttachmentImage} />
+                {pendingPhoto ? (
+                  <Image source={{ uri: pendingPhoto.uri }} style={styles.pendingAttachmentImage} />
+                ) : (
+                  <View style={[styles.pendingAttachmentImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9' }]}>
+                    <Ionicons name="document-text-outline" size={22} color="#475569" />
+                  </View>
+                )}
                 <View style={styles.pendingMeta}>
-                  <Text style={styles.pendingLabel}>Photo attached</Text>
+                  <Text style={styles.pendingLabel} numberOfLines={1}>
+                    {pendingPhoto ? 'Photo attached' : pendingFile ? pendingFile.fileName : 'Attachment'}
+                  </Text>
                   <TouchableOpacity
-                    onPress={() => setPendingPhoto(null)}
+                    onPress={() => {
+                      setPendingPhoto(null);
+                      setPendingFile(null);
+                    }}
                     accessibilityLabel="Remove attached photo"
                     style={styles.removeAttachmentButton}
                   >
@@ -371,8 +465,53 @@ export default function TeamChat() {
               >
                 <Ionicons name="image-outline" size={22} color={uploadingImage ? '#94a3b8' : theme.colors.blue} />
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.attachmentButton}
+                onPress={async () => {
+                  if (!teamInfo || uploadingImage) return;
+                  try {
+                    const res = await DocumentPicker.getDocumentAsync({
+                      copyToCacheDirectory: true,
+                      multiple: false,
+                      type: '*/*',
+                    });
+                    if (res.canceled || !res.assets?.length) return;
+                    const a = res.assets[0];
+                    const name = a.name || `attachment-${Date.now()}`;
+                    const lower = name.toLowerCase();
+                    const attachmentType: any =
+                      lower.endsWith('.pdf') ? 'pdf' :
+                      lower.endsWith('.csv') ? 'csv' :
+                      lower.endsWith('.xlsx') ? 'excel' :
+                      (a.mimeType || '').startsWith('image/') ? 'image' :
+                      null;
+                    if (!attachmentType) {
+                      Alert.alert('Unsupported file', 'Please choose a PDF, CSV, XLSX, or image.');
+                      return;
+                    }
+                    if (attachmentType === 'image') {
+                      setPendingPhoto({ uri: a.uri, fileName: name, mimeType: a.mimeType || 'image/jpeg' });
+                      setPendingFile(null);
+                      return;
+                    }
+                    setPendingFile({
+                      uri: a.uri,
+                      fileName: name,
+                      mimeType: a.mimeType || undefined,
+                      attachmentType,
+                    });
+                    setPendingPhoto(null);
+                  } catch (err: any) {
+                    Alert.alert('Attach failed', err?.message || 'Unable to pick a file.');
+                  }
+                }}
+                disabled={uploadingImage}
+                accessibilityLabel="Attach file"
+              >
+                <Ionicons name="attach-outline" size={22} color={uploadingImage ? '#94a3b8' : theme.colors.blue} />
+              </TouchableOpacity>
               <TextInput
-                style={styles.textInput}
+                style={[styles.textInput, { fontSize: Math.round(15 * fontScale) }]}
                 value={newMessage}
                 onChangeText={setNewMessage}
                 placeholder="Type a message..."
@@ -385,10 +524,10 @@ export default function TeamChat() {
               <TouchableOpacity
                 style={[
                   styles.sendButton,
-                  { opacity: sending || uploadingImage || (!newMessage.trim() && !pendingPhoto) ? 0.5 : 1 }
+                  { opacity: sending || uploadingImage || (!newMessage.trim() && !pendingPhoto && !pendingFile) ? 0.5 : 1 }
                 ]}
                 onPress={sendMessage}
-                disabled={sending || uploadingImage || (!newMessage.trim() && !pendingPhoto)}
+                disabled={sending || uploadingImage || (!newMessage.trim() && !pendingPhoto && !pendingFile)}
                 accessibilityLabel="Send message"
               >
                 <Text style={styles.sendButtonText}>

@@ -372,7 +372,9 @@ export function subscribeToTeamMessages(
         event: '*',
         schema: 'public',
         table: 'submission_messages',
-        filter: `team_id=eq.${teamId},is_internal=eq.true`,
+        // Realtime filter syntax supports ONE expression here.
+        // We filter by team_id, then let the UI decide which messages to show.
+        filter: `team_id=eq.${teamId}`,
       },
       (payload) => {
         (async () => {

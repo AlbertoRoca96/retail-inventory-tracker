@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, ActivityIndicator, Keyboard } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,18 +10,31 @@ import { supabase } from '../../../src/lib/supabase';
 import { colors, theme, typography } from '../../../src/theme';
 import LogoHeader from '../../../src/components/LogoHeader';
 import { DirectMessage, fetchDirectMessages, sendDirectMessage, subscribeToDirectMessages } from '../../../src/lib/directMessages';
-import { uploadFileToStorage } from '../../../src/lib/supabaseHelpers';
+import { getSignedStorageUrl, uploadFileToStorage } from '../../../src/lib/supabaseHelpers';
 import { generateUuid } from '../../../src/lib/uuid';
+import { useUISettings } from '../../../src/lib/uiSettings';
 
 export default function DirectConversation() {
   const params = useLocalSearchParams<{ id: string; team?: string }>();
   const peerId = params.id;
   const { session, ready } = useAuth();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useUISettings();
+
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const [teamId, setTeamId] = useState<string | null>(params.team ?? null);
   const [teamName, setTeamName] = useState('Team');
   const [peerName, setPeerName] = useState('Teammate');
+  const [peerAvatarUrl, setPeerAvatarUrl] = useState<string | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -65,6 +78,22 @@ export default function DirectConversation() {
       if (peer?.display_name || peer?.email) {
         setPeerName(peer.display_name || peer.email);
       }
+
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('avatar_path')
+          .eq('id', peerId)
+          .maybeSingle();
+        if (profile?.avatar_path) {
+          const signed = await getSignedStorageUrl('avatars', profile.avatar_path, 60 * 60 * 4);
+          setPeerAvatarUrl(signed);
+        } else {
+          setPeerAvatarUrl(null);
+        }
+      } catch {
+        setPeerAvatarUrl(null);
+      }
       const history = await fetchDirectMessages(activeTeam, peerId, session.user.id);
       setMessages(history);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
@@ -73,6 +102,7 @@ export default function DirectConversation() {
       subscriptionRef.current = subscribeToDirectMessages(activeTeam, session.user.id, peerId, (payload) => {
         setMessages((prev) => {
           if (payload.eventType === 'INSERT' && payload.new) {
+            if (prev.some((m) => m.id === payload.new!.id)) return prev;
             return [...prev, payload.new];
           }
           if (payload.eventType === 'DELETE' && payload.old) {
@@ -101,20 +131,38 @@ export default function DirectConversation() {
   }, [ready, session?.user?.id, peerId]);
 
   const sendMessageNow = async () => {
-    if (!teamId || !peerId) return;
+    if (!teamId || !peerId || !session?.user) return;
     const trimmed = newMessage.trim();
     if (!trimmed || sending) return;
+
+    const messageId = generateUuid();
+    const optimistic: DirectMessage = {
+      id: messageId,
+      created_at: new Date().toISOString(),
+      team_id: teamId,
+      sender_id: session.user.id,
+      recipient_id: peerId,
+      body: trimmed,
+      attachment_url: null,
+      attachment_type: null,
+      attachment_signed_url: null,
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+    setNewMessage('');
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+
     try {
       setSending(true);
       const result = await sendDirectMessage({
+        id: messageId,
         teamId,
         recipientId: peerId,
         body: trimmed,
       });
       if (!result.success) throw new Error(result.error || 'Failed to send');
-      setNewMessage('');
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (error: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
       Alert.alert('Message failed', error?.message || 'Unable to send message');
     } finally {
       setSending(false);
@@ -166,14 +214,35 @@ export default function DirectConversation() {
     }
   };
 
+  const initials = (name: string) =>
+    (name || '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase())
+      .join('') || 'U';
+
   const renderMessage = ({ item }: { item: DirectMessage }) => {
     const isMe = item.sender_id === session?.user?.id;
-    return (
+
+    const bubble = (
       <View style={[styles.messageBubble, isMe ? styles.messageMine : styles.messageTheirs]}>
-        <Text style={[styles.messageAuthor, { color: isMe ? colors.white : colors.text }]}>
+        <Text
+          style={[
+            styles.messageAuthor,
+            { color: isMe ? colors.white : colors.text, fontSize: Math.round(12 * fontScale) },
+          ]}
+        >
           {isMe ? 'You' : peerName}
         </Text>
-        <Text style={[styles.messageBody, { color: isMe ? colors.white : colors.text }]}>{item.body}</Text>
+        <Text
+          style={[
+            styles.messageBody,
+            { color: isMe ? colors.white : colors.text, fontSize: Math.round(15 * fontScale) },
+          ]}
+        >
+          {item.body}
+        </Text>
         {item.attachment_type && (item.attachment_signed_url || item.attachment_url) ? (
           item.attachment_type === 'image' ? (
             <TouchableOpacity
@@ -231,6 +300,23 @@ export default function DirectConversation() {
         </Text>
       </View>
     );
+
+    if (isMe) return bubble;
+
+    return (
+      <View style={styles.messageRow}>
+        <View style={styles.avatarCircle}>
+          {peerAvatarUrl ? (
+            <Image source={{ uri: peerAvatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <Text style={[styles.avatarText, { fontSize: Math.round(12 * fontScale) }]}>
+              {initials(peerName)}
+            </Text>
+          )}
+        </View>
+        {bubble}
+      </View>
+    );
   };
 
   if (!ready || !peerId) {
@@ -269,53 +355,70 @@ export default function DirectConversation() {
   return (
     <SafeAreaView style={styles.safe}>
       <LogoHeader title={peerName} subtitle={`Direct • ${teamName}`} />
-      <View style={styles.container}>
-        {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={theme.colors.blue} />
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[styles.listContent, { paddingBottom: theme.spacing(6) + insets.bottom }]}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-          />
-        )}
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[styles.composer, { paddingBottom: Math.max(insets.bottom, theme.spacing(1)) }]}
-        >
-          <View style={styles.composerRow}>
-            <TouchableOpacity
-              style={styles.attachmentButton}
-              onPress={handleAttachPhoto}
-              disabled={uploadingImage}
-            >
-              <Ionicons name="image-outline" size={22} color={uploadingImage ? '#94a3b8' : theme.colors.blue} />
-            </TouchableOpacity>
-            <TextInput
-              style={styles.input}
-              placeholder="Message"
-              placeholderTextColor="#94a3b8"
-              multiline
-              value={newMessage}
-              onChangeText={setNewMessage}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <View style={styles.container}>
+          {loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" color={theme.colors.blue} />
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[
+                styles.listContent,
+                {
+                  paddingBottom: theme.spacing(4) + (keyboardVisible ? theme.spacing(1) : insets.bottom),
+                },
+              ]}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
             />
-            <TouchableOpacity
-              style={[styles.sendButton, { opacity: sending || !newMessage.trim() ? 0.6 : 1 }]}
-              onPress={sendMessageNow}
-              disabled={sending || uploadingImage || !newMessage.trim()}
-            >
-              <Text style={styles.sendText}>{sending ? '...' : 'Send'}</Text>
-            </TouchableOpacity>
+          )}
+
+          <View
+            style={[
+              styles.composer,
+              { paddingBottom: keyboardVisible ? theme.spacing(1) : Math.max(insets.bottom, theme.spacing(1)) },
+            ]}
+          >
+            <View style={styles.composerRow}>
+              <TouchableOpacity
+                style={styles.attachmentButton}
+                onPress={handleAttachPhoto}
+                disabled={uploadingImage}
+              >
+                <Ionicons
+                  name="image-outline"
+                  size={22}
+                  color={uploadingImage ? '#94a3b8' : theme.colors.blue}
+                />
+              </TouchableOpacity>
+              <TextInput
+                style={[styles.input, { fontSize: Math.round(15 * fontScale) }]}
+                placeholder="Message"
+                placeholderTextColor="#94a3b8"
+                multiline
+                value={newMessage}
+                onChangeText={setNewMessage}
+              />
+              <TouchableOpacity
+                style={[styles.sendButton, { opacity: sending || !newMessage.trim() ? 0.6 : 1 }]}
+                onPress={sendMessageNow}
+                disabled={sending || uploadingImage || !newMessage.trim()}
+              >
+                <Text style={[styles.sendText, { fontSize: Math.round(15 * fontScale) }]}>{sending ? '...' : 'Send'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -338,6 +441,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing(3),
     paddingTop: theme.spacing(4),
     gap: theme.spacing(2),
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: theme.spacing(2),
+  },
+  avatarCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#e2e8f0',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 34,
+    height: 34,
+  },
+  avatarText: {
+    ...typography.label,
+    fontWeight: '800',
+    color: '#0f172a',
   },
   messageBubble: {
     borderRadius: theme.radius.lg,

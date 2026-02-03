@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import Head from 'expo-router/head';
 import { supabase } from '../src/lib/supabase';
 import { colors } from '../src/theme';
+import { useUISettings } from '../src/lib/uiSettings';
 import LogoHeader from '../src/components/LogoHeader';
 
 const TILE_DATA = [
@@ -44,6 +45,7 @@ const TILE_DATA = [
 
 export default function Menu() {
   const { height } = useWindowDimensions();
+  const { fontScale } = useUISettings();
   const insets = useSafeAreaInsets();
 
   const tileHeight = useMemo(() => {
@@ -63,7 +65,7 @@ export default function Menu() {
       <View style={styles.iconCircle}>
         <Ionicons name={item.icon} size={32} color={colors.white} />
       </View>
-      <Text style={styles.tileTitle}>{item.title}</Text>
+      <Text style={[styles.tileTitle, { fontSize: Math.round(20 * fontScale) }]}>{item.title}</Text>
     </Pressable>
   );
 
