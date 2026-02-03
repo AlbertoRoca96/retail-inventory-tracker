@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, ActivityIndicator, Keyboard } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView, Image, ActivityIndicator, Keyboard } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,10 +10,12 @@ import { useAuth } from '../../../src/hooks/useAuth';
 import { supabase } from '../../../src/lib/supabase';
 import { colors, theme, typography } from '../../../src/theme';
 import LogoHeader from '../../../src/components/LogoHeader';
+import ChatComposer from '../../../src/components/ChatComposer';
 import { DirectMessage, fetchDirectMessages, sendDirectMessage, subscribeToDirectMessages } from '../../../src/lib/directMessages';
 import { getSignedStorageUrl, uploadFileToStorage } from '../../../src/lib/supabaseHelpers';
 import { generateUuid } from '../../../src/lib/uuid';
 import { useUISettings } from '../../../src/lib/uiSettings';
+import { formatChatDayDivider, formatChatTime, isSameDay } from '../../../src/lib/chatDateTime';
 
 export default function DirectConversation() {
   const params = useLocalSearchParams<{ id: string; team?: string }>();
@@ -280,6 +282,23 @@ export default function DirectConversation() {
       .map((p) => p[0]?.toUpperCase())
       .join('') || 'U';
 
+  type ChatListItem =
+    | { kind: 'divider'; id: string; label: string }
+    | { kind: 'message'; id: string; msg: DirectMessage };
+
+  const listItems: ChatListItem[] = useMemo(() => {
+    const out: ChatListItem[] = [];
+    let prev: DirectMessage | null = null;
+    for (const msg of messages) {
+      if (!prev || !isSameDay(prev.created_at, msg.created_at)) {
+        out.push({ kind: 'divider', id: `d:${msg.created_at}`, label: formatChatDayDivider(msg.created_at) });
+      }
+      out.push({ kind: 'message', id: msg.id, msg });
+      prev = msg;
+    }
+    return out;
+  }, [messages]);
+
   const renderMessage = ({ item }: { item: DirectMessage }) => {
     const isMe = item.sender_id === session?.user?.id;
 
@@ -358,7 +377,7 @@ export default function DirectConversation() {
           )
         ) : null}
         <Text style={[styles.timestamp, { color: isMe ? '#e0f2fe' : '#94a3b8' }]}>
-          {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {formatChatTime(item.created_at)}
         </Text>
       </View>
     );
@@ -430,8 +449,17 @@ export default function DirectConversation() {
           ) : (
             <FlatList
               ref={flatListRef}
-              data={messages}
-              renderItem={renderMessage}
+              data={listItems}
+              renderItem={({ item }) => {
+                if (item.kind === 'divider') {
+                  return (
+                    <View style={styles.dayDivider}>
+                      <Text style={[styles.dayDividerText, { fontSize: Math.round(12 * fontScale) }]}>{item.label}</Text>
+                    </View>
+                  );
+                }
+                return renderMessage({ item: item.msg });
+              }}
               keyExtractor={(item) => item.id}
               contentContainerStyle={[
                 styles.listContent,
@@ -450,45 +478,18 @@ export default function DirectConversation() {
               { paddingBottom: keyboardVisible ? theme.spacing(1) : Math.max(insets.bottom, theme.spacing(1)) },
             ]}
           >
-            <View style={styles.composerRow}>
-              <TouchableOpacity
-                style={styles.attachmentButton}
-                onPress={handleAttachPhoto}
-                disabled={uploadingImage || uploadingFile}
-              >
-                <Ionicons
-                  name="image-outline"
-                  size={22}
-                  color={uploadingImage || uploadingFile ? '#94a3b8' : theme.colors.blue}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.attachmentButton}
-                onPress={handleAttachFile}
-                disabled={uploadingImage || uploadingFile}
-              >
-                <Ionicons
-                  name="attach-outline"
-                  size={22}
-                  color={uploadingImage || uploadingFile ? '#94a3b8' : theme.colors.blue}
-                />
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.input, { fontSize: Math.round(15 * fontScale) }]}
-                placeholder="Message"
-                placeholderTextColor="#94a3b8"
-                multiline
-                value={newMessage}
-                onChangeText={setNewMessage}
-              />
-              <TouchableOpacity
-                style={[styles.sendButton, { opacity: sending || uploadingImage || uploadingFile || !newMessage.trim() ? 0.6 : 1 }]}
-                onPress={sendMessageNow}
-                disabled={sending || uploadingImage || uploadingFile || !newMessage.trim()}
-              >
-                <Text style={[styles.sendText, { fontSize: Math.round(15 * fontScale) }]}>{sending ? '...' : 'Send'}</Text>
-              </TouchableOpacity>
-            </View>
+            <ChatComposer
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Message"
+              fontScale={fontScale}
+              disabled={sending || uploadingImage || uploadingFile}
+              canSend={!!newMessage.trim()}
+              sending={sending || uploadingImage || uploadingFile}
+              onSend={sendMessageNow}
+              onPickPhoto={handleAttachPhoto}
+              onPickFile={handleAttachFile}
+            />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -592,44 +593,19 @@ const styles = StyleSheet.create({
   attachmentFileIcon: { fontSize: 20 },
   attachmentFileTitle: { ...typography.body, fontWeight: '800' },
   attachmentFileSub: { ...typography.label },
+  dayDivider: {
+    alignItems: 'center',
+    marginVertical: theme.spacing(2),
+  },
+  dayDividerText: {
+    ...typography.label,
+    color: '#64748b',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   composer: {
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
     backgroundColor: colors.white,
-    paddingHorizontal: theme.spacing(3),
-    paddingTop: theme.spacing(2),
-  },
-  composerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: theme.spacing(2),
-  },
-  attachmentButton: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing(2),
-    backgroundColor: colors.white,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing(3),
-    paddingVertical: theme.spacing(2),
-    fontSize: 15,
-    maxHeight: 120,
-    backgroundColor: colors.white,
-  },
-  sendButton: {
-    backgroundColor: theme.colors.blue,
-    paddingHorizontal: theme.spacing(4),
-    paddingVertical: theme.spacing(2),
-    borderRadius: theme.radius.lg,
-  },
-  sendText: {
-    ...typography.button,
-    color: colors.white,
+    paddingHorizontal: theme.spacing(2),
+    paddingTop: theme.spacing(1),
   },
 });

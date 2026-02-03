@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import { useUISettings } from '../../src/lib/uiSettings';
+import ChatComposer from '../../src/components/ChatComposer';
+import { formatChatDayDivider, formatChatTime, isSameDay } from '../../src/lib/chatDateTime';
 import Button from '../../src/components/Button';
 import LogoHeader from '../../src/components/LogoHeader';
 import { sendSubmissionMessage, fetchTeamMessages, subscribeToTeamMessages, resolveAttachmentUrl, type SubmissionMessage } from '../../src/lib/chat';
@@ -292,6 +294,46 @@ export default function TeamChat() {
     }
   };
 
+  const handleAttachFile = async () => {
+    if (!teamInfo || uploadingImage) return;
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: '*/*',
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      const name = a.name || `attachment-${Date.now()}`;
+      const lower = name.toLowerCase();
+
+      const attachmentType: any =
+        (a.mimeType || '').startsWith('image/') ? 'image' :
+        lower.endsWith('.pdf') ? 'pdf' :
+        lower.endsWith('.csv') ? 'csv' :
+        lower.endsWith('.xlsx') || lower.endsWith('.xls') ? 'excel' :
+        lower.endsWith('.docx') || lower.endsWith('.doc') ? 'word' :
+        lower.endsWith('.pptx') || lower.endsWith('.ppt') ? 'powerpoint' :
+        'file';
+
+      if (attachmentType === 'image') {
+        setPendingPhoto({ uri: a.uri, fileName: name, mimeType: a.mimeType || 'image/jpeg' });
+        setPendingFile(null);
+        return;
+      }
+
+      setPendingFile({
+        uri: a.uri,
+        fileName: name,
+        mimeType: a.mimeType || undefined,
+        attachmentType,
+      });
+      setPendingPhoto(null);
+    } catch (err: any) {
+      Alert.alert('Attach failed', err?.message || 'Unable to pick a file.');
+    }
+  };
+
   const openAttachment = async (item: SubmissionMessage) => {
     const url = await resolveAttachmentUrl(item.attachment_signed_url || item.attachment_path, item.attachment_type);
     if (!url) {
@@ -314,45 +356,68 @@ export default function TeamChat() {
     });
   };
 
-  const renderMessage = ({ item, index }: { item: SubmissionMessage; index: number }) => {
-    const isMe = item.sender_id === session?.user?.id;
-    const senderSummary = isMe ? 'You' : roster[item.sender_id || '']?.name || item.sender_id?.slice(0, 8) || 'Team Member';
-    
-    return (
-      <View style={[
-        styles.messageContainer,
-        isMe ? styles.myMessage : styles.otherMessage,
-      ]}>
-        <View style={styles.messageHeader}>
-          <Text style={[styles.senderName, { fontSize: Math.round(12 * fontScale) }]}>
-            {senderSummary}
-          </Text>
-          <Text style={[styles.messageTime, { fontSize: Math.round(11 * fontScale) }]}>
-            {new Date(item.created_at).toLocaleTimeString([], { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
-          </Text>
+  type ChatListItem =
+    | { kind: 'divider'; id: string; label: string }
+    | { kind: 'message'; id: string; msg: SubmissionMessage };
+
+  const listItems: ChatListItem[] = React.useMemo(() => {
+    const out: ChatListItem[] = [];
+    let prev: SubmissionMessage | null = null;
+    for (const msg of messages) {
+      if (!prev || !isSameDay(prev.created_at, msg.created_at)) {
+        out.push({ kind: 'divider', id: `d:${msg.created_at}`, label: formatChatDayDivider(msg.created_at) });
+      }
+      out.push({ kind: 'message', id: msg.id, msg });
+      prev = msg;
+    }
+    return out;
+  }, [messages]);
+
+  const renderListItem = ({ item }: { item: ChatListItem }) => {
+    if (item.kind === 'divider') {
+      return (
+        <View style={styles.dayDivider}>
+          <Text style={[styles.dayDividerText, { fontSize: Math.round(12 * fontScale) }]}>{item.label}</Text>
         </View>
-        <Text style={[styles.messageBody, { fontSize: Math.round(14 * fontScale), lineHeight: Math.round(18 * fontScale) }]}>{item.body}</Text>
-        {item.attachment_type && (item.attachment_signed_url || item.attachment_path) ? (
-          item.attachment_type === 'image' ? (
-            <TouchableOpacity
-              style={styles.imageAttachment}
-              onPress={() => openAttachment(item)}
-            >
+      );
+    }
+
+    const msg = item.msg;
+    const isMe = msg.sender_id === session?.user?.id;
+    const senderSummary =
+      isMe ? 'You' : roster[msg.sender_id || '']?.name || msg.sender_id?.slice(0, 8) || 'Team Member';
+
+    return (
+      <View style={[styles.messageContainer, isMe ? styles.myMessage : styles.otherMessage]}>
+        {!isMe ? (
+          <Text style={[styles.senderName, { fontSize: Math.round(12 * fontScale) }]}>{senderSummary}</Text>
+        ) : null}
+
+        <Text
+          style={[
+            styles.messageBody,
+            {
+              fontSize: Math.round(14 * fontScale),
+              lineHeight: Math.round(18 * fontScale),
+              color: isMe ? colors.white : theme.colors.text,
+            },
+          ]}
+        >
+          {msg.body}
+        </Text>
+
+        {msg.attachment_type && (msg.attachment_signed_url || msg.attachment_path) ? (
+          msg.attachment_type === 'image' ? (
+            <TouchableOpacity style={styles.imageAttachment} onPress={() => openAttachment(msg)}>
               <Image
-                source={{ uri: item.attachment_signed_url || item.attachment_path || undefined }}
+                source={{ uri: msg.attachment_signed_url || msg.attachment_path || undefined }}
                 style={styles.chatImage}
               />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              style={styles.attachmentInfo}
-              onPress={() => openAttachment(item)}
-            >
-              <Text style={styles.attachmentText}>
-                📎 {((item.attachment_path || item.attachment_signed_url || '')
+            <TouchableOpacity style={styles.attachmentInfo} onPress={() => openAttachment(msg)}>
+              <Text style={[styles.attachmentText, { color: isMe ? '#e0f2fe' : '#6b7280' }]}>
+                📎 {((msg.attachment_path || msg.attachment_signed_url || '')
                   .split('?')[0]
                   .split('/')
                   .filter(Boolean)
@@ -361,9 +426,10 @@ export default function TeamChat() {
             </TouchableOpacity>
           )
         ) : null}
-        {item.is_revised && (
-          <Text style={styles.revisedIndicator}>(revised)</Text>
-        )}
+
+        <Text style={[styles.bubbleTime, { color: isMe ? '#dbeafe' : '#64748b', fontSize: Math.round(11 * fontScale) }]}>
+          {formatChatTime(msg.created_at)}
+        </Text>
       </View>
     );
   };
@@ -411,8 +477,8 @@ export default function TeamChat() {
           ) : (
             <FlatList
               ref={flatListRef}
-              data={messages}
-              renderItem={renderMessage}
+              data={listItems}
+              renderItem={renderListItem}
               keyExtractor={(item) => item.id}
               style={styles.messagesList}
               contentContainerStyle={[
@@ -460,83 +526,18 @@ export default function TeamChat() {
                 </View>
               </View>
             ) : null}
-            <View style={styles.inputRow}>
-              <TouchableOpacity
-                style={styles.attachmentButton}
-                onPress={handleAttachPhoto}
-                disabled={uploadingImage}
-                accessibilityLabel="Attach photo"
-              >
-                <Ionicons name="image-outline" size={22} color={uploadingImage ? '#94a3b8' : theme.colors.blue} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.attachmentButton}
-                onPress={async () => {
-                  if (!teamInfo || uploadingImage) return;
-                  try {
-                    const res = await DocumentPicker.getDocumentAsync({
-                      copyToCacheDirectory: true,
-                      multiple: false,
-                      type: '*/*',
-                    });
-                    if (res.canceled || !res.assets?.length) return;
-                    const a = res.assets[0];
-                    const name = a.name || `attachment-${Date.now()}`;
-                    const lower = name.toLowerCase();
-                    const attachmentType: any =
-                      (a.mimeType || '').startsWith('image/') ? 'image' :
-                      lower.endsWith('.pdf') ? 'pdf' :
-                      lower.endsWith('.csv') ? 'csv' :
-                      lower.endsWith('.xlsx') || lower.endsWith('.xls') ? 'excel' :
-                      lower.endsWith('.docx') || lower.endsWith('.doc') ? 'word' :
-                      lower.endsWith('.pptx') || lower.endsWith('.ppt') ? 'powerpoint' :
-                      'file';
-                    if (attachmentType === 'image') {
-                      setPendingPhoto({ uri: a.uri, fileName: name, mimeType: a.mimeType || 'image/jpeg' });
-                      setPendingFile(null);
-                      return;
-                    }
-                    setPendingFile({
-                      uri: a.uri,
-                      fileName: name,
-                      mimeType: a.mimeType || undefined,
-                      attachmentType,
-                    });
-                    setPendingPhoto(null);
-                  } catch (err: any) {
-                    Alert.alert('Attach failed', err?.message || 'Unable to pick a file.');
-                  }
-                }}
-                disabled={uploadingImage}
-                accessibilityLabel="Attach file"
-              >
-                <Ionicons name="attach-outline" size={22} color={uploadingImage ? '#94a3b8' : theme.colors.blue} />
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.textInput, { fontSize: Math.round(15 * fontScale) }]}
-                value={newMessage}
-                onChangeText={setNewMessage}
-                placeholder="Type a message..."
-                placeholderTextColor="#9CA3AF"
-                multiline
-                maxLength={1000}
-                editable={!sending}
-                accessibilityLabel="Message input"
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  { opacity: sending || uploadingImage || (!newMessage.trim() && !pendingPhoto && !pendingFile) ? 0.5 : 1 }
-                ]}
-                onPress={sendMessage}
-                disabled={sending || uploadingImage || (!newMessage.trim() && !pendingPhoto && !pendingFile)}
-                accessibilityLabel="Send message"
-              >
-                <Text style={styles.sendButtonText}>
-                  {sending ? '...' : uploadingImage ? 'Upload…' : 'Send'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <ChatComposer
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Message"
+              fontScale={fontScale}
+              disabled={sending || uploadingImage}
+              canSend={!!newMessage.trim() || !!pendingPhoto || !!pendingFile}
+              sending={sending || uploadingImage}
+              onSend={sendMessage}
+              onPickPhoto={handleAttachPhoto}
+              onPickFile={handleAttachFile}
+            />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -617,28 +618,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     marginRight: theme.spacing(10),
   },
-  messageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(1),
-  },
   senderName: {
     ...typography.label,
-    fontWeight: '600',
-    fontSize: 12,
-    color: theme.colors.text,
-  },
-  messageTime: {
-    ...typography.label,
-    fontSize: 11,
-    color: '#6b7280',
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
   },
   messageBody: {
     ...typography.body,
     fontSize: 14,
     lineHeight: 18,
     color: theme.colors.text,
+  },
+  bubbleTime: {
+    ...typography.label,
+    textAlign: 'right',
+    marginTop: theme.spacing(1),
+  },
+  dayDivider: {
+    alignItems: 'center',
+    marginVertical: theme.spacing(2),
+  },
+  dayDividerText: {
+    ...typography.label,
+    color: '#64748b',
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   attachmentInfo: {
     marginTop: theme.spacing(1),
@@ -657,10 +662,8 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     backgroundColor: colors.white,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingHorizontal: theme.spacing(4),
-    paddingVertical: theme.spacing(2),
+    paddingHorizontal: theme.spacing(2),
+    paddingTop: theme.spacing(1),
   },
   pendingAttachment: {
     flexDirection: 'row',
@@ -695,39 +698,6 @@ const styles = StyleSheet.create({
     padding: 6,
     marginLeft: theme.spacing(2),
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: theme.spacing(2),
-  },
-  textInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing(3),
-    paddingVertical: theme.spacing(2),
-    fontSize: 16,
-    maxHeight: 110,
-    minHeight: 48,
-    backgroundColor: colors.white,
-  },
-  sendButton: {
-    backgroundColor: theme.colors.blue,
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing(4),
-    paddingVertical: theme.spacing(2),
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 60,
-  },
-  attachmentButton: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing(2),
-    backgroundColor: colors.white,
-  },
   imageAttachment: {
     marginTop: theme.spacing(1),
     borderRadius: theme.radius.md,
@@ -737,10 +707,5 @@ const styles = StyleSheet.create({
     width: 220,
     height: 150,
     borderRadius: theme.radius.md,
-  },
-  sendButtonText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 14,
   },
 });
