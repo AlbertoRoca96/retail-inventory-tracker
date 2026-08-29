@@ -40,4 +40,14 @@ Expo Go includes many native modules out of the box. TestFlight/standalone build
 
 If you ever add a library that requires native code (e.g., `react-native-gesture-handler`, `react-native-reanimated`, etc.), run `npx expo install <library>` and rebuild the dev client/TestFlight build so the native module is bundled.
 
+## Store releases
+
+Store builds use the pinned iOS EAS image and automatically increment their native build number. Bump the public app version in `apps/mobile/app.config.ts` when starting a new App Store version, then build from `apps/mobile/`:
+
+```bash
+npx eas-cli@latest build --platform ios --profile production
+```
+
+After EAS finishes, submit that new build to App Store Connect. Do not resubmit an IPA that Apple already accepted; App Store Connect requires each build number to be unique within its app version.
+
 </div>

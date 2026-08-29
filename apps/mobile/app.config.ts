@@ -25,7 +25,7 @@ const sanitizeOrigin = (value?: string | null): string | undefined => {
   }
 };
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.1";
 const ANDROID_VERSION_CODE_MAX = 2147483647;
 
 const sanitizeNumericString = (value?: string | number | null): string | undefined => {

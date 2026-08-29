@@ -36,8 +36,9 @@
     "testflight": {
       "node": "20.19.4",
       "distribution": "store",
+      "autoIncrement": true,
       "ios": {
-        "image": "latest"
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
@@ -50,8 +51,9 @@
     "production": {
       "node": "20.19.4",
       "distribution": "store",
+      "autoIncrement": true,
       "ios": {
-        "image": "latest"
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
