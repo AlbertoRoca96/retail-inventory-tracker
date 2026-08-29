@@ -42,7 +42,7 @@ If you ever add a library that requires native code (e.g., `react-native-gesture
 
 ## Store releases
 
-Store builds use the pinned iOS EAS image and automatically increment their native build number. Bump the public app version in `apps/mobile/app.config.ts` when starting a new App Store version, then build from `apps/mobile/`:
+Store builds use the pinned iOS EAS image and generate a timestamp-based native build number. Bump the public app version in `apps/mobile/app.config.ts` when starting a new App Store version, then build from `apps/mobile/`:
 
 ```bash
 npx eas-cli@latest build --platform ios --profile production
