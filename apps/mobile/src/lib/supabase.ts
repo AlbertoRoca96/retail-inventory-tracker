@@ -126,7 +126,7 @@ if (missingEnv.length === 0 && supabaseUrl && supabaseAnonKey) {
       storage,
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: false,
     },
   });
 } else {

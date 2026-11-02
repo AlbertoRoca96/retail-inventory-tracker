@@ -1,7 +1,7 @@
 // apps/mobile/src/hooks/useAuth.tsx
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { webBasePath } from '../lib/webBasePath';
+import { webAuthCallbackUrl } from '../lib/webBasePath';
 
 // Keep public shape simple
 type Session = { user: any } | null;
@@ -24,19 +24,6 @@ const BYPASS =
 // Detect anonymous Supabase user across SDK variants
 const isAnonymousUser = (u: any) =>
   !!(u?.is_anonymous || u?.app_metadata?.provider === 'anonymous');
-
-// Compute redirect URL for email flows (magic link / confirm / reset)
-function emailRedirectTo(): string | undefined {
-  if (
-    typeof window === 'undefined' ||
-    typeof window.location === 'undefined' ||
-    typeof window.location.origin !== 'string'
-  ) {
-    return undefined;
-  }
-  const base = `${window.location.origin}${webBasePath()}`; // e.g. ".../retail-inventory-tracker"
-  return `${base}/auth/callback`;
-}
 
 const AuthCtx = createContext<AuthValue>({
   session: null,
@@ -121,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: emailRedirectTo() },
+          options: { emailRedirectTo: webAuthCallbackUrl('signup') },
         });
         if (error) throw error;
       },
@@ -130,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async signInWithOtp(email) {
         const { error } = await supabase.auth.signInWithOtp({
           email,
-          options: { emailRedirectTo: emailRedirectTo() },
+          options: { emailRedirectTo: webAuthCallbackUrl('magiclink') },
         });
         if (error) throw error;
       },
@@ -138,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Password reset email
       async resetPassword(email) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: emailRedirectTo(),
+          redirectTo: webAuthCallbackUrl('recovery'),
         } as any);
         if (error) throw error;
       },

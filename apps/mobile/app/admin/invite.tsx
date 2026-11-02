@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, ScrollView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
+import { inviteUserByEmail } from '../../src/lib/invite';
 import { useAuth } from '../../src/hooks/useAuth';
 import { theme, colors, typography } from '../../src/theme';
 import Button from '../../src/components/Button';
@@ -37,12 +38,14 @@ export default function InviteUserRoute() {
   const sendInvite = async () => {
     if (!teamId || !email) return;
     setSending(true);
-    const { error } = await supabase.functions.invoke('invite-user', {
-      body: { email: email.trim(), team_id: teamId },
-    });
-    if (error) console.error('invite-user failed', error);
-    setEmail('');
-    setSending(false);
+    try {
+      await inviteUserByEmail(email.trim(), teamId);
+      setEmail('');
+    } catch (error) {
+      console.error('invite-user failed', error);
+    } finally {
+      setSending(false);
+    }
   };
 
   if (!ready) return <View style={S.center}><ActivityIndicator /></View>;

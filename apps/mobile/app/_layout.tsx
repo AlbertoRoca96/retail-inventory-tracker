@@ -10,7 +10,12 @@ import { ensureNotificationPermissions, notifyPrioritySubmission } from '../src/
 /** ---------- Helpers to detect sections ---------- */
 function isUnauthPath(p: string | null) {
   if (!p) return false;
-  return p.endsWith('/login') || p.endsWith('/auth/callback');
+  return p.endsWith('/login') ||
+    p.endsWith('/auth/callback') ||
+    p.endsWith('/auth/set-password');
+}
+function isSetPasswordPath(p: string | null) {
+  return !!p?.endsWith('/auth/set-password');
 }
 function isAdminSection(p: string | null) {
   if (!p) return false;
@@ -172,7 +177,12 @@ function Gate({ children }: { children: React.ReactNode }) {
 
   // Gate: if logged-in user has no display name, force the simple prompt
   const needsDisplayName = !!(session?.user && !session.user.user_metadata?.display_name);
-  if (session && needsDisplayName && !isDisplayNamePath(pathname)) {
+  if (
+    session &&
+    needsDisplayName &&
+    !isDisplayNamePath(pathname) &&
+    !isSetPasswordPath(pathname)
+  ) {
     return <Redirect href="/account/display-name" />;
   }
 

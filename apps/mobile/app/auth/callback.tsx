@@ -10,49 +10,52 @@ export default function AuthCallback() {
   useEffect(() => {
     (async () => {
       try {
-        const hasLocation =
-          typeof window !== 'undefined' &&
-          typeof window.location !== 'undefined' &&
-          typeof window.location.href === 'string';
-
-        if (!hasLocation) {
-          setMsg('Auth callback is only available when opened from a browser link.');
-          router.replace('/login');
+        if (typeof window === 'undefined' || !window.location?.href) {
+          setMsg('Open this authentication link in a browser.');
           return;
         }
 
-        const url = window.location.href;
+        const url = new URL(window.location.href);
+        const hash = new URLSearchParams(
+          url.hash.startsWith('#') ? url.hash.slice(1) : url.hash
+        );
+        const flow = url.searchParams.get('flow') ??
+          url.searchParams.get('type') ??
+          hash.get('type');
+        const passwordFlow = flow === 'invite' || flow === 'recovery';
+        const destination = passwordFlow ? '/auth/set-password' : '/menu';
 
-        // 1) Try the PKCE code flow first (magic link / password reset use this)
-        const u = new URL(url);
-        const hasCode = !!u.searchParams.get('code');
-
-        if (hasCode) {
-          const { error } = await supabase.auth.exchangeCodeForSession(url);
-          if (error) { setMsg(error.message); return; }
-          router.replace('/menu');
+        const code = url.searchParams.get('code');
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          router.replace(destination);
           return;
         }
 
-        // 2) Fallback for INVITE links (hash tokens: #access_token=...&refresh_token=...)
-        //    Invite flow may not support the PKCE code exchange.
-        //    Parse tokens from the hash and set the session manually.
-        const hash = u.hash?.startsWith('#') ? u.hash.slice(1) : '';
-        const h = new URLSearchParams(hash);
-        const access_token = h.get('access_token');
-        const refresh_token = h.get('refresh_token');
-
-        if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (error) { setMsg(error.message); return; }
-          router.replace('/menu');
+        const accessToken = hash.get('access_token');
+        const refreshToken = hash.get('refresh_token');
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) throw error;
+          router.replace(destination);
           return;
         }
 
-        // Nothing we recognize
-        setMsg('No auth parameters found in URL.');
-      } catch (e: any) {
-        setMsg(e?.message || 'Something went wrong');
+        const existing = await supabase.auth.getSession();
+        if (existing.data.session) {
+          router.replace(destination);
+          return;
+        }
+
+        const authError = url.searchParams.get('error_description') ??
+          hash.get('error_description');
+        setMsg(authError || 'This authentication link is invalid or has expired.');
+      } catch (error: any) {
+        setMsg(error?.message || 'Unable to complete authentication.');
       }
     })();
   }, []);
