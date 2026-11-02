@@ -73,6 +73,9 @@ export default function AccountSettings() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -295,6 +298,31 @@ export default function AccountSettings() {
     await persistProfile();
   };
 
+  const updatePassword = async () => {
+    setMsg(null);
+    if (newPassword.length < 12) {
+      setMsg('Password must be at least 12 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMsg('Passwords do not match.');
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword('');
+      setConfirmPassword('');
+      setMsg('Password updated');
+    } catch (error: any) {
+      setMsg(error?.message || 'Unable to update password.');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
   // accessibility-aware sizing
   const basePad = simplifiedMode ? theme.spacing(3) : theme.spacing(2);
   const labelSize = Math.round(((simplifiedMode || largeText) ? 16 : 14) * fontScale);
@@ -345,6 +373,57 @@ export default function AccountSettings() {
             paddingVertical: 8,
             height: inputHeight,
           }}
+        />
+      </View>
+
+      <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb', gap: 10 }}>
+        <Text style={{ fontWeight: '800', fontSize: Math.round(16 * fontScale) }}>PASSWORD</Text>
+        <Text style={{ color: '#374151', fontSize: Math.round(13 * fontScale) }}>
+          Magic-link and invited users can create a password here. Existing users can also change theirs.
+        </Text>
+        <TextInput
+          value={newPassword}
+          onChangeText={setNewPassword}
+          placeholder="New password"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="newPassword"
+          autoComplete="new-password"
+          style={{
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: '#111',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            height: inputHeight,
+          }}
+        />
+        <TextInput
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          placeholder="Confirm new password"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="newPassword"
+          autoComplete="new-password"
+          onSubmitEditing={updatePassword}
+          style={{
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: '#111',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            height: inputHeight,
+          }}
+        />
+        <Button
+          title={passwordBusy ? 'Updating Password…' : 'Set or Change Password'}
+          onPress={updatePassword}
+          disabled={passwordBusy || !newPassword || !confirmPassword}
+          fullWidth
+          accessibilityLabel="Set or change password"
         />
       </View>
 
@@ -417,7 +496,7 @@ export default function AccountSettings() {
 
       {msg ? (
         <View style={{ alignItems: 'center', marginTop: 8 }}>
-          <Text style={{ color: msg === 'Saved' ? '#16a34a' : '#ef4444' }}>{msg}</Text>
+          <Text style={{ color: ['Saved', 'Photo updated', 'Password updated'].includes(msg) ? '#16a34a' : '#ef4444' }}>{msg}</Text>
         </View>
       ) : null}
 
