@@ -117,7 +117,8 @@ jobs:
           set -e
           supabase functions deploy invite-user \
             --project-ref "prhhlvdoplavakbgcbes" \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       - name: Smoke test preflight (OPTIONS)
         continue-on-error: true
