@@ -11,6 +11,10 @@ additional_redirect_urls = [
   "https://albertoroca96.github.io/retail-inventory-tracker/auth/callback?flow=signup",
 ]
 
+[auth.email.template.recovery]
+subject = "Reset your RWS password"
+content_path = "./supabase/templates/recovery.html"
+
 [functions.invite-user]
 verify_jwt = false
 # path is relative to THIS config file (the supabase/ dir)

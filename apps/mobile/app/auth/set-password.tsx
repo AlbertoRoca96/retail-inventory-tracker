@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -19,7 +19,56 @@ export default function SetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checkingLink, setCheckingLink] = useState(true);
+  const [verifiedRecovery, setVerifiedRecovery] = useState(false);
+  const [linkRejected, setLinkRejected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const verifyRecoveryLink = async () => {
+      if (typeof window === 'undefined') {
+        setCheckingLink(false);
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get('token_hash');
+      const type = params.get('type');
+
+      if (!tokenHash) {
+        setCheckingLink(false);
+        return;
+      }
+      if (type !== 'recovery') {
+        setLinkRejected(true);
+        setError('This is not a valid password recovery link.');
+        setCheckingLink(false);
+        return;
+      }
+
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: 'recovery',
+      });
+      if (cancelled) return;
+
+      if (verifyError || !data.session) {
+        setLinkRejected(true);
+        setError(verifyError?.message || 'This recovery link is invalid or expired.');
+      } else {
+        setVerifiedRecovery(true);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      setCheckingLink(false);
+    };
+
+    void verifyRecoveryLink();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async () => {
     setError(null);
@@ -44,7 +93,7 @@ export default function SetPasswordScreen() {
     }
   };
 
-  if (!ready) {
+  if (!ready || checkingLink) {
     return (
       <View style={styles.center}>
         <ActivityIndicator />
@@ -53,7 +102,7 @@ export default function SetPasswordScreen() {
     );
   }
 
-  if (!session?.user) {
+  if (linkRejected || (!session?.user && !verifiedRecovery)) {
     return (
       <SafeAreaView style={styles.safe}>
         <LogoHeader title="Set Password" />
