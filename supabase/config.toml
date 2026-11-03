@@ -1,5 +1,16 @@
 # supabase/config.toml
 
+[auth]
+site_url = "https://albertoroca96.github.io/retail-inventory-tracker"
+additional_redirect_urls = [
+  "https://albertoroca96.github.io/retail-inventory-tracker",
+  "https://albertoroca96.github.io/retail-inventory-tracker/auth/callback",
+  "https://albertoroca96.github.io/retail-inventory-tracker/auth/callback?flow=invite",
+  "https://albertoroca96.github.io/retail-inventory-tracker/auth/callback?flow=magiclink",
+  "https://albertoroca96.github.io/retail-inventory-tracker/auth/callback?flow=recovery",
+  "https://albertoroca96.github.io/retail-inventory-tracker/auth/callback?flow=signup",
+]
+
 [functions.invite-user]
 verify_jwt = false
 # path is relative to THIS config file (the supabase/ dir)
