@@ -12,6 +12,9 @@ const sanitize = (value?: string | null): string | undefined => {
   if (!value) return undefined;
   const trimmed = value.trim();
   if (!trimmed || trimmed === "undefined" || trimmed === "null") return undefined;
+  if (/\$\{[^}]+\}/.test(trimmed)) {
+    throw new Error("Unexpanded environment placeholder in app configuration. Configure EAS environment variables instead.");
+  }
   return trimmed;
 };
 
@@ -167,6 +170,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       icon: "./assets/app-icon.png",
     },
     plugins: [
+      "expo-font",
       [
         "expo-image-picker",
         {

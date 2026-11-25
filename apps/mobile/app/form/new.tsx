@@ -12,10 +12,16 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import Head from 'expo-router/head';
 
+import { isCalendarDate, serializeProducts, validateProducts, type ReportProduct } from '../../src/lib/reportProducts';
+import { saveDraftLocal, loadDraftLocal, clearDraftLocal, readQueue, enqueueSubmission, flushReportQueue, submitReport } from '../../src/lib/reportPersistence';
 import LogoHeader from '../../src/components/LogoHeader';
+import BrandPicker, { FALLBACK_REPORT_BRANDS } from '../../src/components/BrandPicker';
+import ProductRowsEditor, { type ProductDraft } from '../../src/components/ProductRowsEditor';
 import { colors } from '../../src/theme';
-import { uploadFileToStorage } from '../../src/lib/supabaseHelpers';
+import { uploadFileToStorage, getSignedStorageUrl } from '../../src/lib/supabaseHelpers';
+import { MAX_REPORT_PHOTOS, REPORT_PHOTO_SLOTS, reportPhotoFields } from '../../src/lib/reportPhotos';
 import { generateUuid } from '../../src/lib/uuid';
+import { assertRetryMatches, canonicalReport, isRetryableReportError, requestSignature, type ReportSaveRequest } from '../../src/lib/reportRequest';
 import { supabase } from '../../src/lib/supabase';
 import { useAuth } from '../../src/hooks/useAuth';
 import { loadUserDefaults, saveUserDefaults } from '../../src/lib/preferences';
@@ -41,7 +47,6 @@ const safeNumber = (s?: string) => {
   const n = Number(String(s).replace(/[^0-9.+-]/g, ''));
   return Number.isFinite(n) ? n : null;
 };
-const looksLikeISODate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const sanitizeFileBase = (input: string) =>
   (input || '')
     .trim()
@@ -52,14 +57,6 @@ const buildFileBase = (storeName?: string, date?: string, userName?: string) => 
   const primary = (storeName || '').trim() || 'submission';
   const name = (userName || '').trim();
   return [primary, date, name].filter(Boolean).join(' - ');
-};
-
-const QUEUE_KEY = 'rit:submission-queue:v1';
-
-type QueuedSubmission = {
-  id: string;
-  createdAt: string;
-  payload: any;
 };
 
 type Banner =
@@ -79,6 +76,8 @@ type Photo = {
 
 type FormValues = {
   storeSite: string;
+  storeNumber: string;
+  storeChain: string;
   location: string;
   date: string;
   brand?: string;
@@ -94,8 +93,15 @@ type FormValues = {
   priorityLevel: '1' | '2' | '3';
 };
 
+type PendingFormSaveRequest = ReportSaveRequest & {
+  draft: { values: FormValues; productDrafts: ProductDraft[]; photos: Photo[] };
+};
+
 type PdfPayload = {
   store_site: string;
+  store_number?: string;
+  store_chain?: string;
+  products?: ReportProduct[];
   date: string;
   brand: string;
   store_location: string;
@@ -110,11 +116,12 @@ type PdfPayload = {
   photo_urls: string[];
 };
 
-const DRAFT_KEY = 'rit:new-form-draft:v9';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const getDefaultValues = (): FormValues => ({
   storeSite: '',
+  storeNumber: '',
+  storeChain: '',
   location: '',
   date: todayISO(),
   brand: '',
@@ -134,61 +141,6 @@ const formStyles = StyleSheet.create({
     gap: 12,
   },
 });
-
-function saveDraftLocal(draft: unknown) {
-  try {
-    if (isWeb && hasWindow) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  } catch {}
-}
-function loadDraftLocal<T>(): T | null {
-  try {
-    if (isWeb && hasWindow) {
-      const raw = window.localStorage.getItem(DRAFT_KEY);
-      return raw ? (JSON.parse(raw) as T) : null;
-    }
-  } catch {}
-  return null;
-}
-function clearDraftLocal() {
-  try {
-    if (isWeb && hasWindow) window.localStorage.removeItem(DRAFT_KEY);
-  } catch {}
-}
-
-function readQueue(): QueuedSubmission[] {
-  try {
-    if (isWeb && hasWindow) {
-      const raw = window.localStorage.getItem(QUEUE_KEY);
-      return raw ? (JSON.parse(raw) as QueuedSubmission[]) : [];
-    }
-  } catch {}
-  return [];
-}
-function writeQueue(items: QueuedSubmission[]) {
-  try {
-    if (isWeb && hasWindow) window.localStorage.setItem(QUEUE_KEY, JSON.stringify(items));
-  } catch {}
-}
-function enqueueSubmission(payload: any) {
-  const items = readQueue();
-  items.push({ id: cryptoRandomId(), createdAt: nowISO(), payload });
-  writeQueue(items);
-}
-function dequeueSubmission(): QueuedSubmission | null {
-  const items = readQueue();
-  if (!items.length) return null;
-  const first = items.shift()!;
-  writeQueue(items);
-  return first;
-}
-function cryptoRandomId() {
-  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
-    const buf = new Uint8Array(12);
-    (crypto as any).getRandomValues(buf);
-    return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
-  }
-  return Math.random().toString(36).slice(2);
-}
 
 type WebFieldProps = {
   name: keyof FormValues;
@@ -461,6 +413,12 @@ const Field = memo(function Field({
 
 export default function NewFormScreen() {
   const { session } = useAuth();
+  // Account changes cannot reuse another user's in-memory draft or outbox.
+  return <ReportForm key={session?.user?.id || 'signed-out'} />;
+}
+
+function ReportForm() {
+  const { session } = useAuth();
   const uid = useMemo(() => session?.user?.id ?? '', [session?.user?.id]);
   const submitterName = useMemo(() => {
     const md = session?.user?.user_metadata as any;
@@ -488,7 +446,7 @@ export default function NewFormScreen() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
   const [isOnline, setIsOnline] = useState(() => (isWeb && hasWindow ? navigator.onLine : true));
-  const [queuedCount, setQueuedCount] = useState<number>(() => readQueue().length);
+  const [queuedCount, setQueuedCount] = useState<number>(0);
   const [autoQueueWhenOffline, setAutoQueueWhenOffline] = useState(true);
 
   const [hydrated, setHydrated] = useState(!isWeb);
@@ -501,7 +459,8 @@ export default function NewFormScreen() {
 
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<keyof FormValues, boolean>>({
-    storeSite: false, location: false, date: false, brand: false,
+    storeSite: false, storeNumber: false, storeChain: false,
+    location: false, date: false, brand: false,
     storeLocation: false, conditions: false, pricePerUnit: false,
     shelfSpace: false, onShelf: false, tags: false, notes: false,
     priorityLevel: false,
@@ -510,7 +469,14 @@ export default function NewFormScreen() {
   const [showDebug, setShowDebug] = useState(false);
 
   const formRef = useRef<FormValues>(getDefaultValues());
+  const submissionIdRef = useRef(generateUuid());
+  const pendingRequestRef = useRef<PendingFormSaveRequest | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [productErrors, setProductErrors] = useState<Record<string, string>>({});
+  const [products, setProducts] = useState<ProductDraft[]>([]);
+  const [brandOptions, setBrandOptions] = useState<string[]>([
+    ...FALLBACK_REPORT_BRANDS,
+  ]);
 
   const [nVals, setNVals] = useState<FormValues>(getDefaultValues());
 
@@ -533,13 +499,12 @@ export default function NewFormScreen() {
   const typingStart = useCallback(() => { isTypingRef.current = true; }, []);
   const typingEnd = useCallback(() => {
     isTypingRef.current = false;
-    setLastSavedAt(new Date().toLocaleTimeString());
   }, []);
 
   const handleWebFile = useCallback((file?: File | null) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
-    setPhotos((p) => [
+    setPhotos((p) => p.length >= MAX_REPORT_PHOTOS ? p : [
       ...p,
       {
         uri: url,
@@ -550,14 +515,13 @@ export default function NewFormScreen() {
         assetId: null,
       },
     ]);
-    setTimeout(() => scheduleAutosave(), 0);
+
   }, []);
 
   useEffect(() => {
     if (!isWeb) return;
     const handler = (e: BeforeUnloadEvent) => {
-      const draft = loadDraftLocal<any>();
-      const hasDraft = !!draft && JSON.stringify(draft) !== JSON.stringify(getDefaultValues());
+      const hasDraft = !!formRef.current.storeSite || photos.length > 0 || products.length > 0;
       if (hasDraft) {
         e.preventDefault();
         e.returnValue = '';
@@ -565,7 +529,7 @@ export default function NewFormScreen() {
     };
     if (hasWindow) window.addEventListener('beforeunload', handler);
     return () => { if (hasWindow) window.removeEventListener('beforeunload', handler); };
-  }, []);
+  }, [photos, products]);
 
   useEffect(() => {
     if (!(isWeb && hasWindow)) return;
@@ -580,23 +544,39 @@ export default function NewFormScreen() {
   }, []);
 
   const loaded = useRef(false);
+  const hadDraft = useRef(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const skipNextAutosave = useRef(false);
   useEffect(() => {
-    if (!hydrated || loaded.current) return;
+    if (!hydrated || !uid || loaded.current) return;
     loaded.current = true;
-    const draft = loadDraftLocal<Partial<FormValues> & { photos?: Photo[] }>();
+    void (async () => {
+    const draft = await loadDraftLocal<Partial<FormValues> & {
+      photos?: Photo[];
+      products?: ProductDraft[];
+      submissionId?: string;
+      pendingRequest?: PendingFormSaveRequest | null;
+    }>(uid);
     if (draft) {
+      hadDraft.current = true;
+      submissionIdRef.current = draft.submissionId || generateUuid();
+      if (draft.pendingRequest && draft.pendingRequest.ownerId === uid) {
+        pendingRequestRef.current = draft.pendingRequest;
+        setSelectedTeamId(String(draft.pendingRequest.payload.team_id));
+      }
       const merged: FormValues = { ...getDefaultValues(), ...draft };
       formRef.current = merged;
       setNVals(merged);
       setPhotos(draft.photos ?? []);
+      setProducts(draft.products ?? []);
       setFormKey((k) => k + 1);
-      setBanner({ kind: 'success', text: 'Draft loaded.' });
+      setBanner({ kind: 'info', text: draft.photos?.some((p) => p.uri.startsWith('blob:')) ? 'Draft loaded. Browser photos may need reattaching after reload.' : 'Draft loaded. Local photos are not backed up.' });
     } else {
       // No draft: try prefill from saved user defaults (per-team)
       (async () => {
         try {
           const defaults = await loadUserDefaults(uid, selectedTeamId || teamId);
-          if (defaults && (defaults.storeSite || defaults.storeLocation || defaults.brand)) {
+          if (!formRef.current.storeSite && defaults && (defaults.storeSite || defaults.storeLocation || defaults.brand)) {
             const base = getDefaultValues();
             const merged: FormValues = {
               ...base,
@@ -612,7 +592,8 @@ export default function NewFormScreen() {
         } catch {}
       })();
     }
-  }, [hydrated]);
+    })().then(() => setDraftReady(true)).catch((error) => setBanner({ kind: 'error', text: `Draft could not be loaded; stored data left untouched: ${error.message}` }));
+  }, [hydrated, uid]);
 
   // Secondary prefill: in case team selection arrives after mount and no draft exists
   useEffect(() => {
@@ -629,7 +610,7 @@ export default function NewFormScreen() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !draftReady || hadDraft.current) return;
     const cur = getValues();
     // Only prefill if fields are blank-ish (avoid clobbering user's in-progress input)
     const hasAny = !!(cur.storeSite?.trim() || cur.storeLocation?.trim() || cur.brand?.trim());
@@ -637,7 +618,7 @@ export default function NewFormScreen() {
     (async () => {
       try {
         const defaults = await loadUserDefaults(uid, selectedTeamId || teamId);
-        if (defaults && (defaults.storeSite || defaults.storeLocation || defaults.brand)) {
+        if (!formRef.current.storeSite && defaults && (defaults.storeSite || defaults.storeLocation || defaults.brand)) {
           const base = getDefaultValues();
           const merged: FormValues = {
             ...cur,
@@ -652,7 +633,7 @@ export default function NewFormScreen() {
         }
       } catch {}
     })();
-  }, [uid, teamId, selectedTeamId, hydrated]);
+  }, [uid, teamId, selectedTeamId, hydrated, draftReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -675,7 +656,7 @@ export default function NewFormScreen() {
           const opts = (rows ?? []).map((r: any) => ({ team_id: r.team_id, name: r.teams?.name ?? null }));
           setTeamOptions(opts);
           setTeamId(one);
-          setSelectedTeamId(one);
+          setSelectedTeamId(previous => previous && opts.some(option => option.team_id === previous) ? previous : one);
         }
         setTeamLoading(false);
       }
@@ -684,11 +665,66 @@ export default function NewFormScreen() {
     return () => { cancelled = true; };
   }, [uid]);
 
-  const getValues = useCallback((): FormValues => {
-    return isWeb ? { ...formRef.current } : { ...nVals };
-  }, [nVals]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadBrands = async () => {
+      const { data, error } = await supabase
+        .from('report_brands')
+        .select('name')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      if (!cancelled && !error && data?.length) {
+        setBrandOptions(data.map((row) => row.name));
+      }
+    };
+    void loadBrands().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const updateFieldValue = useCallback((name: keyof FormValues, value: string) => {
+  const getValues = useCallback((): FormValues => {
+    return Object.fromEntries(Object.keys(getDefaultValues()).map(key => [key, formRef.current[key as keyof FormValues]])) as FormValues;
+  }, []);
+  if (!isWeb) formRef.current = nVals;
+
+  const validate = useCallback((v: FormValues): ValidationErrors => {
+    const e: ValidationErrors = {};
+    if (!v.storeSite?.trim()) e.storeSite = 'Required';
+    if (!v.brand?.trim() || !brandOptions.includes(v.brand)) e.brand = 'Choose an active brand';
+    if (!v.storeLocation?.trim()) e.storeLocation = 'Required';
+    if (!isCalendarDate(v.date)) e.date = 'Use YYYY-MM-DD';
+    const p = safeNumber(v.pricePerUnit);
+    if (v.pricePerUnit && p === null) e.pricePerUnit = 'Invalid number';
+    const s = safeNumber(v.onShelf);
+    if (v.onShelf && s === null) e.onShelf = 'Invalid number';
+    if (!['1','2','3'].includes(v.priorityLevel)) e.priorityLevel = 'Choose 1, 2, or 3';
+    return e;
+  }, [brandOptions]);
+
+  const latestDraft = useRef({ photos, products });
+  latestDraft.current = { photos, products };
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleAutosave = useCallback(() => {
+    if (!draftReady || !uid) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const v = getValues();
+        await saveDraftLocal({ ...v, ...latestDraft.current, submissionId: submissionIdRef.current, pendingRequest: pendingRequestRef.current }, uid);
+        setLastSavedAt(new Date().toLocaleTimeString());
+      } catch (error: any) {
+        setBanner({ kind: 'error', text: `Draft save failed: ${error.message}` });
+      }
+    }, 350);
+  }, [getValues, draftReady, uid]);
+
+  useEffect(() => {
+    if (skipNextAutosave.current) { skipNextAutosave.current = false; return; }
+    if (draftReady) scheduleAutosave();
+  }, [draftReady, nVals, photos, products, scheduleAutosave]);
+
+  const updateFieldValue = useCallback((name: Exclude<keyof FormValues, 'priorityLevel'>, value: string) => {
     if (isWeb) {
       formRef.current[name] = value;
       setFormKey((k) => k + 1);
@@ -697,32 +733,7 @@ export default function NewFormScreen() {
     }
     setTouched((prev) => ({ ...prev, [name]: true }));
     scheduleAutosave();
-  }, [isWeb, scheduleAutosave, setNVals, setTouched, setFormKey]);
-
-  const validate = useCallback((v: FormValues): ValidationErrors => {
-    const e: ValidationErrors = {};
-    if (!v.storeSite?.trim()) e.storeSite = 'Required';
-    if (!v.storeLocation?.trim()) e.storeLocation = 'Required';
-    if (!looksLikeISODate(v.date)) e.date = 'Use YYYY-MM-DD';
-    const p = safeNumber(v.pricePerUnit);
-    if (v.pricePerUnit && p === null) e.pricePerUnit = 'Invalid number';
-    const s = safeNumber(v.onShelf);
-    if (v.onShelf && s === null) e.onShelf = 'Invalid number';
-    if (!['1','2','3'].includes(v.priorityLevel)) e.priorityLevel = 'Choose 1, 2, or 3';
-    return e;
-  }, []);
-
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleAutosave = useCallback(() => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const v = getValues();
-      saveDraftLocal({ ...v, photos });
-      if (!isTypingRef.current) {
-        setLastSavedAt(new Date().toLocaleTimeString());
-      }
-    }, 350);
-  }, [getValues, photos]);
+  }, [scheduleAutosave]);
 
   useEffect(() => {
     return () => {
@@ -732,27 +743,19 @@ export default function NewFormScreen() {
 
   useEffect(() => {
     const tryFlush = async () => {
-      if (!isOnline || !uid) return;
-      let popped: QueuedSubmission | null;
-      let flushed = 0;
-      while ((popped = dequeueSubmission())) {
-        const { payload } = popped;
-        const { error } = await supabase.from('submissions').insert(payload);
-        if (error) {
-          const remaining = readQueue();
-          writeQueue([{ ...popped }, ...remaining]);
-          break;
-        }
-        flushed += 1;
-      }
-      if (flushed > 0) {
-        setQueuedCount(readQueue().length);
-        setBanner({ kind: 'success', text: `Synced ${flushed} queued submission${flushed > 1 ? 's' : ''}.` });
-      } else {
-        setQueuedCount(readQueue().length);
+      try {
+        setQueuedCount((await readQueue()).length);
+        if (!isOnline || !uid) return;
+        const flushed = await flushReportQueue(uid);
+        setQueuedCount((await readQueue()).length);
+        if (flushed) setBanner({ kind: 'success', text: `Synced ${flushed} queued reports.` });
+      } catch (error: any) {
+        setBanner({ kind: 'error', text: `Queued report retained: ${error.message}` });
       }
     };
-    tryFlush();
+    void tryFlush();
+    const timer = setInterval(() => { void tryFlush(); }, 30000);
+    return () => clearInterval(timer);
   }, [isOnline, uid]);
 
   const removePhotoAt = (idx: number) => {
@@ -761,7 +764,7 @@ export default function NewFormScreen() {
       next.splice(idx, 1);
       return next;
     });
-    setTimeout(() => scheduleAutosave(), 0);
+
   };
 
   const addFromLibrary = async () => {
@@ -775,7 +778,7 @@ export default function NewFormScreen() {
     });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [
+      setPhotos((p) => p.length >= MAX_REPORT_PHOTOS ? p : [
         ...p,
         {
           uri: a.uri,
@@ -786,7 +789,7 @@ export default function NewFormScreen() {
           assetId: a.assetId ?? null,
         },
       ]);
-      setTimeout(() => scheduleAutosave(), 0);
+
     }
   };
 
@@ -803,7 +806,7 @@ export default function NewFormScreen() {
     const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
     if (!res.canceled && res.assets?.length) {
       const a = res.assets[0];
-      setPhotos((p) => [
+      setPhotos((p) => p.length >= MAX_REPORT_PHOTOS ? p : [
         ...p,
         {
           uri: a.uri,
@@ -814,26 +817,54 @@ export default function NewFormScreen() {
           assetId: a.assetId ?? null,
         },
       ]);
-      setTimeout(() => scheduleAutosave(), 0);
+
     }
   };
 
-  const onSave = () => {
+  const onSave = async () => {
+    try {
+    if (!draftReady) throw new Error('Stored draft is not ready; nothing has been overwritten.');
     const v = getValues();
-    saveDraftLocal({ ...v, photos });
+    await saveDraftLocal({ ...v, photos, products, submissionId: submissionIdRef.current, pendingRequest: pendingRequestRef.current }, uid);
     if (!isTypingRef.current) {
-      setBanner({ kind: 'success', text: 'Draft saved locally.' });
+      setBanner({ kind: 'success', text: photos.length ? 'Draft saved locally. Photos are not backed up; browser photos may need reattaching after reload.' : 'Draft saved locally.' });
       setLastSavedAt(new Date().toLocaleTimeString());
     }
+    } catch (error: any) { setBanner({ kind: 'error', text: `Draft save failed: ${error.message}` }); }
   };
 
-  const resetForm = (clearDraft: boolean) => {
+  const restoreFrozenDraft = () => {
+    const pending = pendingRequestRef.current;
+    if (!pending || busy) return;
+    const original = pending.draft;
+    formRef.current = { ...original.values };
+    setNVals({ ...original.values });
+    setPhotos(original.photos.map(photo => ({ ...photo })));
+    setProducts(original.productDrafts.map(product => ({ ...product })));
+    setSelectedTeamId(String(pending.payload.team_id));
+    setFormKey(key => key + 1);
+    setErrors({});
+    setProductErrors({});
+    setBanner({ kind: 'info', text: pending.confirmed ? 'Saved request restored. Retry to generate the exports; no new report will be created.' : 'Original frozen request restored. Retry sends the same report ID and payload.' });
+  };
+
+  const resetForm = async (clearDraft: boolean) => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    skipNextAutosave.current = true;
+    submissionIdRef.current = generateUuid();
     const fresh = getDefaultValues();
     formRef.current = fresh;
     setNVals(fresh);
     setPhotos([]);
+    setProducts([]);
     setFormKey((k) => k + 1);
-    if (clearDraft) clearDraftLocal();
+    setErrors({});
+    setProductErrors({});
+    pendingRequestRef.current = null;
+    if (clearDraft) await clearDraftLocal(uid);
   };
 
   const onDownloadPdf = async () => {
@@ -870,6 +901,8 @@ export default function NewFormScreen() {
       group_id: null,
       status: 'submitted',
       store_site: v.storeSite || null,
+      store_number: v.storeNumber.trim() || null,
+      store_chain: v.storeChain.trim() || null,
       location: v.location || null,
       brand: v.brand || null,
       date: v.date || null,
@@ -880,25 +913,17 @@ export default function NewFormScreen() {
       on_shelf: safeNumber(v.onShelf),
       tags: v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
       notes: v.notes || null,
-      photo1_url: uploads[0]?.publicUrl ?? null,
-      photo2_url: uploads[1]?.publicUrl ?? null,
-      photo3_url: uploads[2]?.publicUrl ?? null,
-      photo4_url: uploads[3]?.publicUrl ?? null,
-      photo5_url: uploads[4]?.publicUrl ?? null,
-      photo6_url: uploads[5]?.publicUrl ?? null,
-      photo1_path: uploads[0]?.path ?? null,
-      photo2_path: uploads[1]?.path ?? null,
-      photo3_path: uploads[2]?.path ?? null,
-      photo4_path: uploads[3]?.path ?? null,
-      photo5_path: uploads[4]?.path ?? null,
-      photo6_path: uploads[5]?.path ?? null,
+      ...reportPhotoFields(uploads),
       priority_level: Number(v.priorityLevel) || 3,
     };
   }, [uid]);
 
   const uploadSubmissionPhotos = useCallback(
     async (team: string, submissionId: string, photoList: Photo[]) => {
-      const maxPhotos = 6;
+      const maxPhotos = MAX_REPORT_PHOTOS;
+      if (photoList.length > maxPhotos) {
+        throw new Error(`This release supports ${maxPhotos} photos per report. Remove the extra photos before submitting; your draft is retained.`);
+      }
       const uploads: ({ path: string; publicUrl: string | null } | null)[] = Array.from(
         { length: maxPhotos },
         () => null
@@ -915,13 +940,14 @@ export default function NewFormScreen() {
           'jpg';
         const ext = rawExt.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
 
-        const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}.${ext}`;
+        const path = `teams/${team}/submissions/${submissionId}/photo${i + 1}-${generateUuid()}.${ext}`;
 
         try {
           uploads[i] = await uploadFileToStorage({
             bucket: 'submissions',
             path,
             photo,
+            upsert: false,
           });
         } catch (err: any) {
           const msg = err?.message ? String(err.message) : String(err);
@@ -932,7 +958,7 @@ export default function NewFormScreen() {
 
       if (failures.length) {
         const which = failures.map((f) => `#${f.index + 1}`).join(', ');
-        throw new Error(`Failed to upload photo(s): ${which}. Please try again.`);
+        throw new Error(`Failed to upload photo(s): ${which}. Draft retained. Photos cannot be queued offline; reconnect and retry.`);
       }
 
       return uploads;
@@ -941,22 +967,32 @@ export default function NewFormScreen() {
   );
 
   const onSubmit = async () => {
+    let databaseSaved = false;
     try {
       if (busy) return;
+      if (!draftReady) throw new Error('Wait for your saved draft to finish loading.');
       setBusy(true);
 
       const v = getValues();
 
       const e = validate(v);
       setErrors(e);
-      if (Object.keys(e).length) {
+      const rowErrors = validateProducts(products);
+      setProductErrors(rowErrors);
+      if (Object.keys(e).length || Object.keys(rowErrors).length) {
         setBanner({ kind: 'error', text: 'Please fix the highlighted fields.' });
         return;
       }
 
-      const submissionId = generateUuid();
+      setPdfReady(null);
+      const submissionId = submissionIdRef.current;
+      // Persist the retry identity before touching the network.
+      const signature = requestSignature(v, products, photos.map(photo => photo.uri));
+      if (pendingRequestRef.current) assertRetryMatches(pendingRequestRef.current, uid, signature);
+      await saveDraftLocal({ ...v, photos, products, submissionId, pendingRequest: pendingRequestRef.current }, uid);
       let excelPhotoUrls: string[] = photos.map((p) => p.uri).filter(Boolean);
-      let insertError: any = null;
+      const productRows = serializeProducts(products);
+      let queued = false;
       let effectiveTeamId: string | null = null;
 
       if (uid) {
@@ -975,8 +1011,14 @@ export default function NewFormScreen() {
           throw new Error('No team found for this user. Ask an admin to add you to a team.');
         }
 
+        if (pendingRequestRef.current && pendingRequestRef.current.payload.team_id !== effectiveTeamId) {
+          throw new Error('This frozen request belongs to its original team. Restore the frozen draft before retrying.');
+        }
+        if (!isOnline && photos.length) throw new Error('Offline reports with photos cannot be queued safely. Keep this draft and submit online; browser photos may need reattaching after reload.');
+        if (!isOnline && !autoQueueWhenOffline) throw new Error('Offline. Save a draft or enable the offline queue.');
+
         let uploadedAssets: ({ path: string; publicUrl: string | null } | null)[] = [];
-        if (photos.length) {
+        if (photos.length && !pendingRequestRef.current) {
           setBanner({ kind: 'info', text: 'Uploading photos…' });
           uploadedAssets = await uploadSubmissionPhotos(effectiveTeamId, submissionId, photos);
         }
@@ -985,26 +1027,49 @@ export default function NewFormScreen() {
           .filter(Boolean);
 
         setBanner({ kind: 'info', text: 'Preparing database insert…' });
-        const row = buildSubmissionRow(v, effectiveTeamId, submissionId, uploadedAssets || []);
+        const row = pendingRequestRef.current?.payload ?? canonicalReport(buildSubmissionRow(v, effectiveTeamId, submissionId, uploadedAssets || []));
+        if (!pendingRequestRef.current) {
+          pendingRequestRef.current = { ownerId: uid, signature, payload: row, products: productRows, confirmed: false,
+            draft: { values: { ...v }, productDrafts: products.map(product => ({ ...product })), photos: photos.map(photo => ({ ...photo })) } };
+        }
+        // Freeze the exact request before the first RPC. Never reupload/rebuild on retry.
+        await saveDraftLocal({ ...v, photos, products, submissionId, pendingRequest: pendingRequestRef.current }, uid);
 
-        if (!isOnline && autoQueueWhenOffline) {
-          enqueueSubmission(row);
-          setQueuedCount(readQueue().length);
-          insertError = null;
+        if (pendingRequestRef.current.confirmed) {
+          databaseSaved = true;
+        } else if (!isOnline && autoQueueWhenOffline) {
+          await enqueueSubmission(row, productRows);
+          queued = true;
         } else {
-          setBanner({ kind: 'info', text: 'Saving to database…' });
-          const { error } = await supabase.from('submissions').insert(row);
-          insertError = error ?? null;
-
-          if (insertError && String(insertError.message || '').toLowerCase().includes('network')) {
-            enqueueSubmission(row);
-            setQueuedCount(readQueue().length);
-            insertError = null;
-            setBanner({ kind: 'info', text: 'Offline detected. Submission queued locally.' });
+          setBanner({ kind: 'info', text: 'Saving report and products…' });
+          try {
+            await submitReport(row, pendingRequestRef.current.products);
+            databaseSaved = true;
+            pendingRequestRef.current.confirmed = true;
+            await saveDraftLocal({ ...v, photos, products, submissionId, pendingRequest: pendingRequestRef.current }, uid);
+          } catch (error: any) {
+            // Uploaded photo paths are durable; raw local photo URIs are never queued.
+            if (!databaseSaved && autoQueueWhenOffline && isRetryableReportError(error)) {
+              await enqueueSubmission(row, productRows);
+              queued = true;
+            } else throw error;
           }
         }
+        setQueuedCount((await readQueue()).length);
+        if (databaseSaved) {
+          // Delivery links may expire; refresh for exports without changing the RPC payload.
+          excelPhotoUrls = (await Promise.all(REPORT_PHOTO_SLOTS.map(async (slot) => {
+            const path = row[`photo${slot}_path`];
+            return path ? getSignedStorageUrl('submissions', String(path)) : null;
+          }))).filter((url): url is string => !!url);
+        }
       } else {
-        insertError = { message: 'Not authenticated – saved to Excel/PDF only.' };
+        throw new Error('Sign in before submitting. Your draft has not been cleared.');
+      }
+      if (queued) {
+        await resetForm(true);
+        setBanner({ kind: 'info', text: 'Report and products queued locally, not yet saved to the database. They will retry while this screen is open online.' });
+        return;
       }
 
       if (isWeb) {
@@ -1012,6 +1077,7 @@ export default function NewFormScreen() {
         const { downloadSubmissionExcel } = await import('../../src/lib/exportExcel');
         await downloadSubmissionExcel({
           store_site: v.storeSite || '',
+          store_number: v.storeNumber, store_chain: v.storeChain, products: productRows,
           date: v.date || '',
           brand: v.brand || '',
           store_location: v.storeLocation || '',
@@ -1031,6 +1097,7 @@ export default function NewFormScreen() {
 
       const pdfPayload: PdfPayload = {
         store_site: v.storeSite || '',
+        store_number: v.storeNumber, store_chain: v.storeChain, products: productRows,
         date: v.date || '',
         brand: v.brand || '',
         store_location: v.storeLocation || '',
@@ -1054,41 +1121,28 @@ export default function NewFormScreen() {
         );
       } else {
         try {
-          const mod = await import('../../src/lib/exportPdf');
+          const mod = await import('../../src/lib/exportPdf.native');
           if (mod?.downloadSubmissionPdf) {
             const baseName = sanitizeFileBase(
               buildFileBase(v.storeSite || v.storeLocation, v.date, submitterName)
             );
             await mod.downloadSubmissionPdf(pdfPayload, { fileNamePrefix: baseName });
           }
-        } catch {}
-      }
-
-      if (insertError) {
-        setBanner({ kind: 'error', text: insertError.message ?? 'Row not saved (RLS). Files exported.' });
-        return;
+        } catch (error: any) { throw new Error(`PDF export failed: ${error.message}`); }
       }
 
       // Stash submitted values for optional defaults prompt
       setLastSubmittedVals(v);
 
-      resetForm(true);
+      await resetForm(true);
       setBanner({ kind: 'success', text: 'Submission Successful' });
       setShowRememberPrompt(true);
     } catch (e: any) {
-      setBanner({ kind: 'error', text: e?.message ?? 'Submit failed' });
+      setBanner({ kind: 'error', text: `${databaseSaved ? 'Report saved, but export failed. ' : 'Report not confirmed saved. '}${e?.message || 'Submit failed'}. Draft retained.` });
     } finally {
       setBusy(false);
     }
   };
-
-  if (!hydrated) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Text>Loading…</Text>
-      </View>
-    );
-  }
 
   const setPriority = (val: '1'|'2'|'3') => {
     if (isWeb) {
@@ -1143,6 +1197,11 @@ export default function NewFormScreen() {
       setGeoBusy(false);
     }
   }, [updateFieldValue, isWeb, setBanner]);
+
+  // All hooks run before the hydration guard on every render.
+  if (!hydrated || (uid && !draftReady)) {
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}><Text>{banner?.kind === 'error' ? banner.text : 'Loading your draft…'}</Text></View>;
+  }
 
   const PriBtn = ({ label, active, onPress, color }: { label: string; active: boolean; onPress: () => void; color: string }) => (
     <Pressable
@@ -1224,7 +1283,7 @@ export default function NewFormScreen() {
 
       <View style={{ marginBottom: 8 }}>
         <Text style={{ textAlign: 'center', fontSize: statusFontSize, color: isOnline ? '#16a34a' : '#b45309' }}>
-          {isOnline ? 'Online' : 'Offline'} • Queue: {queuedCount} • Last saved draft: {lastSavedAt ?? '—'}
+          {isWeb ? (isOnline ? 'Online' : 'Offline') : 'Network checked on save'} • Queue: {queuedCount} • Last saved draft: {lastSavedAt ?? '—'}
         </Text>
       </View>
 
@@ -1240,6 +1299,12 @@ export default function NewFormScreen() {
         >
           <Text style={{ color: 'white', textAlign: 'center', fontSize: bodyFontSize }}>{banner.text}</Text>
         </View>
+      ) : null}
+
+      {pendingRequestRef.current ? (
+        <Pressable disabled={busy} onPress={restoreFrozenDraft} style={{ padding: 12, backgroundColor: '#dbeafe', borderRadius: 8, marginBottom: 12 }}>
+          <Text style={{ textAlign: 'center', color: '#1e40af', fontWeight: '700' }}>Restore frozen save request</Text>
+        </Pressable>
       ) : null}
 
       {showRememberPrompt ? (
@@ -1291,9 +1356,12 @@ export default function NewFormScreen() {
         </View>
       ) : null}
 
-      {isWeb ? (
+      {(
         <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 as any }}>
           <Pressable
+            accessibilityRole="checkbox"
+            accessibilityLabel="Auto-queue when offline"
+            accessibilityState={{ checked: autoQueueWhenOffline }}
             onPress={() => setAutoQueueWhenOffline((x) => !x)}
             style={{
               width: 22, height: 22, borderRadius: 4, borderWidth: 1, borderColor: highContrast ? '#000' : '#111',
@@ -1305,7 +1373,7 @@ export default function NewFormScreen() {
           </Pressable>
           <Text style={{ fontSize: bodyFontSize }}>Auto-queue when offline</Text>
         </View>
-      ) : null}
+      )}
 
       <Field
         name="storeSite" label="STORE NAME"
@@ -1320,6 +1388,12 @@ export default function NewFormScreen() {
         typingStart={typingStart}
         typingEnd={typingEnd}
       />
+      {(['storeNumber', 'storeChain'] as const).map((name) => (
+        <Field key={name} name={name} label={name === 'storeNumber' ? 'STORE NUMBER' : 'STORE CHAIN'}
+          formKey={formKey} formRef={formRef} onEdit={scheduleAutosave}
+          nVals={nVals} setNVals={setNVals} errors={errors} touched={touched}
+          setTouched={setTouched} typingStart={typingStart} typingEnd={typingEnd} />
+      ))}
       <Field
         name="storeLocation" label="STORE ADDRESS"
         labelAdornment={
@@ -1377,19 +1451,9 @@ export default function NewFormScreen() {
         typingStart={typingStart}
         typingEnd={typingEnd}
       />
-      <Field
-        name="brand" label="BRAND"
-        formKey={formKey}
-        formRef={formRef}
-        onEdit={scheduleAutosave}
-        nVals={nVals}
-        setNVals={setNVals}
-        errors={errors}
-        touched={touched}
-        setTouched={setTouched}
-        typingStart={typingStart}
-        typingEnd={typingEnd}
-      />
+      <BrandPicker options={brandOptions} value={getValues().brand || ''}
+        error={errors.brand} onChange={(value) => updateFieldValue('brand', value)} />
+      <ProductRowsEditor rows={products} onChange={setProducts} errors={productErrors} />
       <Field
         name="conditions" label="SHELF CONDITIONS"
         formKey={formKey}
@@ -1477,7 +1541,7 @@ export default function NewFormScreen() {
         <PriBtn label="3" active={currentPri === '3'} color="#99e169" onPress={() => setPriority('3')} />
       </View>
 
-      <Text style={{ fontWeight: '700', marginBottom: 8, fontSize: labelFontSize }}>PHOTOS</Text>
+      <Text style={{ fontWeight: '700', marginBottom: 8, fontSize: labelFontSize }}>PHOTOS ({photos.length}/{MAX_REPORT_PHOTOS})</Text>
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         {photos.map((p, i) => (
           <View key={`${p.uri}-${i}`} style={{ position: 'relative' }}>
@@ -1486,6 +1550,8 @@ export default function NewFormScreen() {
               style={{ width: 160, height: 120, borderRadius: 8, borderWidth: 1, borderColor: highContrast ? '#000' : '#111' }}
             />
             <Pressable
+              accessibilityLabel={`Remove photo ${i + 1}`}
+              disabled={busy}
               onPress={() => removePhotoAt(i)}
               accessibilityRole="button"
               style={{
@@ -1509,12 +1575,16 @@ export default function NewFormScreen() {
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
         <Pressable
+          accessibilityRole="button"
+          disabled={busy || photos.length >= MAX_REPORT_PHOTOS}
           onPress={takePhoto}
           style={{ flex: 1, backgroundColor: btnBlue, paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
         >
           <Text style={{ color: 'white', fontWeight: '700', fontSize: bodyFontSize }}>Take Photo</Text>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          disabled={busy || photos.length >= MAX_REPORT_PHOTOS}
           onPress={addFromLibrary}
           style={{ flex: 1, backgroundColor: btnBlue, paddingVertical: buttonPadV, borderRadius: 10, alignItems: 'center', minHeight: targetMinHeight, justifyContent: 'center' }}
         >

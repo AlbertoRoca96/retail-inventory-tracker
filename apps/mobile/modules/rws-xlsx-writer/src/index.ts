@@ -1,4 +1,4 @@
-import { requireNativeModule } from 'expo-modules-core';
+import { requireNativeModule } from 'expo';
 
 export type KeyValueRow = {
   label: string;
@@ -10,7 +10,7 @@ export type WriteSubmissionXlsxArgs = {
   destPath: string;
   title: string;
   rows: KeyValueRow[];
-  /** Absolute file paths for JPEG/PNG images (NOT file://). Up to 6. */
+  /** Absolute file paths for JPEG/PNG images (NOT file://). Up to 20; larger arrays are rejected rather than truncated. */
   imagePaths: string[];
 };
 

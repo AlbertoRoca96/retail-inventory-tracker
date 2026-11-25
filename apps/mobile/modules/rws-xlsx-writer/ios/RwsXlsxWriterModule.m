@@ -4,6 +4,8 @@
 #import <UIKit/UIKit.h>
 #import "xlsxwriter.h"
 
+static const NSInteger MaxReportPhotos = 20;
+
 @implementation RwsXlsxWriterModule
 
 EX_EXPORT_MODULE(RwsXlsxWriter)
@@ -57,8 +59,8 @@ static double RowHeightPointsToPixels(double heightPoints) {
   return heightPoints * (96.0 / 72.0);
 }
 
-static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *imagePaths, int startRow) {
-  // 2 columns (A,B), 3 blocks (6 slots). Each block is 12 rows tall.
+static BOOL InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *imagePaths, int startRow) {
+  // 2 columns (A,B), 10 blocks (20 slots). Each block is 12 rows tall.
   // Goal: mimic PDF layout: contain + centered.
 
   // Must match worksheet_set_column widths below (44 chars)
@@ -77,7 +79,7 @@ static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *image
   const double maxW = slotWidthPx - 2.0 * pad;
   const double maxH = slotHeightPx - 2.0 * pad;
 
-  for (NSInteger i = 0; i < MIN((NSInteger)6, imagePaths.count); i++) {
+  for (NSInteger i = 0; i < imagePaths.count; i++) {
     NSString *path = imagePaths[i];
     if (!path.length) continue;
 
@@ -96,7 +98,7 @@ static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *image
       options.y_scale = 0.35;
       options.x_offset = (int)pad;
       options.y_offset = (int)pad;
-      worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options);
+      if (worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options) != LXW_NO_ERROR) return NO;
       continue;
     }
 
@@ -108,7 +110,7 @@ static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *image
       options.y_scale = 0.35;
       options.x_offset = (int)pad;
       options.y_offset = (int)pad;
-      worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options);
+      if (worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options) != LXW_NO_ERROR) return NO;
       continue;
     }
 
@@ -124,8 +126,9 @@ static void InsertImageGrid(lxw_worksheet *worksheet, NSArray<NSString *> *image
     options.x_offset = (int)MAX(0.0, floor(offX));
     options.y_offset = (int)MAX(0.0, floor(offY));
 
-    worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options);
+    if (worksheet_insert_image_opt(worksheet, row, col, [path UTF8String], &options) != LXW_NO_ERROR) return NO;
   }
+  return YES;
 }
 
 static NSString *EnsureExportsDirOrReject(EXPromiseRejectBlock reject) {
@@ -195,6 +198,20 @@ EX_EXPORT_METHOD_AS(writeSubmissionXlsx,
   NSString *title = ToNSString(args[@"title"]);
   NSArray *rows = (NSArray *)args[@"rows"];
   NSArray *imagePaths = (NSArray *)args[@"imagePaths"];
+  if (imagePaths && ![imagePaths isKindOfClass:[NSArray class]]) {
+    reject(@"bad_args", @"imagePaths must be an array", nil);
+    return;
+  }
+  if (imagePaths.count > MaxReportPhotos) {
+    reject(@"bad_args", @"A report supports at most 20 photos", nil);
+    return;
+  }
+  for (id path in imagePaths) {
+    if (![path isKindOfClass:[NSString class]] || ![UIImage imageWithContentsOfFile:path]) {
+      reject(@"bad_args", @"Every photo must be a readable image file", nil);
+      return;
+    }
+  }
 
   if (!destPath.length) {
     NSString *exportsDir = EnsureExportsDirOrReject(reject);
@@ -255,7 +272,7 @@ EX_EXPORT_METHOD_AS(writeSubmissionXlsx,
   r++;
 
   int imageTopRow = r;
-  int imageBottomRow = imageTopRow + 36 - 1;
+  int imageBottomRow = imageTopRow + (int)((MaxReportPhotos + 1) / 2) * 12 - 1;
   ApplyBordersToArea(worksheet, imageTopRow, imageBottomRow);
 
   if ([imagePaths isKindOfClass:[NSArray class]]) {
@@ -263,9 +280,14 @@ EX_EXPORT_METHOD_AS(writeSubmissionXlsx,
     for (id p in imagePaths) {
       NSString *s = ToNSString(p);
       if (s.length) [paths addObject:s];
-      if (paths.count >= 6) break;
+
     }
-    InsertImageGrid(worksheet, paths, imageTopRow);
+    if (!InsertImageGrid(worksheet, paths, imageTopRow)) {
+      workbook_close(workbook);
+      [[NSFileManager defaultManager] removeItemAtPath:destPath error:nil];
+      reject(@"xlsx_fail", @"Unable to embed every photo", nil);
+      return;
+    }
   }
 
   // Close workbook (writes file)

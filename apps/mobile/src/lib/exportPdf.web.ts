@@ -4,9 +4,14 @@
 //  - uses a Safari-friendly download fallback when programmatic <a> clicks are ignored.
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { MAX_REPORT_PHOTOS } from './reportPhotos';
+import { productExportRows, type ReportProduct } from './reportProducts';
 
 export type SubmissionPdf = {
   store_site: string;
+  store_number?: string | null;
+  store_chain?: string | null;
+  products?: ReportProduct[];
   date: string;
   brand: string;
   store_location: string;
@@ -65,7 +70,6 @@ async function rasterizeToJPEGBytes(url?: string | null): Promise<Uint8Array | n
   // Try createImageBitmap with EXIF orientation hint (supported in most evergreen browsers).
   let bitmap: ImageBitmap | null = null;
   try {
-    // @ts-expect-error - imageOrientation is not in older TS lib dom typings everywhere.
     bitmap = (await createImageBitmap(blob, { imageOrientation: 'from-image' })) as ImageBitmap;
   } catch {
     bitmap = null;
@@ -209,7 +213,8 @@ export async function downloadSubmissionPdf(
   page.drawText(pri, { x: M + LBL_W + 6, y: y - 14, size: 10, font: bold, color: rgb(0, 0, 0) });
   y -= ROW_H;
 
-  // Photos header
+  // Preserve photo scale and move whole two-column pairs onto new pages.
+  let photoPage = page;
   const HDR_H = 20;
   drawRect(page, M, y - HDR_H, PAGE_W - 2 * M, HDR_H);
   drawText(page, 'PHOTOS', M + 6, y - 14, 10, bold);
@@ -220,7 +225,8 @@ export async function downloadSubmissionPdf(
   const BOX_W = Math.floor((PAGE_W - 2 * M - GAP) / 2);
   const BOX_H = 250;
 
-  const urls = (data.photo_urls || []).filter(Boolean).slice(0, 6);
+  const urls = (data.photo_urls || []).filter(Boolean);
+  if (urls.length > MAX_REPORT_PHOTOS) throw new Error(`A report supports at most ${MAX_REPORT_PHOTOS} photos.`);
 
   // First row: main two photos
   const main = [
@@ -232,8 +238,9 @@ export async function downloadSubmissionPdf(
     const b = main[i];
     drawRect(page, b.x, b.y, b.w, b.h);
 
-    const jpegBytes = await rasterizeToJPEGBytes(b.url as string | null);
-    if (!jpegBytes) continue;
+    if (!b.url) continue;
+    const jpegBytes = await rasterizeToJPEGBytes(b.url);
+    if (!jpegBytes) throw new Error(`Unable to prepare photo ${i + 1}/${urls.length}.`);
 
     const img = await pdfDoc.embedJpg(jpegBytes);
     const scale = Math.min(b.w / img.width, b.h / img.height);
@@ -242,36 +249,65 @@ export async function downloadSubmissionPdf(
     page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
   }
 
-  // Second block: up to four thumbnails (2x2) under the main row
+  // Remaining pairs retain the existing 140pt thumbnail height.
   const thumbH = 140;
-  const thumbY1 = y - BOX_H - GAP - thumbH;
-  const thumbY2 = thumbY1 - thumbH;
+  y -= BOX_H + GAP;
+  for (let slot = 2; slot < urls.length; slot += 2) {
+    if (y - thumbH < M) {
+      photoPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      y = PAGE_H - M;
+      drawRect(photoPage, M, y - HDR_H, PAGE_W - 2 * M, HDR_H);
+      drawText(photoPage, 'PHOTOS', M + 6, y - 14, 10, bold);
+      y -= HDR_H;
+    }
+    for (let col = 0; col < 2; col++) {
+      const x = M + col * (BOX_W + GAP);
+      drawRect(photoPage, x, y - thumbH, BOX_W, thumbH);
+      const url = urls[slot + col];
+      if (!url) continue;
+      const jpegBytes = await rasterizeToJPEGBytes(url);
+      if (!jpegBytes) throw new Error(`Unable to prepare photo ${slot + col + 1}/${urls.length}.`);
+      const img = await pdfDoc.embedJpg(jpegBytes);
+      const scale = Math.min(BOX_W / img.width, thumbH / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      photoPage.drawImage(img, { x: x + (BOX_W - w) / 2, y: y - thumbH + (thumbH - h) / 2, width: w, height: h });
+    }
+    y -= thumbH + GAP;
+  }
 
-  const thumbs = [
-    { x: M, y: thumbY1, w: BOX_W, h: thumbH, url: urls[2] },
-    { x: M + BOX_W + GAP, y: thumbY1, w: BOX_W, h: thumbH, url: urls[3] },
-    { x: M, y: thumbY2, w: BOX_W, h: thumbH, url: urls[4] },
-    { x: M + BOX_W + GAP, y: thumbY2, w: BOX_W, h: thumbH, url: urls[5] },
+  // Separate flowing pages keep arbitrary product counts from clipping the photo layout.
+  const reportRows: [string, string][] = [
+    ['STORE NUMBER', data.store_number || ''], ['STORE CHAIN', data.store_chain || ''],
+    ...productExportRows(data.products),
   ];
-
-  for (let i = 0; i < thumbs.length; i++) {
-    const b = thumbs[i];
-    if (!b.url) continue;
-    drawRect(page, b.x, b.y, b.w, b.h);
-
-    const jpegBytes = await rasterizeToJPEGBytes(b.url as string);
-    if (!jpegBytes) continue;
-
-    const img = await pdfDoc.embedJpg(jpegBytes);
-    const scale = Math.min(b.w / img.width, b.h / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
-    page.drawImage(img, { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, width: w, height: h });
+  if (reportRows.some(([, value]) => value)) {
+    let detailsPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    let detailsY = PAGE_H - M;
+    drawText(detailsPage, 'STORE & PRODUCT DETAILS', M, detailsY, 14, bold);
+    detailsY -= 30;
+    for (const [label, value] of reportRows) {
+      // Wrap by measured width, including long unbroken product names.
+      let line = '';
+      const lines: string[] = [];
+      for (const character of `${label}: ${value}`) {
+        if (character === '\n' || font.widthOfTextAtSize(line + character, 10) > PAGE_W - 2 * M) {
+          lines.push(line); line = character === '\n' ? '' : character;
+        } else line += character;
+      }
+      lines.push(line);
+      for (const text of lines) {
+        if (detailsY < M + 14) { detailsPage = pdfDoc.addPage([PAGE_W, PAGE_H]); detailsY = PAGE_H - M; }
+        drawText(detailsPage, text, M, detailsY, 10, font);
+        detailsY -= 16;
+      }
+      detailsY -= 8;
+    }
   }
 
   // Save + Download (with Safari-friendly fallback)
   const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const blob = new Blob([new Uint8Array(pdfBytes).buffer], { type: 'application/pdf' });
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const prefix = (opts.fileNamePrefix || '').trim();
   const fileBase = prefix || `submission-${iso}`;

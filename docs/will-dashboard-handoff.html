@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>RWS Dashboard Integration • Handoff for Will</title>
+  <style>
+    :root { --ink:#17263b; --muted:#526176; --line:#dbe3ed; --blue:#164bb5; --paper:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f1f5fa; color:var(--ink); font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:900px; margin:auto; padding:24px 18px 60px; }
+    header { background:#122b50; color:white; padding:30px 24px; border-radius:20px; }
+    h1 { font-size:clamp(1.8rem,6vw,2.8rem); line-height:1.16; margin:12px 0 18px; letter-spacing:-.04em; }
+    h2 { font-size:1.4rem; line-height:1.3; margin:0 0 16px; }
+    h3 { font-size:1.05rem; margin:22px 0 8px; }
+    p { margin:0 0 14px; }
+    p:last-child { margin-bottom:0; }
+    .eyebrow { font-size:.76rem; letter-spacing:.12em; text-transform:uppercase; font-weight:800; }
+    .subtitle { color:#d6e6ff; }
+    section { margin-top:18px; padding:24px; background:var(--paper); border:1px solid var(--line); border-radius:16px; }
+    nav { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0; }
+    nav a { background:white; border:1px solid var(--line); border-radius:24px; padding:9px 14px; text-decoration:none; font-size:.9rem; }
+    a { color:var(--blue); overflow-wrap:anywhere; }
+    a:focus-visible,button:focus-visible,summary:focus-visible { outline:3px solid #ea9700; outline-offset:4px; }
+    ul,ol { padding-left:22px; margin:12px 0; }
+    li { margin:8px 0; }
+    .muted { color:var(--muted); font-size:.9rem; }
+    .notice { border-left:4px solid #d38b00; background:#fff8e7; padding:14px 16px; border-radius:8px; margin:16px 0; }
+    .good { border-left-color:#137348; background:#edf9f2; }
+    .status { display:grid; grid-template-columns:1fr; gap:12px; }
+    .status article { border:1px solid var(--line); border-radius:12px; padding:16px; }
+    .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:.76rem; font-weight:800; margin-bottom:8px; }
+    .ready { color:#095535; background:#dff4e9; }
+    .pending { color:#785000; background:#fff0c7; }
+    code { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:.87em; overflow-wrap:anywhere; }
+    p code,li code,dd code { background:#edf2f8; border-radius:4px; padding:2px 4px; }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; margin:12px 0; background:#102039; color:#ecf4ff; padding:16px; border-radius:10px; font-size:.8rem; line-height:1.65; tab-size:2; }
+    pre code { font-size:inherit; }
+    dl { margin:0; }
+    dt { font-weight:800; margin-top:16px; }
+    dd { margin:3px 0 0; color:var(--muted); }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+    table { width:100%; border-collapse:collapse; font-size:.88rem; }
+    th,td { text-align:left; vertical-align:top; padding:12px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+    th { background:#edf2f8; }
+    tr:last-child td { border-bottom:0; }
+    details { border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; }
+    summary { cursor:pointer; font-weight:800; min-height:44px; padding:8px 0; }
+    button { font:inherit; font-weight:700; background:var(--blue); color:white; border:0; border-radius:10px; padding:12px 18px; min-height:48px; cursor:pointer; }
+    footer { margin-top:22px; color:var(--muted); font-size:.86rem; }
+    .signature { margin-top:22px; font-weight:800; }
+    @media (min-width:680px) { .status { grid-template-columns:1fr 1fr; } }
+    @media (max-width:480px) { main { padding:12px 10px 36px; } section { padding:18px 15px; } header { padding:26px 20px; } th,td { padding:9px; } }
+    @media print { body { background:white; } main { max-width:none; padding:0; } nav,button { display:none; } section,header { break-inside:avoid; } pre { color:#17263b; background:#f1f5fa; } header { color:#17263b; background:#edf2f8; } .subtitle { color:#526176; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">RWS / Dashboard integration / Technical handoff</div>
+    <h1>Will, here’s the report connection.</h1>
+    <p class="subtitle">A practical starting point for getting Austin’s reports into your existing dashboard—without rebuilding what you already have.</p>
+    <p class="subtitle">From Alberto · Prepared <span id="prepared-date">November 02, 2026</span></p>
+  </header>
+  <nav aria-label="Report sections">
+    <a href="#status">Status</a><a href="#api">API</a><a href="#fields">Fields</a>
+    <a href="#samples">Real reports</a><a href="#next">Next steps</a>
+  </nav>
+
+  <section>
+    <h2>Great talking with you</h2>
+    <p>Will—thanks again for the clear requirements and for your patience while we worked through login. Your TestFlight onboarding is already handled; this handoff covers the report data and dashboard integration that come next.</p>
+    <p>The aim is simple: your system polls a read-only endpoint, receives Austin’s reports as JSON, and uses the report ID to keep the dashboard up to date. No manual spreadsheet forwarding should be necessary once the integration is finished and validated.</p>
+    <div class="notice"><strong>Working first version, not a completed production sync.</strong> The endpoint has returned real Austin reports successfully. The remaining form work and sync limitations below still need to be finished before we call the entire connection production-ready.</div>
+  </section>
+
+  <section id="status">
+    <h2>Your request, item by item</h2>
+    <div class="status">
+      <article><span class="badge ready">Available</span><p><strong>1 · Real report samples</strong></p><p>Two recent reports from Austin are included below with original database field names and values. Expiring signed photo links are intentionally omitted.</p></article>
+      <article><span class="badge ready">Deployed first version</span><p><strong>2 · Key-protected read endpoint</strong></p><p>A versioned GET endpoint filters submitted reports by timestamp and is bound to Austin’s submitter ID. Integration credentials will be shared separately.</p></article>
+      <article><span class="badge pending">Partial / legacy gaps</span><p><strong>3 · Requested report fields</strong></p><p>The API maps existing fields into stable JSON names. Older records do not have dedicated chain/store-number values, structured products, or a reliable historical last-edit timestamp.</p></article>
+      <article><span class="badge pending">In development</span><p><strong>4 · Form additions</strong></p><p>Brand options, product storage, and store columns are prepared. The form UI, transactional saving, detail display, and exports still need full wiring and end-to-end testing.</p></article>
+      <article><span class="badge pending">Proposed contract</span><p><strong>5 · Advance notice for changes</strong></p><p>Use the v1 API names rather than binding to internal tables. The policy below proposes additive changes within v1 and a coordinated v2 for breaking changes.</p></article>
+    </div>
+  </section>
+
+  <section id="api">
+    <h2>Read-only API</h2>
+    <p><strong>Method:</strong> GET · <strong>Response:</strong> JSON · <strong>API version:</strong> <code>1.0</code></p>
+    <pre><code>https://prhhlvdoplavakbgcbes.supabase.co/functions/v1/reports-api-v1</code></pre>
+    <p>Send the integration key in the <code>x-api-key</code> request header. This is a dedicated key, not a Supabase service-role key and not a user password. Its SHA-256 hash is stored server-side.</p>
+    <div class="notice good"><strong>Scope:</strong> Austin’s submitted reports only, selected using his fixed submitter ID. The caller cannot pass another user or team to broaden access. Austin’s reports span teams, so this is deliberately not limited to just the team named “Lone Oak.” Please confirm that author-only scope matches your intended dashboard.</div>
+    <h3>Example request</h3>
+    <p class="muted">Replace <code>YOUR_INTEGRATION_KEY</code> locally. Do not put the real key in a public webpage, Git repository, or browser-side dashboard bundle.</p>
+    <pre><code>curl "https://prhhlvdoplavakbgcbes.supabase.co/functions/v1/reports-api-v1?submitted_since=2026-10-01T00:00:00Z&amp;limit=100" -H "x-api-key: YOUR_INTEGRATION_KEY"</code></pre>
+    <h3>Query parameters</h3>
+    <dl>
+      <dt><code>submitted_since</code> or <code>since</code></dt><dd>ISO-8601 timestamp. Returns reports whose creation/submission timestamp is greater than or equal to this value. Results sort oldest first.</dd>
+      <dt><code>changed_since</code></dt><dd>Filters on the new <code>updated_at</code> field and sorts by it. If combined with <code>submitted_since</code>, both filters apply. Use this alone when you want edits to older reports.</dd>
+      <dt><code>limit</code></dt><dd>Default 100, maximum 200 reports per response. At least one timestamp filter is required.</dd>
+    </dl>
+    <h3>Response envelope</h3>
+    <pre><code>{
+  "api_version": "1.0",
+  "generated_at": "ISO-8601 timestamp",
+  "integration": "Will Correll dashboard v1",
+  "filters": {
+    "submitted_since": "ISO-8601 timestamp or null",
+    "changed_since": null,
+    "submitter_id": "Austin's fixed user ID"
+  },
+  "count": 2,
+  "has_more": true,
+  "next_since": "last returned report's filter timestamp",
+  "reports": [ /* report objects described below */ ]
+}</code></pre>
+    <p class="muted">Envelope above is a structural illustration, not a literal JSON fixture. Actual samples below are valid JSON.</p>
+    <div class="notice"><strong>Sync limitation to resolve together:</strong> filters are inclusive; deduplicate/upsert by <code>id</code>. The current <code>next_since</code> is only a timestamp, not a unique cursor. Tied timestamps can repeat pages or prevent progress. A stable timestamp-plus-ID cursor is still needed before a full backfill. Do not advance by an arbitrary millisecond, since that can skip reports.</div>
+    <p><strong>Errors:</strong> 401 for a missing/invalid/expired key; 400 for missing or invalid timestamp filters; 405 for a non-GET request; 500 for a server-side failure. Keep the integration server-side. Key revocation is supported through the credential’s active flag; rotation/handoff remains an administrative step.</p>
+  </section>
+
+  <section id="fields">
+    <h2>Field map &amp; data meanings</h2>
+    <div class="table-wrap"><table>
+      <caption class="muted">API v1 report object → Supabase source</caption>
+      <thead><tr><th scope="col">API field</th><th scope="col">Source / meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td><code>submissions.id</code> · stable UUID; use as the upsert key.</td></tr>
+        <tr><td><code>submitted_at</code></td><td><code>created_at</code> · stored row creation time, used as submission time by the current direct-submit flow. Not a separately tracked status-transition timestamp.</td></tr>
+        <tr><td><code>last_changed_at</code></td><td><code>updated_at</code> · newly added, updated on report-row edits. Old edit times cannot be reconstructed; the migration initialized existing rows at migration time. Product-only edits do not yet touch the parent timestamp.</td></tr>
+        <tr><td><code>submitted_by</code></td><td>Object: <code>id</code>, <code>display_name</code>, <code>email</code>. Comes from the author’s current Auth profile, not a historical profile snapshot.</td></tr>
+        <tr><td><code>store</code></td><td>Object: <code>name</code> ← <code>store_site</code>; <code>number</code> ← <code>store_number</code>; <code>chain</code> ← <code>store_chain</code>; <code>address</code> ← <code>store_location</code>. Missing data remains null; chain is not guessed from store name.</td></tr>
+        <tr><td><code>report_date</code></td><td><code>date</code> · calendar date, YYYY-MM-DD; not a UTC instant.</td></tr>
+        <tr><td><code>brand</code></td><td><code>brand</code> · surrounding whitespace trimmed by API; legacy spelling/case is not silently rewritten.</td></tr>
+        <tr><td><code>location_in_store</code></td><td><code>location</code> · aisle, bunker, shelf, or other placement.</td></tr>
+        <tr><td><code>conditions</code></td><td><code>conditions</code> · existing free text.</td></tr>
+        <tr><td><code>price</code></td><td>Object: <code>amount</code> is decimal USD, <code>currency: "USD"</code>, <code>stored_in_cents: false</code>, and <code>amount_cents</code> is derived. Example: 2.99 dollars → 299 cents. Confirm USD assumption for all reports.</td></tr>
+        <tr><td><code>shelf_space</code></td><td><code>shelf_space</code> · text such as “3 shelves”; no numeric unit is inferred.</td></tr>
+        <tr><td><code>faces</code></td><td><code>on_shelf</code> converted to a number when valid. Historical input is free-form, so surprising values need review rather than silent correction.</td></tr>
+        <tr><td><code>tags</code>, <code>notes</code></td><td>String array and free-text notes respectively. Existing quantities/dates inside notes are preserved, not automatically parsed.</td></tr>
+        <tr><td><code>priority</code></td><td><code>priority_level</code> · 1 urgent/red, 2 yellow, 3 OK/green; can be null for legacy data.</td></tr>
+        <tr><td><code>products</code></td><td>Array from <code>submission_products</code>: <code>id</code>, <code>product</code>, numeric/null <code>quantity</code>, YYYY-MM-DD/null <code>expiry_date</code>. Empty for older reports.</td></tr>
+        <tr><td><code>photos</code></td><td>Up to six objects: <code>slot</code>, <code>path</code>, <code>url</code>, <code>expires_at</code>. Signed URLs last one hour. Refresh via the API; do not treat URLs as permanent IDs. Legacy URL-only photos are not yet recovered by this version.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="muted" style="margin-top:14px">Nullable fields should stay null, not become invented values or zero. API strings are trimmed; the raw database samples below preserve their original formatting.</p>
+  </section>
+
+  <section id="samples">
+    <h2>Two real recent Austin reports</h2>
+    <p>These are snapshots read from Supabase during integration work: October 26 and October 12, 2026. They show the actual database shape, including legacy columns and whitespace. They are not fabricated or normalized API responses.</p>
+    <p><strong>Photo handling:</strong> existing <code>photoN_url</code> fields held expiring signed URLs. Those fields are removed from this shareable copy to avoid embedding access tokens. Original <code>photoN_path</code> values remain. Use the authenticated endpoint for fresh photo links.</p>
+    <div class="notice"><strong>Data-quality note:</strong> the second report stores <code>on_shelf: "5542"</code>. That is the original entered value, not a calculation. The dashboard should flag questionable values for review rather than silently “fix” them. Structured product rows should reduce this ambiguity going forward.</div>
+    <details><summary>Report 1 · Sentinel Drive Kroger · October 26</summary><pre id="sample-one"><code>{
+  &quot;id&quot;: &quot;f1ece8c7-8a06-4444-86f9-ced84e200660&quot;,
+  &quot;created_at&quot;: &quot;2026-10-26T22:11:11.982559+00:00&quot;,
+  &quot;status&quot;: &quot;submitted&quot;,
+  &quot;user_id&quot;: &quot;7293f5f7-9458-4ae4-a1dd-3054d48ca86a&quot;,
+  &quot;group_id&quot;: null,
+  &quot;date&quot;: &quot;2026-10-26&quot;,
+  &quot;store_location&quot;: &quot;Greenbrier Square, Sentinel Dr, Chesapeake, VA, 23320&quot;,
+  &quot;conditions&quot;: &quot;poor &quot;,
+  &quot;price_per_unit&quot;: 2.99,
+  &quot;shelf_space&quot;: &quot;3 shelves &quot;,
+  &quot;on_shelf&quot;: &quot;28&quot;,
+  &quot;tags&quot;: [
+    &quot;yellow tag 9.99 butter 2.99 milk pint&quot;
+  ],
+  &quot;notes&quot;: &quot;14 pints eggnog 11/6/26 \n5 pints strawberry 11/05 1 pint strawberry 10/29 \n\n3 lbs salted butter 12/28 1 lb salted butter 12/9 \n\n8 lbs unsalted butter - all dated december and january &quot;,
+  &quot;team_id&quot;: &quot;064a1ead-7edd-4751-ab04-907393dbd0ce&quot;,
+  &quot;photo1_path&quot;: &quot;teams/064a1ead-7edd-4751-ab04-907393dbd0ce/submissions/f1ece8c7-8a06-4444-86f9-ced84e200660/photo1.jpg&quot;,
+  &quot;photo2_path&quot;: &quot;teams/064a1ead-7edd-4751-ab04-907393dbd0ce/submissions/f1ece8c7-8a06-4444-86f9-ced84e200660/photo2.jpg&quot;,
+  &quot;brand&quot;: &quot;richlands &quot;,
+  &quot;store_site&quot;: &quot;sentinel drive kroger &quot;,
+  &quot;location&quot;: &quot;dairy bunker set specifically &quot;,
+  &quot;priority_level&quot;: 3,
+  &quot;created_by&quot;: &quot;7293f5f7-9458-4ae4-a1dd-3054d48ca86a&quot;,
+  &quot;photo3_path&quot;: &quot;teams/064a1ead-7edd-4751-ab04-907393dbd0ce/submissions/f1ece8c7-8a06-4444-86f9-ced84e200660/photo3.jpg&quot;,
+  &quot;photo4_path&quot;: null,
+  &quot;photo5_path&quot;: null,
+  &quot;photo6_path&quot;: null
+}</code></pre></details>
+    <details><summary>Report 2 · Appomattox Kroger · October 12</summary><pre id="sample-two"><code>{
+  &quot;id&quot;: &quot;103f8772-f63e-4408-acdc-6c0492839f72&quot;,
+  &quot;created_at&quot;: &quot;2026-10-12T02:03:45.866065+00:00&quot;,
+  &quot;status&quot;: &quot;submitted&quot;,
+  &quot;user_id&quot;: &quot;7293f5f7-9458-4ae4-a1dd-3054d48ca86a&quot;,
+  &quot;group_id&quot;: null,
+  &quot;date&quot;: &quot;2026-10-12&quot;,
+  &quot;store_location&quot;: &quot;7789 Richmond Hwy, Richmond Hwy, Appomattox, VA, 24522&quot;,
+  &quot;conditions&quot;: &quot;ok&quot;,
+  &quot;price_per_unit&quot;: 2.99,
+  &quot;shelf_space&quot;: &quot;1 shelf &quot;,
+  &quot;on_shelf&quot;: &quot;5542&quot;,
+  &quot;tags&quot;: [
+    &quot;all tags up&quot;
+  ],
+  &quot;notes&quot;: &quot;5 unsalted good dates 6 salted dates good 24 eggnog pints 10/19 1 milk cookies pints 10/15 1 milk cookies 10/22 2 coffee 10/22 20 quarts 10/19 no backstock. need to speak to angelica about better space &quot;,
+  &quot;team_id&quot;: &quot;064a1ead-7edd-4751-ab04-907393dbd0ce&quot;,
+  &quot;photo1_path&quot;: &quot;teams/064a1ead-7edd-4751-ab04-907393dbd0ce/submissions/103f8772-f63e-4408-acdc-6c0492839f72/photo1.jpg&quot;,
+  &quot;photo2_path&quot;: &quot;teams/064a1ead-7edd-4751-ab04-907393dbd0ce/submissions/103f8772-f63e-4408-acdc-6c0492839f72/photo2.jpg&quot;,
+  &quot;brand&quot;: &quot;richlands &quot;,
+  &quot;store_site&quot;: &quot;appomattox kroger &quot;,
+  &quot;location&quot;: &quot;aisle end 7&quot;,
+  &quot;priority_level&quot;: 3,
+  &quot;created_by&quot;: &quot;7293f5f7-9458-4ae4-a1dd-3054d48ca86a&quot;,
+  &quot;photo3_path&quot;: &quot;teams/064a1ead-7edd-4751-ab04-907393dbd0ce/submissions/103f8772-f63e-4408-acdc-6c0492839f72/photo3.jpg&quot;,
+  &quot;photo4_path&quot;: null,
+  &quot;photo5_path&quot;: null,
+  &quot;photo6_path&quot;: null
+}</code></pre></details>
+    <p class="muted" style="margin-top:16px">This file contains real business report data. Share directly with the intended team, not on a public website.</p>
+    <button type="button" id="download-samples">Download both samples as JSON</button>
+    <p id="download-status" class="muted" role="status" style="margin-top:10px">The samples are embedded in this file; no network connection is needed to read them.</p>
+  </section>
+
+  <section>
+    <h2>Form additions: what remains</h2>
+    <ul>
+      <li><strong>Products:</strong> repeatable product/quantity/expiry-date editor and database table are prepared. Draft loading, autosave, manual save, and reset now preserve product state. Submission saving and offline retry still need atomic parent/product persistence.</li>
+      <li><strong>Store number / chain:</strong> additive database columns are present; the form needs to display and save them. A store number satisfies the immediate request without inventing a store catalog.</li>
+      <li><strong>Required brand selection:</strong> starter options are Richlands, Billy Pie, and Ninja Kombucha in a configurable brand table. Picker and fallback options are prepared; required validation and final form wiring remain. Please send the full approved brand list.</li>
+      <li><strong>End-to-end coverage:</strong> verify report creation, drafts, retries, detail screens, JSON API, and exports before releasing the new form. Local web export passes, but that is not proof of end-to-end product saving.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Keeping your connection stable</h2>
+    <p><strong>Proposed v1 compatibility policy:</strong> keep existing endpoint and field names stable. Add optional fields without removing existing ones. Changes to names, types, units, timestamp meanings, or access scope require advance discussion, updated sample data, and a versioned migration plan.</p>
+    <p>If a breaking change becomes necessary, agree on a new <code>reports-api-v2</code> contract and a transition window before retiring v1. Keep a changelog and notify you before deployment. No existing submission fields have been renamed as part of this work.</p>
+    <p class="muted">This is the working agreement proposed for the handoff, not an automated notification service or an already-agreed deprecation deadline.</p>
+  </section>
+
+  <section id="next">
+    <h2>What would help from your side</h2>
+    <ol>
+      <li>Review the real samples and send the small example reader/request you mentioned.</li>
+      <li>Confirm whether “Austin’s reports” means only those he personally submits, or all reports from particular teams. The current key is author-only.</li>
+      <li>Confirm USD pricing, priority meanings, and whether the dashboard needs structured quantity units as well as quantities.</li>
+      <li>Send the approved brand list and any existing store-number conventions.</li>
+      <li>Agree on initial backfill size, polling interval, cursor behavior, photo refresh/download approach, and how to handle deleted reports. This first version does not publish deletion events.</li>
+      <li>Receive the integration key through a private channel, then validate one complete fetch and upsert together before scheduling automated polling.</li>
+    </ol>
+    <p>Thanks again, Will. I’m looking forward to lining the two systems up, future conversations, and hopefully hanging out in Virginia sometime. Evenings work well on my end too.</p>
+    <p class="signature">— Alberto</p>
+  </section>
+  <footer>
+    <p>RWS dashboard handoff · Local, self-contained document · No external scripts, analytics, fonts, API keys, or signed photo tokens.</p>
+    <p>Implementation snapshot: backend first version deployed and previously smoke-tested with HTTP 200; form integration changes remain local and unfinished. This document does not change the app, database, or TestFlight distribution.</p>
+  </footer>
+</main>
+<script>
+  document.getElementById('download-samples').addEventListener('click', function () {
+    var samples = ['sample-one', 'sample-two'].map(function (id) {
+      return JSON.parse(document.getElementById(id).textContent);
+    });
+    var blob = new Blob([JSON.stringify(samples, null, 2)], { type:'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = 'rws-austin-report-samples.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+    document.getElementById('download-status').textContent =
+      'JSON download requested. If your phone previews the file, use Share or Save to Files.';
+  });
+</script>
+</body>
+</html>

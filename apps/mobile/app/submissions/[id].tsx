@@ -1,3 +1,5 @@
+import { productExportRows, type ReportProduct } from '../../src/lib/reportProducts';
+import { REPORT_PHOTO_SLOTS } from '../../src/lib/reportPhotos';
 import { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -31,6 +33,9 @@ type Row = {
 
   date: string | null;
   store_site: string | null;
+  store_number?: string | null;
+  store_chain?: string | null;
+  products?: ReportProduct[];
   store_location: string | null;
   location: string | null;
   brand: string | null;
@@ -84,48 +89,13 @@ function PriPill({ n }: { n: number | null | undefined }) {
   );
 }
 
-function toCsv(
-  r: Row,
-  submittedBy: string,
-  photo1Resolved?: string | null,
-  photo2Resolved?: string | null
-) {
-  const tags = Array.isArray(r.tags)
-    ? r.tags.join(', ')
-    : typeof r.tags === 'string'
-      ? r.tags
-      : '';
-  const cells = [
-    ['DATE', r.date ?? ''],
-    ['BRAND', r.brand ?? ''],
-    ['STORE SITE', r.store_site ?? ''],
-    ['STORE LOCATION', r.store_location ?? ''],
-    ['LOCATIONS', r.location ?? ''],
-    ['CONDITIONS', r.conditions ?? ''],
-    ['PRICE PER UNIT', r.price_per_unit ?? ''],
-    ['SHELF SPACE', r.shelf_space ?? ''],
-    ['FACES ON SHELF', r.on_shelf ?? ''],
-    ['TAGS', tags],
-    ['NOTES', r.notes ?? ''],
-    ['PRIORITY LEVEL', r.priority_level ?? ''],
-    ['SUBMITTED BY', submittedBy || ''],
-    // Prefer the same resolved URLs used in the UI so CSV matches what users see online
-    ['PHOTO 1', photo1Resolved ?? r.photo1_url ?? r.photo1_path ?? ''],
-    ['PHOTO 2', photo2Resolved ?? r.photo2_url ?? r.photo2_path ?? ''],
-  ];
-  return cells
-    .map(([k, v]) => `"${k}","${String(v).replace(/"/g, '""')}"`)
-    .join('\n');
-}
-
 export default function Submission() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { fontScale, targetMinHeight } = useUISettings();
 
   const [row, setRow] = useState<Row | null>(null);
-  const [photo1Url, setPhoto1Url] = useState<string | null>(null);
-  const [photo2Url, setPhoto2Url] = useState<string | null>(null);
-  const [extraPhotoUrls, setExtraPhotoUrls] = useState<(string | null)[]>([null, null, null, null]);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [photosReady, setPhotosReady] = useState(false);
   const [submitterName, setSubmitterName] = useState<string>('');
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
@@ -158,6 +128,8 @@ export default function Submission() {
 
   useEffect(() => {
     if (!id) return;
+    setPhotosReady(false);
+    setPhotoUrls([]);
     (async () => {
       const { data, error } = await supabase
         .from('submissions')
@@ -170,6 +142,15 @@ export default function Submission() {
       }
       const dataRow = (data as Row) ?? null;
       if (!dataRow) return;
+      const { data: productRows, error: productError } = await supabase
+        .from('submission_products').select('product,quantity,expiry_date,sort_order')
+        .eq('submission_id', id).order('sort_order', { ascending: true });
+      if (productError) {
+        setToast({ kind: 'error', text: 'Products could not be loaded. Exports are disabled to avoid incomplete reports.' });
+        setRow(dataRow);
+        return;
+      }
+      dataRow.products = productRows || [];
       setRow(dataRow);
 
       if (dataRow.created_by) {
@@ -202,28 +183,35 @@ export default function Submission() {
         return null;
       };
 
-      // Resolve up to 6 photos (url preferred, otherwise signed from path).
-      setPhoto1Url(dataRow.photo1_url ?? (await resolveSigned((dataRow as any).photo1_path)));
-      setPhoto2Url(dataRow.photo2_url ?? (await resolveSigned((dataRow as any).photo2_path)));
-
-      const extras: (string | null)[] = [];
-      for (let slot = 3; slot <= 6; slot++) {
-        const url = (dataRow as any)[`photo${slot}_url`] as string | null | undefined;
-        const path = (dataRow as any)[`photo${slot}_path`] as string | null | undefined;
-        extras.push(url ?? (await resolveSigned(path)));
+      // Durable paths win: stored signed URLs may already have expired.
+      // Promise.all preserves slot order, regardless of signing completion order.
+      try {
+        const resolved = await Promise.all(REPORT_PHOTO_SLOTS.map(async (slot) => {
+          const url = (dataRow as any)[`photo${slot}_url`] as string | null | undefined;
+          const path = (dataRow as any)[`photo${slot}_path`] as string | null | undefined;
+          if (!path) return url || null; // Legacy URL-only records.
+          const signed = await resolveSigned(path);
+          if (!signed) throw new Error(`Photo ${slot} could not be loaded. Reload before exporting.`);
+          return signed;
+        }));
+        setPhotoUrls(resolved.filter((url): url is string => !!url));
+        setPhotosReady(true);
+      } catch (error) {
+        setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Photos could not be loaded.' });
       }
-      setExtraPhotoUrls(extras);
     })();
   }, [id]);
 
   if (!row) return null;
 
+  const hasExtendedReport = !!(row.store_number || row.store_chain || row.products?.length);
   const shareSubmission = async () => {
     console.warn('[shareSubmission] tapped');
 
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
     const submissionPayload = {
       store_site: row.store_site || '',
+      store_number: row.store_number || '', store_chain: row.store_chain || '', products: row.products,
       date: row.date || '',
       brand: row.brand || '',
       store_location: row.store_location || '',
@@ -240,6 +228,8 @@ export default function Submission() {
     };
 
     try {
+      if (!photosReady) throw new Error('Photos are still loading or could not be resolved. Reload before exporting.');
+      if (!row.products) throw new Error('Products could not be loaded. Reload before exporting.');
       console.log('[shareSubmission] building spreadsheet payload', {
         baseName,
         photos: submissionPayload.photo_urls?.length ?? 0,
@@ -261,11 +251,13 @@ export default function Submission() {
           const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
           await streaming.shareStreamingSubmissionSpreadsheet(submissionPayload as any, baseName);
         } catch (streamErr) {
+          if (hasExtendedReport) throw new Error('On-device spreadsheet export failed. Use PDF or web export to include store and product details.');
           console.warn('[shareSubmission] streaming XLSX failed, falling back to edge', streamErr);
           const remote = await import('../../src/lib/submissionSpreadsheet.native');
           await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
         }
       } else {
+        if (hasExtendedReport) throw new Error('Use PDF or web spreadsheet export to include store and product details on this device.');
         const remote = await import('../../src/lib/submissionSpreadsheet.native');
         await remote.shareSubmissionSpreadsheetFromEdge(row.id, baseName);
       }
@@ -286,6 +278,7 @@ export default function Submission() {
     const baseName = sanitizeFileBase(buildSubmissionFileBase(row, submitterName));
     const submissionPayload = {
       store_site: row.store_site || '',
+      store_number: row.store_number || '', store_chain: row.store_chain || '', products: row.products,
       date: row.date || '',
       brand: row.brand || '',
       store_location: row.store_location || '',
@@ -302,6 +295,8 @@ export default function Submission() {
     };
 
     try {
+      if (!photosReady) throw new Error('Photos are still loading or could not be resolved. Reload before exporting.');
+      if (!row.products) throw new Error('Products could not be loaded. Reload before exporting.');
       console.log('[sendSpreadsheetToChat] start', {
         baseName,
         photos: submissionPayload.photo_urls?.length ?? 0,
@@ -328,12 +323,14 @@ export default function Submission() {
             const streaming = await import('../../src/lib/submissionSpreadsheet.streaming.native');
             return await streaming.buildStreamingSubmissionSpreadsheetToPath(submissionPayload as any, baseName);
           } catch (streamErr) {
+            if (hasExtendedReport) throw new Error('On-device spreadsheet export failed. Use PDF or web export for the full report.');
             console.warn('[sendSpreadsheetToChat] streaming XLSX failed, falling back to edge', streamErr);
             const remote = await import('../../src/lib/submissionSpreadsheet.native');
             return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
           }
         }
 
+        if (hasExtendedReport) throw new Error('Use PDF or web spreadsheet export for the full report on this device.');
         const remote = await import('../../src/lib/submissionSpreadsheet.native');
         return await remote.downloadSubmissionSpreadsheetToPath(row.id, baseName);
       })();
@@ -368,13 +365,10 @@ export default function Submission() {
       : '';
   const submittedBy = submitterName || row.created_by || '';
 
-  const photo1 = row.photo1_url || photo1Url || null;
-  const photo2 = row.photo2_url || photo2Url || null;
-  const [extra3, extra4, extra5, extra6] = extraPhotoUrls;
-  const photoUrls = [photo1, photo2, extra3, extra4, extra5, extra6].filter(Boolean) as string[];
   const csvSaveLabel = Platform.OS === 'web' ? 'Download Spreadsheet' : 'Send Spreadsheet to Chat';
   const buildPdfPayload = () => ({
     store_site: row.store_site || '',
+    store_number: row.store_number || '', store_chain: row.store_chain || '', products: row.products,
     date: row.date || '',
     brand: row.brand || '',
     store_location: row.store_location || '',
@@ -391,6 +385,8 @@ export default function Submission() {
 
   const savePdf = async () => {
     try {
+      if (!photosReady) throw new Error('Photos are still loading or could not be resolved. Reload before exporting.');
+      if (!row.products) throw new Error('Products could not be loaded. Reload before exporting.');
       const mod = Platform.OS === 'web'
         ? await import('../../src/lib/exportPdf.web')
         : await import('../../src/lib/exportPdf.native');
@@ -440,6 +436,10 @@ export default function Submission() {
         </Text>
 
         {row.brand ? <Text {...textA11yProps} style={bodyStyle}>Brand: {row.brand}</Text> : null}
+        {row.store_number ? <Text {...textA11yProps} style={bodyStyle}>Store number: {row.store_number}</Text> : null}
+        {row.store_chain ? <Text {...textA11yProps} style={bodyStyle}>Store chain: {row.store_chain}</Text> : null}
+        {row.products?.length ? <Text {...textA11yProps} style={labelStyle}>Products</Text> : null}
+        {productExportRows(row.products).map(([label, value]) => <Text key={label} {...textA11yProps} style={bodyStyle}>{label}: {value}</Text>)}
         {row.store_site ? <Text {...textA11yProps} style={bodyStyle}>Store site: {row.store_site}</Text> : null}
         {row.location ? <Text {...textA11yProps} style={bodyStyle}>Location: {row.location}</Text> : null}
         <Text {...textA11yProps} style={bodyStyle}>{row.date}</Text>

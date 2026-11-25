@@ -1,7 +1,7 @@
 // supabase/submission-xlsx/functions/index.ts
 // Supabase Edge Function: submission-xlsx
 //
-// Build an XLSX export for a single submission, including up to six photos.
+// Build an XLSX export for a single submission, including up to twenty photos.
 //
 // Deploy:
 //   supabase functions deploy submission-xlsx --no-verify-jwt
@@ -297,7 +297,7 @@ Deno.serve(async (req) => {
     wb.created = new Date();
 
     const ws = wb.addWorksheet('submission');
-    // Make the sheet symmetric so the 2x3 photo grid looks like the PDF.
+    // Repeat the existing two-column photo layout.
     // (If columns have different widths, images will look off-center.)
     ws.columns = [
       { header: 'Field', key: 'label', width: 44 },
@@ -347,26 +347,21 @@ Deno.serve(async (req) => {
 
     const debugRows: any[] = [];
 
-    const paths: (string | null)[] = [
-      submission.photo1_path ?? null,
-      submission.photo2_path ?? null,
-      submission.photo3_path ?? null,
-      submission.photo4_path ?? null,
-      submission.photo5_path ?? null,
-      submission.photo6_path ?? null,
-    ];
+    const paths = Array.from({ length: 20 }, (_, index) => submission[`photo${index + 1}_path`] as string | null);
+    const usedSlots = paths.flatMap((path, index) => path ? [index + 1] : []);
 
     const imageTopRow0 = ws.rowCount + 1;
 
-    // Reserve a smaller visual area (36 rows = 3 blocks * 12 rows)
-    for (let rr = 0; rr < 36; rr++) {
+    // Each pair occupies the original 12 spreadsheet rows.
+    const gridRows = Math.ceil((usedSlots.at(-1) ?? 0) / 2) * 12;
+    for (let rr = 0; rr < gridRows; rr++) {
       ws.getRow(imageTopRow0 + 1 + rr).height = 20;
     }
 
-    const expectedSlots = paths.map((p, idx) => (p ? idx + 1 : null)).filter(Boolean) as number[];
+    const expectedSlots = usedSlots;
     const embeddedSlots: number[] = [];
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < paths.length; i++) {
       const slot = i + 1;
       const stored = paths[i];
 

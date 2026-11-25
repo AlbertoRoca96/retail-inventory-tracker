@@ -6,13 +6,10 @@
     "devclient": {
       "node": "20.19.4",
       "distribution": "internal",
-      "ios": {
-        "developmentClient": true
-      },
+      "developmentClient": true,
+      "environment": "development",
+      "ios": {},
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
-        "EXPO_USE_HERMES": "false",
         "EXPO_POD_INSTALL_ARGS": "--repo-update",
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
@@ -26,9 +23,6 @@
       },
       "ios": {},
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
-        "EXPO_USE_HERMES": "false",
         "EXPO_POD_INSTALL_ARGS": "--repo-update",
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
@@ -40,9 +34,6 @@
         "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
-        "EXPO_USE_HERMES": "false",
         "EXPO_POD_INSTALL_ARGS": "--repo-update",
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
@@ -54,9 +45,6 @@
         "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "${EXPO_PUBLIC_SUPABASE_URL}",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
-        "EXPO_USE_HERMES": "false",
         "EXPO_POD_INSTALL_ARGS": "--repo-update",
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }

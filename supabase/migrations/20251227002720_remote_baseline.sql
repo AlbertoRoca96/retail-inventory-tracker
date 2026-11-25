@@ -1,0 +1,2 @@
+-- Baseline marker for migration already recorded in the remote project.
+-- The original SQL was applied outside this repository; intentionally no-op.

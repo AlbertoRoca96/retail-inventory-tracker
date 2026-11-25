@@ -31,3 +31,5 @@ await RwsXlsxWriter.writeSubmissionXlsx({
 ```
 
 Note: native expects *plain file paths* (no `file://` prefix).
+
+Reports support up to **20 photos**, kept in input order in the existing two-column grid (ten 12-row blocks). Arrays over 20, unreadable images, and image insertion failures reject the export instead of silently omitting photos.

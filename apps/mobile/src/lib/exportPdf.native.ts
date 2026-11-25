@@ -1,5 +1,7 @@
 // apps/mobile/src/lib/exportPdf.native.ts
 
+import { productExportRows, type ReportProduct } from './reportProducts';
+import { MAX_REPORT_PHOTOS } from './reportPhotos';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -8,6 +10,9 @@ import { shareFileNative } from './shareFile.native';
 
 export type SubmissionPdf = {
   store_site: string;
+  store_number?: string | null;
+  store_chain?: string | null;
+  products?: ReportProduct[];
   date: string;
   brand: string;
   store_location: string;
@@ -32,7 +37,7 @@ type BuildOptions = {
 
 /** Escape text for HTML */
 const esc = (s: string) =>
-  (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
  * Convert ANY local/remote image into a JPEG data URI using
@@ -108,17 +113,21 @@ export async function createSubmissionPdf(
   data: SubmissionPdf,
   opts: BuildOptions = {}
 ): Promise<string> {
-  // Prepare up to six photos: first two as main, next four as thumbnails
-  const urls = (data.photo_urls || []).filter(Boolean).slice(0, 6);
-  const [raw1, raw2, raw3, raw4, raw5, raw6] = urls as string[];
-  const inline = !!opts.inlineImages;
-
-  const img1 = inline ? await toDataUri(raw1) : raw1 || '';
-  const img2 = inline ? await toDataUri(raw2) : raw2 || '';
-  const img3 = inline ? await toDataUri(raw3) : raw3 || '';
-  const img4 = inline ? await toDataUri(raw4) : raw4 || '';
-  const img5 = inline ? await toDataUri(raw5) : raw5 || '';
-  const img6 = inline ? await toDataUri(raw6) : raw6 || '';
+  const urls = (data.photo_urls || []).filter(Boolean);
+  if (urls.length > MAX_REPORT_PHOTOS) throw new Error(`A report supports at most ${MAX_REPORT_PHOTOS} photos.`);
+  const images: string[] = [];
+  for (const url of urls) {
+    const image = opts.inlineImages ? await toDataUri(url) : url;
+    if (!image) throw new Error(`Unable to prepare photo ${images.length + 1}/${urls.length}.`);
+    images.push(image);
+  }
+  // Each pair is indivisible during printing; retain the existing 250pt image cells.
+  const photoRows = Array.from({ length: Math.max(1, Math.ceil(images.length / 2)) }, (_, row) =>
+    `<div class="grid">${[0, 1].map((col) => {
+      const image = images[row * 2 + col];
+      return `<div class="cell">${image ? `<img src="${esc(image)}"/>` : ''}</div>`;
+    }).join('')}</div>`
+  ).join('');
 
   // Compute priority row bits up front (below NOTES)
   const pri = (data.priority_level ?? '').toString();
@@ -139,15 +148,19 @@ export async function createSubmissionPdf(
   td.value { width: 62%; }
   .title { font-weight: 700; }
   .photos h3 { margin: 10pt 0 6pt; font-size: 10pt; }
-  .grid { display: table; width: 100%; table-layout: fixed; }
+  .grid { display: table; width: 100%; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
+  .photos h3 { break-after: avoid; page-break-after: avoid; }
   .cell { display: table-cell; border: 1px solid #777; height: 250pt; vertical-align: middle; text-align: center; background: #fff; }
-  img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  img { max-width: 100%; max-height: 238pt; object-fit: contain; }
 </style></head>
 <body>
   <table>
     <tr><th colspan="2" class="title">${esc((data.store_site || '').toUpperCase())}</th></tr>
     <tr><th class="label">DATE</th><td class="value">${esc(data.date)}</td></tr>
     <tr><th class="label">BRAND</th><td class="value">${esc(data.brand)}</td></tr>
+    <tr><th class="label">STORE NUMBER</th><td class="value">${esc(data.store_number || '')}</td></tr>
+    <tr><th class="label">STORE CHAIN</th><td class="value">${esc(data.store_chain || '')}</td></tr>
+    ${productExportRows(data.products).map(([label, value]) => `<tr><th class="label">${esc(label)}</th><td class="value">${esc(value)}</td></tr>`).join('')}
     <tr><th class="label">STORE LOCATION</th><td class="value">${esc(data.store_location)}</td></tr>
     <tr><th class="label">LOCATIONS</th><td class="value">${esc(data.location)}</td></tr>
     <tr><th class="label">CONDITIONS</th><td class="value">${esc(data.conditions)}</td></tr>
@@ -160,20 +173,7 @@ export async function createSubmissionPdf(
   </table>
   <div class="photos">
     <h3>PHOTOS</h3>
-    <div class="grid">
-      <div class="cell">${img1 ? `<img src="${img1}"/>` : ''}</div>
-      <div class="cell">${img2 ? `<img src="${img2}"/>` : ''}</div>
-    </div>
-    ${img3 || img4 || img5 || img6 ? `
-    <div class="grid" style="margin-top: 8pt; height: 180pt;">
-      <div class="cell">${img3 ? `<img src="${img3}"/>` : ''}</div>
-      <div class="cell">${img4 ? `<img src="${img4}"/>` : ''}</div>
-    </div>
-    <div class="grid" style="height: 180pt;">
-      <div class="cell">${img5 ? `<img src="${img5}"/>` : ''}</div>
-      <div class="cell">${img6 ? `<img src="${img6}"/>` : ''}</div>
-    </div>
-    ` : ''}
+    ${photoRows}
   </div>
 </body></html>`;
 

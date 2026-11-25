@@ -1,4 +1,5 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { Buffer } from 'buffer';
 import { supabase } from './supabase';
 
@@ -10,7 +11,7 @@ export type PhotoLike = {
 };
 
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+  return Uint8Array.from(u8).buffer;
 }
 
 function safeExtFromUri(uri: string): string {
@@ -111,23 +112,23 @@ export async function uploadSubmissionPhoto({
   path,
   uri,
   contentType = 'image/jpeg',
+  upsert = true,
 }: {
   bucket?: string;
   path: string;
   uri: string;
   contentType?: string;
+  upsert?: boolean;
 }) {
   let bytes: Uint8Array | null = null;
 
-  const safeUri = await ensureFileUri(uri);
-
-  // Preferred: Expo File API (if available)
-  const FileCtor = (FileSystem as any).File;
-  if (FileCtor) {
-    const file = new FileCtor(safeUri);
-    bytes = await file.bytes();
+  if (Platform.OS === 'web') {
+    // Browser blob URLs are not Expo filesystem paths.
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error('Could not read the selected browser file. Reattach it and retry.');
+    bytes = new Uint8Array(await response.arrayBuffer());
   } else {
-    // Fallback: base64 read
+    const safeUri = await ensureFileUri(uri);
     const base64 = await FileSystem.readAsStringAsync(safeUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
@@ -135,7 +136,7 @@ export async function uploadSubmissionPhoto({
   }
 
   if (!bytes || bytes.byteLength === 0) {
-    throw new Error(`uploadSubmissionPhoto: got 0 bytes from uri=${uri} safeUri=${safeUri}`);
+    throw new Error('Selected file is empty or unavailable. Reattach it and retry.');
   }
 
   const ab = toArrayBuffer(bytes);
@@ -143,7 +144,7 @@ export async function uploadSubmissionPhoto({
     .from(bucket)
     .upload(path, ab, {
       contentType,
-      upsert: true,
+      upsert,
       cacheControl: '3600',
     });
   if (error) throw error;
@@ -159,11 +160,13 @@ export async function uploadLocalFileToStorage({
   path,
   uri,
   contentType,
+  upsert = true,
 }: {
   bucket: string;
   path: string;
   uri: string;
   contentType?: string;
+  upsert?: boolean;
 }): Promise<{ path: string; publicUrl: string | null }> {
   if (!uri) throw new Error('uploadLocalFileToStorage requires a uri');
   const ct = contentType || guessMimeType(path);
@@ -173,6 +176,7 @@ export async function uploadLocalFileToStorage({
     path,
     uri,
     contentType: ct,
+    upsert,
   });
 
   const publicUrl = await getSignedStorageUrl(bucket, path);
@@ -187,10 +191,12 @@ export async function uploadFileToStorage({
   bucket,
   path,
   photo,
+  upsert = true,
 }: {
   bucket: string;
   path: string;
   photo: PhotoLike;
+  upsert?: boolean;
 }): Promise<{ path: string; publicUrl: string | null }> {
   if (!photo?.uri) {
     throw new Error('uploadFileToStorage requires a uri');
@@ -201,5 +207,6 @@ export async function uploadFileToStorage({
     path,
     uri: photo.uri,
     contentType: photo.mimeType || undefined,
+    upsert,
   });
 }

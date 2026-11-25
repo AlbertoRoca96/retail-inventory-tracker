@@ -1,7 +1,12 @@
 import ExcelJS from 'exceljs';
+import { MAX_REPORT_PHOTOS } from './reportPhotos';
+import { productExportRows, type ReportProduct } from './reportProducts';
 
 export type SubmissionExcel = {
   store_site: string;
+  store_number?: string | null;
+  store_chain?: string | null;
+  products?: ReportProduct[];
 
   date: string;
   brand: string;
@@ -103,6 +108,8 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
     r++;
   };
 
+  addRow('STORE NUMBER', row.store_number || '');
+  addRow('STORE CHAIN', row.store_chain || '');
   addRow('DATE', row.date);
   addRow('BRAND', row.brand);
   addRow('STORE LOCATION', row.store_location);
@@ -126,6 +133,12 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
     ws.getCell(`B${priorityRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
   }
 
+  for (const [label, value] of productExportRows(row.products)) {
+    addRow(label, value);
+    ws.getCell(`B${r - 1}`).alignment = { wrapText: true, vertical: 'middle' };
+    ws.getRow(r - 1).height = Math.max(36, Math.ceil(value.length / 40) * 18);
+  }
+
   // PHOTOS header
   ws.mergeCells(`A${r}:B${r}`);
   const hdr = ws.getCell(`A${r}`);
@@ -137,9 +150,9 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
   ws.getCell(`D${r}`).border = border;
   r++;
 
-  // Photo grid: up to 6 photos, 2 columns x 3 rows
+  // Keep the existing two-column, 12-sheet-row photo blocks through all 20 slots.
   const imageTopRow = r;
-  const rowsForImages = 36; // more vertical space for 3 rows of images
+  const rowsForImages = Math.ceil(MAX_REPORT_PHOTOS / 2) * 12;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
 
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
@@ -150,16 +163,17 @@ export async function downloadSubmissionExcel(row: SubmissionExcel, opts: { file
     ws.getRow(rr).height = 18;
   }
 
-  const urls = (row.photo_urls || []).filter(Boolean).slice(0, 6);
-  const settled = await Promise.allSettled(urls.map(toCanvasBase64));
-  const dataUris = settled.map((s) => (s.status === 'fulfilled' ? s.value : null));
+  const urls = (row.photo_urls || []).filter(Boolean);
+  if (urls.length > MAX_REPORT_PHOTOS) throw new Error(`A report supports at most ${MAX_REPORT_PHOTOS} photos.`);
+  // Fail explicitly rather than downloading a workbook with missing photos.
+  const dataUris = await Promise.all(urls.map(toCanvasBase64));
 
   for (let i = 0; i < dataUris.length; i++) {
     const dataUri = dataUris[i];
     if (!dataUri) continue;
     const id = wb.addImage({ base64: dataUri, extension: 'jpeg' });
     const colIndex = i % 2; // 0 or 1
-    const rowBlock = Math.floor(i / 2); // 0,1,2
+    const rowBlock = Math.floor(i / 2); // 0 through 9
 
     const topRowForImage = imageTopRow + rowBlock * 12; // 12-row block per image row
     const tlCol = colIndex === 0 ? 'A' : 'B';

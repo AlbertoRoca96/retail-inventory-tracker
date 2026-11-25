@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light">
+<title>RWS · Dashboard integration & photo capacity</title>
+<style>
+:root{--navy:#102b43;--blue:#145da0;--green:#176447;--amber:#865000;--ink:#172b40;--muted:#526579;--line:#dce5ed;--paper:#fff;--bg:#f1f5f8}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1050px;margin:auto;padding:22px 18px 60px}header{padding:34px;border-radius:22px;color:#fff;background:linear-gradient(135deg,#102b43,#165970)}
+h1{font-size:clamp(2rem,6vw,3.4rem);line-height:1.1;letter-spacing:-.045em;max-width:800px;margin:14px 0 20px}h2{font-size:1.45rem;line-height:1.3;margin:0 0 18px}h3{font-size:1.06rem;margin:22px 0 8px}
+p{margin:0 0 14px}p:last-child{margin-bottom:0}.eyebrow{text-transform:uppercase;letter-spacing:.13em;font-size:.75rem;font-weight:800}.sub{color:#d6e9f0;max-width:760px}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}nav a{padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:25px;text-decoration:none;font-size:.9rem}
+a{color:var(--blue);overflow-wrap:anywhere}section{padding:26px;background:var(--paper);border:1px solid var(--line);border-radius:16px;margin-top:18px;scroll-margin-top:16px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.number{display:block;font-size:2rem;line-height:1.2;font-weight:850;color:var(--navy)}
+.label,.muted{font-size:.9rem;color:var(--muted)}.badge{display:inline-block;font-size:.75rem;font-weight:800;padding:4px 10px;border-radius:20px;margin:0 0 10px}.done{background:#e4f4eb;color:var(--green)}.hold{background:#fff0d6;color:var(--amber)}.local{background:#e8f0fe;color:#224b8f}
+.notice{margin:16px 0;padding:15px 17px;background:#fff7e8;border-left:4px solid #d28a14;border-radius:8px}.good{background:#edf8f2;border-left-color:#21724e}.danger{background:#fff0ed;border-left-color:#b54c38}
+ul,ol{padding-left:23px}li{margin:8px 0}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#edf3f7}tr:last-child td{border:0}
+code{font: .86em/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}p code,li code,td code{background:#edf2f8;padding:2px 4px;border-radius:4px}pre{background:#102b43;color:#eaf3ff;padding:18px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:.82rem}
+summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750}details{border-top:1px solid var(--line);margin-top:14px;padding-top:8px}.inputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}label{font-size:.88rem;font-weight:700;display:block}input,select{font:inherit;width:100%;min-height:48px;border:1px solid #9baebf;border-radius:8px;padding:8px;margin-top:5px;background:white;color:var(--ink)}
+button{font:inherit;min-height:48px;background:var(--blue);color:white;border:0;border-radius:9px;padding:11px 18px;cursor:pointer;font-weight:750}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #d58c08;outline-offset:3px}
+.reply{background:#f4f8fb;padding:18px;border-radius:12px}.reply p{margin-bottom:14px}footer{color:var(--muted);font-size:.85rem;margin-top:22px}.output{background:#eff7fc;border:1px solid #d9eaf5;border-radius:12px;padding:18px}
+@media(max-width:650px){main{padding:10px 10px 40px}header{padding:26px 21px}section{padding:20px 16px}.grid{grid-template-columns:1fr}.inputs{grid-template-columns:1fr}th,td{padding:10px;font-size:.85rem}.number{font-size:1.8rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{body{background:white}main{max-width:none;padding:0}header{background:#eef4f8;color:var(--ink)}.sub{color:var(--muted)}nav,button{display:none}section{break-inside:avoid}.inputs{grid-template-columns:1fr 1fr}pre{background:#eef4f8;color:var(--ink)}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="eyebrow">RWS / Alberto → Will & Austin / Engineering update</div>
+<h1>A clear path to the dashboard.<br>And a realistic photo budget.</h1>
+<p class="sub">Confirmed requirements, implementation status, live capacity measurements, and what needs approval before release. No mystery hosting upgrade and no credentials in this document.</p>
+<p class="sub">Updated November 25, 2026 (UTC) · Report/photo sample: November 22 · Billing/usage verified November 25, 00:55 UTC</p>
+</header>
+<nav aria-label="Sections"><a href="#summary">Summary</a><a href="#integration">Integration</a><a href="#scope">Team scope</a><a href="#photos">Photos</a><a href="#budget">Cost calculator</a><a href="#release">Release checklist</a><a href="#reply">Reply to Will</a></nav>
+<section id="summary">
+<h2>The short version</h2>
+<div class="grid">
+<article class="card"><span class="badge done">Confirmed</span><h3>Will’s integration contract</h3><p>Team-wide submitted reports, Sept. 1 backfill, polling every 15 minutes, USD pricing, the existing priority scale, and one-hour photo URLs.</p></article>
+<article class="card"><span class="badge local">Implemented locally</span><h3>Code changes are ready for review</h3><p>Team-safe access, reliable pagination, structured product rows, required brand selection, and store numbers are wired locally. Detailed test results and release gates are below.</p></article>
+<article class="card"><span class="badge hold">Approval needed</span><h3>Scope & production release</h3><p>The live database has three overlapping teams. Confirm the exact team allowlist before issuing a wider key. No service upgrades or production changes were made for this report.</p></article>
+</div>
+<div class="notice"><strong>Important distinction:</strong> the earlier Austin-only API is deployed. The newer changes described here are local until migrations, deployment, and end-to-end checks are approved and completed. A successful build is not proof that the deployed API or iPhone app includes them.</div>
+</section>
+<section id="integration">
+<h2>Will’s requirements → implementation</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">Requirement</th><th scope="col">Agreed behavior</th></tr></thead><tbody>
+<tr><td>Contract</td><td>Keep the documented v1 names. Add optional fields rather than silently renaming. Breaking changes require advance notice and a coordinated v2 transition.</td></tr>
+<tr><td>Scope</td><td>All submitted reports whose stored team ID belongs to the integration key’s explicit allowlist—not all reports ever written by every member across unrelated teams.</td></tr>
+<tr><td>Backfill & polling</td><td>Start September 1, 2026, poll every 15 minutes. Default example boundary is UTC; Virginia’s September 1 local midnight is <code>2026-09-01T04:00:00Z</code>. Agree which boundary to use.</td></tr>
+<tr><td>Updates</td><td>Upsert by report ID; compare <code>last_changed_at</code>. Ignoring every seen ID forever would lose edits. Use <code>changed_since</code> for ongoing edit-aware polling.</td></tr>
+<tr><td>Pagination</td><td>Inclusive timestamps remain supported. A timestamp-plus-ID cursor prevents tied timestamps from stalling a page. Drain all pages before saving the polling watermark.</td></tr>
+<tr><td>Price & priority</td><td>USD decimal dollars; 2.99 = 299 cents. Priority 1 urgent, 2 yellow, 3 OK. Nullable legacy data is not converted into invented zeros.</td></tr>
+<tr><td>Products</td><td>Repeatable product name, numeric quantity, expiry date. Quantity units come from Will’s product knowledge; no extra unit selector is needed.</td></tr>
+<tr><td>Brands</td><td>Required starter choices: Richlands, Billy Pie, Ninja Kombucha. Configurable list; Will will confirm additions with Austin.</td></tr>
+<tr><td>Stores</td><td>Plain-text chain store number; preserve leading zeros. Separate store name, chain, and address.</td></tr>
+<tr><td>Photos</td><td>Will downloads and retains copies at fetch time. Links expire after one hour. Refresh through the API on retries; no automatic permanent-link promise.</td></tr>
+<tr><td>Deletion events</td><td>Deferred for v1. No deletion feed or tombstone behavior is promised yet.</td></tr>
+<tr><td>Key</td><td>Dedicated server-side integration credential; hashed at rest. Deliver separately through an agreed private channel. Never in this HTML, source control, frontend code, or request screenshots.</td></tr>
+</tbody></table></div>
+<h3>Endpoint & example first fetch</h3>
+<pre><code>GET https://prhhlvdoplavakbgcbes.supabase.co/functions/v1/reports-api-v1
+
+Query: submitted_since=2026-09-01T00:00:00Z&amp;limit=100
+Header: x-api-key: YOUR_PRIVATE_INTEGRATION_KEY</code></pre>
+<p class="muted">The hostname and example are not a new team-access grant. The existing author key still has its original scope until a separately approved team key is issued.</p>
+<h3>Implementation & validation snapshot</h3>
+<div id="implementation-status">
+<ul>
+<li><strong>Backend, local:</strong> explicit team allowlist credentials alongside existing author keys; actual submitter per report; signed timestamp-plus-ID continuation cursors; product changes advance the parent report timestamp.</li>
+<li><strong>Atomic saving, local:</strong> authenticated <code>submit_report_v1</code> transaction saves report plus product rows. Stable request IDs and retry receipts protect identical retries. New migration is not applied remotely.</li>
+<li><strong>Form, local:</strong> required active brand selection, store number/chain, repeatable validated products, native/web draft persistence, queued retries, and database-error retention are connected. Detail views, web Excel, web/native PDF and the iOS streaming spreadsheet include extended fields.</li>
+<li><strong>Export limitations:</strong> unsupported Android/server spreadsheet fallbacks explicitly direct users to PDF/web export rather than silently omitting product rows. Queue retry runs while the form is mounted, not as a guaranteed background worker. Browser-selected photos may need reattaching after reload.</li>
+<li><strong>Passed:</strong> 16 backend Node tests; 12 product/queue/retry tests; embedded PostgreSQL migration/RPC/RLS fixtures with rollback, legacy required user ID/text counts, author-spoof rejection and URL-independent retries; Expo web export of 24 routes; iOS JavaScript/Hermes export; Expo Doctor 18/18 checks; whitespace checks. A refreshed production dry run lists exactly two new migrations and applies nothing. The iOS export is not a native binary build or a physical-device test.</li>
+<li><strong>Not a clean full typecheck:</strong> repository-wide TypeScript checking still reports existing unrelated application errors. No diagnostics were reported for the modified integration files in the captured check.</li>
+<li><strong>Safety fixes, local:</strong> account-separated drafts, frozen immutable save requests with a restore action, unique non-overwriting photo filenames, web-compatible uploads, corrected React hook order, and report-bound photo signing. The native spreadsheet wrapper now imports through Expo’s supported API; SDK 54 patches, font dependency/plugin, and an explicit Babel preset are installed.</li>
+<li><strong>Still required:</strong> review legacy live triggers/grants/policies, concurrent-session retries, actual Deno/PostgREST requests, an authenticated full report creation, export rendering, and physical iPhone testing. Embedded database fixtures are not a complete copy of production. Existing npm audit advisories also need triage before a public release; no force-upgrade was run.</li>
+</ul>
+<p class="muted">New backend migrations: <code>20261103040000_reports_backend_integration.sql</code> and <code>20261103050000_report_write_integrity.sql</code>. The second guards direct authenticated author/path writes. Apply only after approval and legacy-policy/trigger review, before deploying the updated API/form. The old server does not yet provide the new RPC.</p>
+</div>
+<p><strong>Legacy caveats:</strong> historical edit times cannot be reconstructed from the new <code>updated_at</code> column. Submission time currently uses row creation time, not a separately recorded status-transition event. Unusual faces/count values in legacy reports remain visible for review.</p>
+</section>
+<section id="scope">
+<h2>Choose the exact RWS scope</h2>
+<p>The refreshed read-only audit found these submitted reports since September 1. Counts change as people file reports; they are not billing totals or a permanent guarantee.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Team in Supabase</th><th scope="col">Reports</th><th scope="col">Why confirmation matters</th></tr></thead><tbody>
+<tr><td>Admin Team for rwsretailservice</td><td>153</td><td>The main report history, including Austin and Shawn.</td></tr>
+<tr><td>LONE OAK COFFEE FIELD TEAM</td><td>4</td><td>Separate team, overlapping members; some Shawn reports.</td></tr>
+<tr><td>Lone Oak</td><td>1</td><td>Beth and Will are members. Membership alone is not permission to expose every team.</td></tr>
+</tbody></table></div>
+<div class="notice"><strong>Decision needed:</strong> authorize the main RWS/admin team only, or explicitly include one/both Lone Oak teams. No new team-scoped key has been issued. Existing Will onboarding and account settings are left alone.</div>
+<p>Team IDs are available in the internal requirements document. They should be configured by the server administrator, never accepted as an unrestricted query parameter from the integration caller.</p>
+</section>
+<section id="photos">
+<h2>6 → 12 → 20 photos: capacity, not guesswork</h2>
+<div class="grid">
+<div class="card"><span class="number">158</span><span class="label">submitted reports since Sept. 1, all three teams</span></div>
+<div class="card"><span class="number">3</span><span class="label">photos per report on average</span></div>
+<div class="card"><span class="number">2.35 MB</span><span class="label">mean original photo size in recent sample</span></div>
+</div>
+<p class="muted" style="margin-top:14px">Photo-size sample: 109 files from the most recent 30 reports; metadata only, no image downloads. Median 2.47 MB; 90th percentile 3.32 MB. Not a full account storage/egress/billing audit.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Photos/report</th><th scope="col">Approx. upload/report</th><th scope="col">At 100 reports/month</th></tr></thead><tbody>
+<tr><td>3 · observed average</td><td>7.04 MB</td><td>0.70 GB new originals/month</td></tr>
+<tr><td>6 · current supported maximum</td><td>14.08 MB</td><td>1.41 GB/month</td></tr>
+<tr><td>12 · proposed pilot</td><td>28.16 MB</td><td>2.82 GB/month</td></tr>
+<tr><td>20 · possible later target</td><td>46.93 MB</td><td>4.69 GB/month</td></tr>
+</tbody></table></div>
+<p class="muted" style="margin-top:12px">Decimal MB/GB. These are original image bytes at the measured sample mean, not PDF sizes. Real uploads vary. Storage accumulates with retention; downloads count separately.</p>
+<h3>What actually limits the current app</h3>
+<ul>
+<li><strong>Data layout:</strong> reports currently have six fixed photo path/URL slots. The uploader, API, spreadsheet, detail view, and PDF also have six-photo assumptions. Raising a picker limit alone would risk silently dropping photos.</li>
+<li><strong>Upload:</strong> native selection uses JPEG quality settings, but the shared upload helper does not apply a consistent resize/compression budget. Web uploads can retain full-resolution files.</li>
+<li><strong>PDF memory:</strong> native PDF export resizes inline images to 1,400 pixels wide, but still assembles multiple images in HTML. Base64 adds roughly one-third to encoded bytes, and decoded image memory is much larger. Twenty photos need testing on real iPhones, not just a faster server.</li>
+<li><strong>Time & reliability:</strong> mobile bandwidth, per-photo retry, progress indication, and recoverable uploads matter more than raw database capacity. The deployed legacy pipeline can omit assets beyond six; the local uploader now rejects more than six instead of silently truncating. Retain this clear limit until all consumers support more.</li>
+</ul>
+<div class="notice danger"><strong>Privacy finding:</strong> the <code>submissions</code> storage bucket is currently public. Expiring signed URLs do not enforce private access while public URLs remain available. Do not describe the photos as key-protected end to end yet. A separate privacy migration must audit current consumers, replace public links, test authenticated/signed reads, and then switch the bucket to private.</div>
+<h3>Recommended rollout</h3>
+<ol>
+<li>Finish the structured report integration first; keep the six-photo supported limit for this release.</li>
+<li>Add a <code>submission_photos</code> child table with ordered photo rows, retain legacy six-slot compatibility, and update every reader/exporter.</li>
+<li>Normalize uploads with a tested size/quality target—start by evaluating 1,600–2,000-pixel long-edge JPEGs and roughly 0.3–0.7 MB/photo, checking label/expiry readability before accepting that target.</li>
+<li>Pilot 12 photos with upload progress/retries and paginated PDF photo pages. Keep higher-quality originals only if the business needs them; budget both variants if retained.</li>
+<li>Approve 20 only after real-device PDF, offline/retry, image clarity, and quota checks. No claim that twenty-photo support is implemented today.</li>
+</ol>
+<p><strong>Bottom line for Austin:</strong> twenty photos is not inherently impossible and does not automatically require a larger plan. The current six-slot implementation and phone-side PDF handling need engineering work. Measure usage and compress sensibly before buying capacity.</p>
+</section>
+<section id="budget">
+<h2>Transparent cost estimator</h2>
+<p>This calculator remains illustrative, not a quote or your actual bill. The account plan and current-cycle organization usage are now verified below; exact current retained file bytes and future traffic are not established by a cycle average.</p>
+<div class="notice"><strong>Verified in the signed-in Supabase dashboard:</strong> AlbertoRoca-web’s Org is on <strong>Pro</strong>; spend cap is <strong>enabled</strong>; RWS uses Micro compute. Cycle shown: November 5–December 5, 2026, all projects. Storage: <strong>2.947 GB average / 100 GB</strong>; uncached egress: <strong>0.313 / 250 GB</strong>; cached egress: <strong>0.028 / 250 GB</strong>; Edge Functions: <strong>28,733 / 2,000,000</strong>. Dashboard reports no exceeded quota. Figures can lag by an hour. Storage is time-averaged, not an exact current file inventory. No billing settings changed. Capacity supports a controlled pilot without an upgrade; exceeding a capped quota can restrict service rather than automatically add the modeled overage charge.</div>
+<div class="inputs">
+<label>Reports per month<input id="reports" type="number" min="1" max="100000" step="1" value="100"></label>
+<label>Photos per report<select id="photos-per-report"><option value="3">3 · observed average</option><option value="6" selected>6 · current cap</option><option value="12">12 · pilot idea</option><option value="20">20 · future target</option></select></label>
+<label>Average MB per photo<input id="photo-mb" type="number" min="0.01" max="100" step="0.01" value="2.35"></label>
+<label>Retention in months<input id="retention" type="number" min="1" max="120" step="1" value="12"></label>
+<label>Full-photo downloads per report<input id="downloads" type="number" min="0" max="1000" step="1" value="2"></label>
+<label>Other existing stored data, GB<input id="existing-gb" type="number" min="0" max="100000" step="1" value="0"></label>
+</div>
+<div class="output" id="cost-results" role="status" aria-live="polite"></div>
+<p class="muted" style="margin-top:12px">Model: monthly new originals = reports × photos × MB ÷ 1,000. Retained originals = monthly new GB × retention + other existing GB. Egress = monthly new GB × downloads/report. Does not include generated PDFs, extra image variants, failed transfers, taxes, other services, or computation. Retained-size overage is a rough steady-state monthly estimate; actual storage billing is time-weighted.</p>
+<h3>Official pricing reference</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Supabase item</th><th scope="col">Free</th><th scope="col">Pro</th></tr></thead><tbody>
+<tr><td>Base plan</td><td>$0/month</td><td>From $25/month per organization; compute/add-ons can increase total</td></tr>
+<tr><td>File storage</td><td>1 GB</td><td>100 GB included; $0.0213/GB-month overage</td></tr>
+<tr><td>Uncached egress</td><td>5 GB/cycle</td><td>250 GB/cycle; $0.09/GB overage</td></tr>
+<tr><td>Cached egress</td><td>Separate 5 GB/cycle</td><td>Separate 250 GB/cycle; $0.03/GB overage</td></tr>
+<tr><td>Edge Function invocations</td><td>500,000/cycle</td><td>2 million/cycle; $2 per extra million package</td></tr>
+</tbody></table></div>
+<p class="muted" style="margin-top:12px">Retrieved November 22, 2026 UTC. Allowances are shared across the organization’s projects. Cached and uncached allowances are not interchangeable. Free does not simply bill these Pro overages. Pro includes $10/month compute credit; project count and compute size matter. Recheck prices and actual usage before approving a purchase.</p>
+<p>A 15-minute poll is 96 polls/day, approximately <strong>2,880 initial requests per 30-day month</strong>, plus pagination, retries, and backfill. Photo count does not automatically multiply function invocations. Supabase photo hosting is separate from Expo EAS app-build pricing.</p>
+<p><strong>Labor is separate:</strong> development and device-testing time is not included in these hosting rates. No fixed labor estimate is being invented without an agreed implementation scope.</p>
+<details><summary>Official sources</summary><ul>
+<li><a href="https://supabase.com/pricing">Supabase pricing</a></li>
+<li><a href="https://supabase.com/docs/guides/platform/manage-your-usage/storage-size">Storage size and billing</a></li>
+<li><a href="https://supabase.com/docs/guides/platform/manage-your-usage/egress">Egress allowances and metering</a></li>
+<li><a href="https://supabase.com/docs/guides/platform/manage-your-usage/edge-function-invocations">Function invocation pricing</a></li>
+<li><a href="https://supabase.com/docs/guides/platform/billing-on-supabase">Organization billing</a></li>
+<li><a href="https://expo.dev/pricing">Expo EAS pricing—build service, not photo storage</a></li>
+</ul></details>
+</section>
+<section id="release">
+<h2>Release gates—not hidden assumptions</h2>
+<ol>
+<li><strong>Scope approval:</strong> confirm the exact team allowlist and September timezone boundary.</li>
+<li><strong>Database review:</strong> inspect additive migrations and dry run against the linked project. Approve production schema changes before applying them.</li>
+<li><strong>Backend rollout:</strong> deploy tested team filtering, actual submitter attribution, cursor handling, and product-aware change timestamps. Test denied access, unauthorized teams, tied timestamps, retries, and full pagination.</li>
+<li><strong>Form rollout:</strong> web/native required brand, store number, product validation, atomic saves, retry behavior, details, and exports. Test through a real authenticated report creation before release.</li>
+<li><strong>Private key handoff:</strong> provision an explicitly scoped key after approval. Deliver privately and verify with Will’s first redacted request. Do not reuse a service-role key.</li>
+<li><strong>iPhone test:</strong> use an SDK 54 development client, not Expo Go, because the iOS spreadsheet writer is a custom native module. EAS login/config are verified and one enabled iPhone is registered, but Alberto must confirm it is the phone being used. Complete the private test checklist before a new TestFlight binary. Local files do not update installed apps.</li>
+<li><strong>Deployment:</strong> publish web changes and build/submit a native release only after validation and live migration approval. No new build, store submission, or team-key grant has been triggered.</li>
+<li><strong>Privacy/capacity follow-up:</strong> separately plan private storage migration and a 12-photo pilot. Do not toggle public access or buy a plan without a rollback and approval.</li>
+</ol>
+<p><strong>Not performed for this report:</strong> production schema mutations, team-key issuance, paid upgrades, key delivery, email/text sending, or App Store/TestFlight submission.</p>
+</section>
+<section id="reply">
+<h2>A reply you can send Will</h2>
+<div class="reply" id="will-reply">
+<p>Hey Will—thanks, that clears up the integration requirements nicely. I’ve recorded the Sept. 1 backfill, 15-minute polling, USD/priorities, the three starting brands, and the chain’s own store numbers.</p>
+<p>I’m preparing team-scoped access so the feed includes the right reports regardless of who files them. Our database currently has three overlapping teams, so I’m confirming the exact team allowlist before issuing the new key. I’ll send that separately through an agreed private channel once it’s ready.</p>
+<p>We’ll keep the v1 field names stable. For polling, please upsert by report ID and compare last_changed_at rather than ignoring a known ID forever, so edits still reach your dashboard. I’m also preparing timestamp-plus-ID pagination so a large backfill cannot get stuck on tied timestamps.</p>
+<p>The structured product rows, required brand choices, and store-number field are in development. I’ll distinguish local testing from the deployed release so you know exactly what you can rely on for your first fetch. Your notes-based reader can continue using the existing notes in the meantime.</p>
+<p>Austin and I are also reviewing photo capacity. Higher counts are feasible, but we’re measuring image sizes and phone/PDF behavior before committing to twenty or buying a larger hosting plan.</p>
+<p>Appreciate you keeping the key server-side. Send the first request with the key redacted when we’re ready to test together. Looking forward to catching up—and I’d love to see Buskey Cider when I’m in VA.</p>
+<p>— Alberto</p>
+</div>
+<button id="copy-reply" type="button" style="margin-top:16px">Copy reply</button>
+<p id="copy-status" class="muted" role="status" style="margin-top:10px">If clipboard access is unavailable, select and copy the text above.</p>
+</section>
+<footer><p>Self-contained local HTML · No external scripts, tracking, API keys, signed photo URLs, or report notes. Read-only measurements and official pricing references; not a hosting invoice or a promise of a completed rollout.</p></footer>
+</main>
+<script>
+'use strict';
+function value(id){var n=Number(document.getElementById(id).value);return Number.isFinite(n)&&n>=0?n:0;}
+function money(n){return n.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2});}
+function gb(n){return n.toLocaleString('en-US',{maximumFractionDigits:2})+' GB';}
+function estimate(){
+var added=value('reports')*value('photos-per-report')*value('photo-mb')/1000;
+var stored=added*value('retention')+value('existing-gb');
+var egress=added*value('downloads');
+var storageOver=Math.max(0,stored-100)*0.0213;
+var egressOver=Math.max(0,egress-250)*0.09;
+var output=document.getElementById('cost-results');
+output.innerHTML='<strong>Illustrative usage at these inputs</strong><br>'+gb(added)+' new originals/month<br>'+gb(stored)+' retained originals at the chosen retention horizon<br>'+gb(egress)+' estimated photo downloads/month<br><br>'+
+'<strong>Pro reference only:</strong> '+money(storageOver)+' storage overage/month + '+money(egressOver)+' uncached egress overage/month.<br>'+
+'Base plan starts at $25/month; other usage and compute are not included here.<br><br>'+
+(stored>1||egress>5?'These inputs exceed at least one Free storage/uncached-egress allowance; check actual total account usage before choosing a plan.':'These photo-only inputs fit within the cited Free storage/uncached-egress allowances, but other account usage and limits still apply.');
+}
+document.querySelectorAll('input,select').forEach(function(input){input.addEventListener('input',estimate);input.addEventListener('change',estimate);});
+estimate();
+document.getElementById('copy-reply').addEventListener('click',async function(){
+var status=document.getElementById('copy-status');
+try{await navigator.clipboard.writeText(document.getElementById('will-reply').innerText);status.textContent='Reply copied. Nothing was sent automatically.';}
+catch(error){status.textContent='Clipboard is unavailable here. Select the reply above and copy it manually.';}
+});
+</script>
+</body>
+</html>

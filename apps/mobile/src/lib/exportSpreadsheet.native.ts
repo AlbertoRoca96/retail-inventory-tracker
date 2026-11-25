@@ -1,8 +1,9 @@
 // apps/mobile/src/lib/exportSpreadsheet.native.ts
 //
 // Native: Build a real XLSX spreadsheet with embedded images using ExcelJS,
-// mirroring the PDF layout (6 photos: 2 main + 4 underneath, 2x3 grid).
+// preserving the two-column photo grid through 20 slots.
 // This runs on-device so we avoid Supabase Edge CPU limits.
+import { MAX_REPORT_PHOTOS } from './reportPhotos';
 //
 // Performance notes:
 // - Resize/compress images using expo-image-manipulator (native) to avoid huge
@@ -11,7 +12,7 @@
 // - Disable styles/sharedStrings for ExcelJS to reduce work.
 
 import ExcelJS from 'exceljs';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { encode as base64ArraybufferEncode } from 'base64-arraybuffer';
 
@@ -44,7 +45,7 @@ export type SubmissionSpreadsheet = {
   notes: string;
   priority_level: number | string;
   submitted_by?: string;
-  photo_urls: string[]; // up to 6 absolute URLs
+  photo_urls: string[]; // up to MAX_REPORT_PHOTOS absolute URLs
 };
 
 type ExportOpts = {
@@ -310,9 +311,9 @@ export async function buildSubmissionSpreadsheetFile(
   hdr.border = border;
   r++;
 
-  // Reserve a 2x3 grid (6 slots)
+  // Reserve ten two-column photo blocks, preserving the existing image scale.
   const imageTopRow = r;
-  const rowsForImages = 36; // 3 blocks * 12 rows
+  const rowsForImages = Math.ceil(MAX_REPORT_PHOTOS / 2) * 12;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
     ws.getCell(`A${rr}`).border = border;
@@ -322,8 +323,8 @@ export async function buildSubmissionSpreadsheetFile(
 
   const urls = (row.photo_urls || [])
     .filter((u) => typeof u === 'string' && u.trim())
-    .map((u) => supabaseThumb(u as string))
-    .slice(0, 6);
+    .map((u) => supabaseThumb(u as string));
+  if (urls.length > MAX_REPORT_PHOTOS) throw new Error(`A report supports at most ${MAX_REPORT_PHOTOS} photos.`);
 
   debugLog('photos to embed', urls.length, urls);
 
@@ -334,6 +335,7 @@ export async function buildSubmissionSpreadsheetFile(
   for (const url of urls) {
     await yieldToUI(0);
     const dataUri = await fetchImageAsDataUriResized(url, preset);
+    if (!dataUri) throw new Error(`Unable to prepare photo ${dataUris.length + 1}/${urls.length}.`);
     dataUris.push(dataUri);
   }
 
@@ -347,7 +349,7 @@ export async function buildSubmissionSpreadsheetFile(
 
     const imageId = wb.addImage({ base64: dataUri, extension: 'jpeg' });
     const colIndex = i % 2; // 0 or 1
-    const rowBlock = Math.floor(i / 2); // 0,1,2
+    const rowBlock = Math.floor(i / 2); // 0 through 9
     const tlRow = imageTopRow + rowBlock * 12;
     const brRow = tlRow + 11;
     const colLetter = colIndex === 0 ? 'A' : 'B';

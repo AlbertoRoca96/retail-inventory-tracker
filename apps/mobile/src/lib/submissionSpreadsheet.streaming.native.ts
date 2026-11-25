@@ -3,6 +3,8 @@
 // iOS-only: build an XLSX on-device using the native streaming module (libxlsxwriter).
 // This avoids ExcelJS OOM/watchdog crashes.
 
+import { productExportRows, type ReportProduct } from './reportProducts';
+import { MAX_REPORT_PHOTOS } from './reportPhotos';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -14,6 +16,9 @@ const XLSX_UTI = 'org.openxmlformats.spreadsheetml.sheet';
 
 export type SubmissionSpreadsheetPayload = {
   store_site: string;
+  store_number?: string | null;
+  store_chain?: string | null;
+  products?: ReportProduct[];
   date: string;
   brand: string;
   store_location: string;
@@ -152,6 +157,9 @@ export async function buildStreamingSubmissionSpreadsheetToPath(
 
   // Prepare rows (keep it dead simple; native module does formatting)
   const rows = [
+    { label: 'STORE NUMBER', value: payload.store_number || '' },
+    { label: 'STORE CHAIN', value: payload.store_chain || '' },
+    ...productExportRows(payload.products).map(([label, value]) => ({ label, value })),
     { label: 'DATE', value: toStringSafe(payload.date) },
     { label: 'BRAND', value: toStringSafe(payload.brand) },
     { label: 'STORE LOCATION', value: toStringSafe(payload.store_location) },
@@ -170,7 +178,8 @@ export async function buildStreamingSubmissionSpreadsheetToPath(
   // NOTE: These files live in internal cache; iOS can clean them up later.
   const imagePaths: string[] = [];
 
-  const urls = (payload.photo_urls || []).filter(Boolean).slice(0, 6);
+  const urls = (payload.photo_urls || []).filter(Boolean);
+  if (urls.length > MAX_REPORT_PHOTOS) throw new Error(`A report supports at most ${MAX_REPORT_PHOTOS} photos.`);
   const expected = urls.length;
 
   for (let i = 0; i < urls.length; i++) {

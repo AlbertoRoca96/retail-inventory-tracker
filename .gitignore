@@ -22,3 +22,12 @@ apps/mobile/ios/
 
 # Supabase CLI state
 supabase/.temp/
+
+# Local test exports and build diagnostics (may contain signed log URLs)
+apps/mobile/dist-*/
+apps/mobile/build-good.json
+apps/mobile/build-view.json
+apps/mobile/*-url.txt
+apps/mobile/*.log
+apps/mobile/report-export.txt
+apps/mobile/report-tsc.txt
