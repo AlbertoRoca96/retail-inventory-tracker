@@ -34,11 +34,47 @@ create table if not exists public.submissions (
   tags text[] not null default '{}',
   notes text,
 
-  -- Photo fields - edge function expects both path (storage) and url (public)
+  -- Photo fields - fixed slots for up to 20 photos per submission
   photo1_url text,
   photo2_url text,
+  photo3_url text,
+  photo4_url text,
+  photo5_url text,
+  photo6_url text,
+  photo7_url text,
+  photo8_url text,
+  photo9_url text,
+  photo10_url text,
+  photo11_url text,
+  photo12_url text,
+  photo13_url text,
+  photo14_url text,
+  photo15_url text,
+  photo16_url text,
+  photo17_url text,
+  photo18_url text,
+  photo19_url text,
+  photo20_url text,
   photo1_path text,
   photo2_path text,
+  photo3_path text,
+  photo4_path text,
+  photo5_path text,
+  photo6_path text,
+  photo7_path text,
+  photo8_path text,
+  photo9_path text,
+  photo10_path text,
+  photo11_path text,
+  photo12_path text,
+  photo13_path text,
+  photo14_path text,
+  photo15_path text,
+  photo16_path text,
+  photo17_path text,
+  photo18_path text,
+  photo19_path text,
+  photo20_path text,
 
   -- NEW: priority (1 urgent/red, 2 yellow, 3 ok/green)
   priority_level integer not null default 3 check (priority_level between 1 and 3)
@@ -58,8 +94,44 @@ alter table public.submissions add column if not exists location text;
 alter table public.submissions add column if not exists brand text;
 alter table public.submissions add column if not exists photo1_url text;
 alter table public.submissions add column if not exists photo2_url text;
+alter table public.submissions add column if not exists photo3_url text;
+alter table public.submissions add column if not exists photo4_url text;
+alter table public.submissions add column if not exists photo5_url text;
+alter table public.submissions add column if not exists photo6_url text;
+alter table public.submissions add column if not exists photo7_url text;
+alter table public.submissions add column if not exists photo8_url text;
+alter table public.submissions add column if not exists photo9_url text;
+alter table public.submissions add column if not exists photo10_url text;
+alter table public.submissions add column if not exists photo11_url text;
+alter table public.submissions add column if not exists photo12_url text;
+alter table public.submissions add column if not exists photo13_url text;
+alter table public.submissions add column if not exists photo14_url text;
+alter table public.submissions add column if not exists photo15_url text;
+alter table public.submissions add column if not exists photo16_url text;
+alter table public.submissions add column if not exists photo17_url text;
+alter table public.submissions add column if not exists photo18_url text;
+alter table public.submissions add column if not exists photo19_url text;
+alter table public.submissions add column if not exists photo20_url text;
 alter table public.submissions add column if not exists photo1_path text;
 alter table public.submissions add column if not exists photo2_path text;
+alter table public.submissions add column if not exists photo3_path text;
+alter table public.submissions add column if not exists photo4_path text;
+alter table public.submissions add column if not exists photo5_path text;
+alter table public.submissions add column if not exists photo6_path text;
+alter table public.submissions add column if not exists photo7_path text;
+alter table public.submissions add column if not exists photo8_path text;
+alter table public.submissions add column if not exists photo9_path text;
+alter table public.submissions add column if not exists photo10_path text;
+alter table public.submissions add column if not exists photo11_path text;
+alter table public.submissions add column if not exists photo12_path text;
+alter table public.submissions add column if not exists photo13_path text;
+alter table public.submissions add column if not exists photo14_path text;
+alter table public.submissions add column if not exists photo15_path text;
+alter table public.submissions add column if not exists photo16_path text;
+alter table public.submissions add column if not exists photo17_path text;
+alter table public.submissions add column if not exists photo18_path text;
+alter table public.submissions add column if not exists photo19_path text;
+alter table public.submissions add column if not exists photo20_path text;
 alter table public.submissions add column if not exists priority_level integer default 3;
 
 -- Keep default and allow nulls temporarily for legacy rows; range is enforced separately

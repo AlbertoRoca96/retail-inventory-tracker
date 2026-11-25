@@ -2,7 +2,10 @@ import ExcelJS from 'exceljs';
 import sharp from 'sharp';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type SubmissionRow = {
+type SubmissionPhotoFields = Partial<Record<`photo${number}_path`, string | null>> &
+  Partial<Record<`photo${number}_url`, string | null>>;
+
+export type SubmissionRow = SubmissionPhotoFields & {
   id: string;
   team_id: string;
   date: string;
@@ -18,24 +21,12 @@ export type SubmissionRow = {
   notes: string | null;
   priority_level: number;
   submitted_by?: string | null;
-
-  photo1_path: string | null;
-  photo2_path: string | null;
-  photo3_path: string | null;
-  photo4_path: string | null;
-  photo5_path: string | null;
-  photo6_path: string | null;
-
-  // urls are optional; server prefers paths
-  photo1_url?: string | null;
-  photo2_url?: string | null;
-  photo3_url?: string | null;
-  photo4_url?: string | null;
-  photo5_url?: string | null;
-  photo6_url?: string | null;
 };
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const MAX_REPORT_PHOTOS = 20;
+const PHOTO_COLUMNS = 2;
+const PHOTO_ROWS_PER_IMAGE_BLOCK = 12;
 
 function normalizeText(v: unknown): string {
   if (v == null) return '';
@@ -175,7 +166,8 @@ export async function buildSubmissionXlsx({
   r++;
 
   const imageTopRow = r;
-  const rowsForImages = 36;
+  const photoRows = Math.ceil(MAX_REPORT_PHOTOS / PHOTO_COLUMNS);
+  const rowsForImages = photoRows * PHOTO_ROWS_PER_IMAGE_BLOCK;
   const imageBottomRow = imageTopRow + rowsForImages - 1;
   for (let rr = imageTopRow; rr <= imageBottomRow; rr++) {
     ws.getCell(`A${rr}`).border = border;
@@ -183,17 +175,13 @@ export async function buildSubmissionXlsx({
     ws.getRow(rr).height = 18;
   }
 
-  const photoPaths = [
-    submission.photo1_path,
-    submission.photo2_path,
-    submission.photo3_path,
-    submission.photo4_path,
-    submission.photo5_path,
-    submission.photo6_path,
-  ].filter((p): p is string => !!p);
+  const photoPaths = Array.from({ length: MAX_REPORT_PHOTOS }, (_, index) => {
+    const slot = index + 1;
+    return submission[`photo${slot}_path`];
+  }).filter((path): path is string => !!path);
 
   // Download, shrink, embed.
-  for (let i = 0; i < Math.min(photoPaths.length, 6); i++) {
+  for (let i = 0; i < Math.min(photoPaths.length, MAX_REPORT_PHOTOS); i++) {
     const path = photoPaths[i];
     const raw = await downloadStorageObject(supabaseAdmin, bucket, path);
     if (!raw) continue;
@@ -208,10 +196,10 @@ export async function buildSubmissionXlsx({
 
     const imageId = wb.addImage({ buffer: jpeg, extension: 'jpeg' });
 
-    const colIndex = i % 2;
-    const rowBlock = Math.floor(i / 2);
-    const tlRow = imageTopRow + rowBlock * 12;
-    const brRow = tlRow + 11;
+    const colIndex = i % PHOTO_COLUMNS;
+    const rowBlock = Math.floor(i / PHOTO_COLUMNS);
+    const tlRow = imageTopRow + rowBlock * PHOTO_ROWS_PER_IMAGE_BLOCK;
+    const brRow = tlRow + PHOTO_ROWS_PER_IMAGE_BLOCK - 1;
     const colLetter = colIndex === 0 ? 'A' : 'B';
 
     ws.addImage(imageId, `${colLetter}${tlRow}:${colLetter}${brRow}`);

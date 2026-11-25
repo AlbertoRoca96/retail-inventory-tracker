@@ -1,7 +1,7 @@
 <div style="font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';">
 
 # retail-inventory-tracker
-A phone-first field app to capture retail audits: login, create/view submissions, attach two photos, share/download entries, and admin grouping.
+A phone-first field app to capture retail audits: login, create/view submissions, attach up to twenty photos, share/download entries, and admin grouping.
 
 **Docs font note:** This README prefers the `Inter`/system-ui font stack for readability (GitHub may fall back depending on your setup).
 
